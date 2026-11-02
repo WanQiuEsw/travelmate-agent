@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessageChunk, ToolMessage
 from langchain_core.outputs import ChatGenerationChunk
 
-from travelmate.agent import open_agent
+from travelmate.agent import open_agent, tool_progress
 from travelmate.api import create_app
 from test_travelmate import BudgetModel
 
@@ -67,3 +67,16 @@ def test_sse_failure_is_sanitized():
         assert "event: error" in response.text
         assert "private-api-key" not in response.text
         assert "event: done" not in response.text
+
+
+def test_tool_progress_sources_and_failure(monkeypatch):
+    monkeypatch.setenv("ALIYUN_INDEX_ID", "secret-index")
+    result = tool_progress(ToolMessage(name="search_web", tool_call_id="one", content=json.dumps({
+        "results": [{"title": "官方攻略", "url": "https://example.com/guide", "content": "private body"}]})))
+    assert result["sources"] == [{"title": "官方攻略", "url": "https://example.com/guide"}]
+    assert "1 条结果" in result["text"]
+    assert "private body" not in str(result)
+    failed = tool_progress(ToolMessage(name="search_web", tool_call_id="two", content='{"error":"private-key"}'))
+    assert "失败" in failed["text"] and "private-key" not in str(failed)
+    empty = tool_progress(ToolMessage(name="search_knowledge", tool_call_id="three", content='{"results":[]}'))
+    assert "未找到" in empty["text"]

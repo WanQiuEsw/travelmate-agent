@@ -1,5 +1,6 @@
 """LangChain tool-loop with durable session checkpoints."""
 import os
+import json
 from hashlib import sha256
 from contextlib import closing, contextmanager
 from datetime import date
@@ -66,6 +67,38 @@ def chat(agent, session_id: str, message: str) -> str:
     return public_data(result["messages"][-1].text, result["messages"])
 
 
+TOOL_LABELS = {
+    "search_knowledge": "检索旅游知识资料", "search_web": "搜索网页参考来源",
+    "search_places": "核实地点与地址", "search_route": "查询驾车路线",
+    "estimate_budget": "估算旅行预算", "update_trip": "整理旅行条件",
+    "submit_itinerary": "校验行程安排与预算",
+}
+
+
+def tool_progress(item):
+    name = item.name
+    label = TOOL_LABELS.get(name, "处理旅行资料")
+    try:
+        data = json.loads(item.content)
+    except (ValueError, TypeError):
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    if data.get("error") or getattr(item, "status", None) == "error":
+        return {"text": label + "失败，相关信息尚未核实。"}
+    results = data.get("results", [])
+    sources = []
+    for result in results if isinstance(results, list) else []:
+        if isinstance(result, dict):
+            title = result.get("title") or result.get("source") or result.get("name")
+            if isinstance(title, str):
+                sources.append({"title": title[:200], "url": result.get("url", "")})
+    text = label + "完成。"
+    if name in ("search_web", "search_knowledge", "search_places"):
+        text = label + (f"完成，找到 {len(results)} 条结果。" if results else "完成，未找到匹配结果。")
+    return public_data({"text": text, "sources": sources}, [item])
+
+
 def stream_chat(agent, session_id: str, message: str):
     config = {"configurable": {"thread_id": session_id}, "recursion_limit": 60}
     with closing(agent.stream({"messages": [{"role": "user", "content": message}]},
@@ -80,9 +113,14 @@ def stream_chat(agent, session_id: str, message: str):
                 for update in value.values():
                     for item in (update or {}).get("messages", []):
                         if isinstance(item, AIMessage) and item.tool_calls:
-                            yield "status", {"text": "正在查询资料或计算预算…"}
+                            for call in item.tool_calls:
+                                label = TOOL_LABELS.get(call["name"], "处理旅行资料")
+                                args = call.get("args", {})
+                                query = args.get("query") or args.get("keyword")
+                                detail = "：" + query[:300] if isinstance(query, str) else "…"
+                                yield "status", public_data({"text": "正在" + label + detail})
                         elif isinstance(item, ToolMessage):
-                            yield "status", {"text": "资料处理完成，正在组织回复…"}
+                            yield "status", tool_progress(item)
     state = agent.get_state(config)
     last = state.values["messages"][-1]
     yield "done", {"answer": public_data(last.text, state.values["messages"]), "session_id": session_id,

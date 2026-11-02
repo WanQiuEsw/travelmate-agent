@@ -74,7 +74,7 @@ for (const success of [true, false]) {
     let reads = 0;
     const reader = {async read() {
       reads++;
-      if (reads === 1) return {value: encoder.encode('event: token\ndata: {"text":"## 隐藏的原始标记 **","id":"one"}\n\n'), done: false};
+      if (reads === 1) return {value: encoder.encode('event: status\ndata: {"text":"找到参考资料","sources":[{"title":"官方攻略","url":"https://example.com/guide"},{"title":"危险链接","url":"javascript:alert(1)"}]}\n\nevent: token\ndata: {"text":"## 隐藏的原始标记 **","id":"one"}\n\n'), done: false};
       if (reads === 2) {
         await gate;
         const frame = success ? 'event: done\ndata: {"answer":"## 完整行程\\n**西湖**","message_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}\n\n'
@@ -85,7 +85,7 @@ for (const success of [true, false]) {
     }};
     const pageDocument = {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []};
     vm.runInNewContext(appSource, {
-      document: pageDocument, renderMarkdown, TextDecoder,
+      document: pageDocument, renderMarkdown, TextDecoder, setInterval, clearInterval,
       localStorage: {getItem: () => 'test', setItem() {}},
       Option: class {},
       fetch: async url => url === '/chat/stream' ? {ok: true, body: {getReader: () => reader}}
@@ -93,9 +93,12 @@ for (const success of [true, false]) {
     });
     const completion = elements.form.handlers.submit({preventDefault() {}});
     await new Promise(resolve => setImmediate(resolve));
-    assert.ok(elements.messages.textContent.includes('完成排版后'));
+    assert.ok(elements.messages.textContent.includes('已用时 0 秒'));
+    assert.ok(nodes(elements.messages).find(node => node.className === 'progress').open);
     assert.ok(!elements.messages.textContent.includes('隐藏的原始标记'));
     assert.equal(elements.send.disabled, true);
+    assert.ok(elements.messages.textContent.includes('官方攻略'));
+    assert.equal(nodes(elements.messages).filter(node => node.tagName === 'A').length, 1);
     release();
     await completion;
     assert.ok(!elements.messages.textContent.includes('隐藏的原始标记'));
@@ -110,6 +113,7 @@ for (const success of [true, false]) {
       assert.equal(elements.input.value, '规划杭州');
     }
     assert.equal(elements.send.disabled, false);
+    assert.ok(elements.messages.textContent.includes(success ? '已完成 · 已用时' : '已中断 · 已用时'));
   });
 }
 
