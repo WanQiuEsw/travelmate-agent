@@ -7,6 +7,8 @@ Python + LangChain 旅游智能体。分步提交：设计 → 核心与工具 �
 
 详见 [设计说明](docs/design.md)。
 
+新增可选阿里云百炼托管向量知识库，继续使用 DeepSeek 生成回答。配置和原理见 [云知识库接入说明](docs/aliyun-knowledge.md)。默认仍使用本地字符匹配；切换需安装 `aliyun` 可选依赖并设置 `KNOWLEDGE_PROVIDER=aliyun`。
+
 ## 本地运行（Python 3.11+）
 
 ```powershell
