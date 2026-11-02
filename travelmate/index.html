@@ -71,6 +71,16 @@
   <section id="messages" aria-label="对话内容" role="log" aria-live="off">
     <article class="message"><strong>TravelMate</strong><p>告诉我出发地、目的地、日期、人数和预算吧。也可以先说说你喜欢怎样的旅行。</p></article>
   </section>
+  <section id="trip-panel" hidden aria-label="结构化行程">
+    <h3>行程审核</h3><p id="trip-status" role="status"></p>
+    <p>可以在聊天中修改旅行条件；也可以编辑以下行程 JSON 后保存校验。费用均为全员人民币。</p>
+    <div id="trip-preview" class="content"></div>
+    <details><summary>编辑行程数据</summary><label for="trip-data">结构化行程（可编辑）</label>
+    <textarea id="trip-data" style="min-height:300px"></textarea></details>
+    <button id="trip-save" type="button">保存并校验</button>
+    <button id="trip-confirm" type="button">确认当前行程</button>
+    <a id="trip-pdf" hidden>下载 PDF</a>
+  </section>
   <form id="form">
     <label for="input">你的旅行想法</label>
     <textarea id="input" maxlength="8000" required placeholder="例如：从上海出发，两个人去杭州玩三天，预算3000元，喜欢自然风景。"></textarea>
@@ -91,6 +101,57 @@
   try { session = localStorage.getItem('travelmate-session'); } catch {}
   if (!session || !/^[a-zA-Z0-9_-]{1,100}$/.test(session)) session = crypto.randomUUID();
   let busy = false;
+  const tripPanel = document.querySelector('#trip-panel');
+  const tripData = document.querySelector('#trip-data');
+  const tripStatus = document.querySelector('#trip-status');
+  const tripConfirm = document.querySelector('#trip-confirm');
+  const tripSave = document.querySelector('#trip-save');
+  const tripPdf = document.querySelector('#trip-pdf');
+  function displayTrip(data) {
+    tripPanel.hidden = !data.plan;
+    tripData.value = data.plan ? JSON.stringify(data.plan, null, 2) : '';
+    tripStatus.textContent = `阶段：${data.status || '收集条件'}；估算费用：${data.total ?? '-'}元。 ${(data.issues || []).join('；')}`;
+    tripConfirm.disabled = data.status !== 'review';
+    tripPdf.hidden = data.status !== 'confirmed';
+    tripPdf.href = '/sessions/' + encodeURIComponent(session) + '/trip/pdf';
+    const preview = document.querySelector('#trip-preview');
+    preview.replaceChildren();
+    for (const day of data.plan?.days || []) {
+      const heading = document.createElement('h3');
+      heading.textContent = day.date;
+      preview.append(heading);
+      for (const stop of day.stops) {
+        const row = document.createElement('p');
+        row.textContent = `${stop.start}-${stop.end} ${stop.place}：交通预留${stop.travel_minutes}分钟，全员${stop.cost}元。${stop.notes} 来源：${stop.source}`;
+        preview.append(row);
+      }
+    }
+  }
+  async function refreshTrip() {
+    const response = await fetch('/sessions/' + encodeURIComponent(session) + '/trip');
+    if (!response.ok) throw new Error('trip unavailable');
+    displayTrip(await response.json());
+  }
+  tripData.addEventListener('input', () => { tripConfirm.disabled = true; tripPdf.hidden = true; });
+  async function changeTrip(confirm) {
+    if (busy) return;
+    busy = true;
+    tripSave.disabled = tripConfirm.disabled = send.disabled = newChat.disabled = historySelect.disabled = true;
+    try {
+      const plan = JSON.parse(tripData.value);
+      const response = await fetch('/sessions/' + encodeURIComponent(session) + '/trip' + (confirm ? '/confirm' : ''), {
+        method: confirm ? 'POST' : 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(plan)
+      });
+      if (!response.ok) throw new Error('保存或确认失败，请检查格式、校验问题，或刷新行程。');
+      displayTrip(await response.json());
+    } catch (error) { tripStatus.textContent = error.message; }
+    finally {
+      busy = false;
+      tripSave.disabled = send.disabled = newChat.disabled = historySelect.disabled = false;
+    }
+  }
+  tripSave.addEventListener('click', () => changeTrip(false));
+  tripConfirm.addEventListener('click', () => changeTrip(true));
   function showReply(body, text) { body.classList.remove('plain'); renderMarkdown(body, text); }
 
   function rememberSession() {
@@ -116,6 +177,7 @@
       if (!response.ok) throw new Error('history unavailable');
       const data = await response.json();
       session = id;
+      await refreshTrip();
       rememberSession();
       input.value = '';
       messages.replaceChildren();
@@ -153,6 +215,7 @@
   newChat.addEventListener('click', () => {
     if (busy) return;
     session = crypto.randomUUID();
+    displayTrip({});
     rememberSession();
     input.value = '';
     historySelect.value = '';
@@ -221,6 +284,7 @@
         if (packet.done) break;
       }
       if (!done) throw new Error('incomplete stream');
+      await refreshTrip();
       input.value = '';
       status.textContent = '可以继续补充你的想法';
       refreshSessions().catch(() => { status.textContent = '回复已保存，历史列表暂时无法更新。'; });

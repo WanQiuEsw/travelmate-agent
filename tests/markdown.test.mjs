@@ -52,7 +52,8 @@ const appSource = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
 
 for (const success of [true, false]) {
   test(`hides raw streamed Markdown until completion (${success ? 'success' : 'failure'})`, async () => {
-    const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history']
+    const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history',
+      'trip-panel', 'trip-data', 'trip-status', 'trip-confirm', 'trip-save', 'trip-pdf', 'trip-preview']
       .map(id => [id, new Node('div')]));
     elements.input.value = '规划杭州';
     elements.history.options = [];

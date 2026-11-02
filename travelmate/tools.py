@@ -1,10 +1,56 @@
 """Bounded, read-only travel tools."""
 import math
 import os
+import re
 from pathlib import Path
 
 import httpx
 from langchain.tools import tool
+
+
+def amap(path, params):
+    key = os.getenv("AMAP_API_KEY")
+    if not key:
+        return {"error": "未配置 AMAP_API_KEY，地点和路线未核实"}
+    try:
+        response = httpx.get("https://restapi.amap.com/v3/" + path,
+                             params={**params, "key": key}, timeout=20)
+        response.raise_for_status()
+        data = response.json()
+        if data.get("status") != "1":
+            return {"error": "地图查询失败，地点和路线未核实"}
+        return data
+    except (httpx.HTTPError, ValueError, TypeError):
+        return {"error": "地图服务不可用，地点和路线未核实"}
+
+
+@tool
+def search_places(keyword: str, city: str) -> dict:
+    """查询中国境内高德地点，返回真实地点坐标、城市和地址。"""
+    if not keyword.strip() or not city.strip() or max(len(keyword), len(city)) > 100:
+        return {"error": "地点和城市需为1至100字符"}
+    data = amap("place/text", {"keywords": keyword, "city": city, "citylimit": "true", "offset": 5})
+    if "error" in data:
+        return data
+    return {"results": [{k: p.get(k) for k in ("name", "location", "cityname", "address")}
+                        for p in data.get("pois", [])], "source": "高德地图地点搜索"}
+
+
+@tool
+def search_route(origin: str, destination: str) -> dict:
+    """用地点查询返回的经度,纬度查询驾车路线（仅代表驾车，不适用于公交或步行）。"""
+    for point in (origin, destination):
+        if not re.fullmatch(r"-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?", point):
+            return {"error": "请使用地点查询返回的经度,纬度"}
+        lon, lat = map(float, point.split(","))
+        if not -180 <= lon <= 180 or not -90 <= lat <= 90:
+            return {"error": "坐标超出范围"}
+    data = amap("direction/driving", {"origin": origin, "destination": destination})
+    if "error" in data:
+        return data
+    return {"paths": [{k: p.get(k) for k in ("distance", "duration")}
+                      for p in data.get("route", {}).get("paths", [])[:1]],
+            "source": "高德地图驾车路线", "notice": "距离单位米、时间单位秒，出发前需重新核实"}
 
 
 @tool

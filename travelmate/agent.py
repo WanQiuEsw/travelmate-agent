@@ -12,10 +12,17 @@ from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.sqlite import SqliteSaver
 
-from travelmate.tools import estimate_budget, search_web
+from travelmate.tools import estimate_budget, search_web, search_places, search_route
 from travelmate.knowledge import create_knowledge_tool
+from travelmate.workflow import PlanningState, update_trip, submit_itinerary
 
 PROMPT = """你是 TravelMate 中文旅游规划助手。今天是 {today}。
+涉及规划或修改条件，必须先调用 update_trip 从用户原话提取条件，不能猜测缺失值；budget 为全员总预算，不清楚口径先追问。
+工具返回 collecting 时只追问 missing 对应的条件，不生成行程。日期必须明确到具体开始日期。
+条件齐全后先检索攻略，再调用 search_places 查询地点，调用 search_route 查询相邻地点路线；失败则注明未核实，使用保守估算。
+然后调用 submit_itinerary 提交逐日结构化行程，必须包含住宿、往返交通等 other_cost 和说明；source 写实际来源或未核实。
+按工具 issues 调整，最多提交三次（首次加两次调整）；blocked 后说明冲突并请用户修改条件，不继续循环。
+review 时向用户展示有效行程、费用和未核实信息，提示在页面查看/修改并点击确认后下载 PDF。绝不能代用户确认。
 先确认目的地、出发地、出行日期/天数、人数、预算、兴趣和行动限制；缺少关键条件时先简短追问。
 按需调用工具检索知识、核实最新资料并计算预算，再提供逐日路线、交通建议、预算和备选安排。
 逐日安排考虑地理顺序、休息和交通时间，不保证未经地图验证的距离和耗时。
@@ -43,7 +50,8 @@ def open_agent(*, model=None, database=None, knowledge=None):
     db = Path(database or os.getenv("DATABASE_PATH", "data/checkpoints.sqlite"))
     db.parent.mkdir(parents=True, exist_ok=True)
     with SqliteSaver.from_conn_string(str(db)) as saver:
-        yield create_agent(model=model, tools=[estimate_budget, search_web,
+        yield create_agent(model=model, state_schema=PlanningState,
+                           tools=[estimate_budget, search_web, search_places, search_route, update_trip, submit_itinerary,
                            create_knowledge_tool(Path(knowledge or os.getenv("KNOWLEDGE_DIR", "knowledge")))],
                            system_prompt=PROMPT.format(today=date.today().isoformat()),
                            checkpointer=saver)
@@ -51,12 +59,12 @@ def open_agent(*, model=None, database=None, knowledge=None):
 
 def chat(agent, session_id: str, message: str) -> str:
     result = agent.invoke({"messages": [{"role": "user", "content": message}]},
-                          {"configurable": {"thread_id": session_id}, "recursion_limit": 20})
+                          {"configurable": {"thread_id": session_id}, "recursion_limit": 60})
     return result["messages"][-1].text
 
 
 def stream_chat(agent, session_id: str, message: str):
-    config = {"configurable": {"thread_id": session_id}, "recursion_limit": 20}
+    config = {"configurable": {"thread_id": session_id}, "recursion_limit": 60}
     with closing(agent.stream({"messages": [{"role": "user", "content": message}]},
                               config, stream_mode=["messages", "updates"])) as stream:
         for mode, value in stream:

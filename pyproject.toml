@@ -8,9 +8,14 @@ version = "0.1.0"
 description = "LangChain travel planning agent"
 requires-python = ">=3.11"
 dependencies = [
-  "langchain>=1.0,<2", "langchain-openai>=1.0,<2",
-  "langgraph-checkpoint-sqlite>=3,<4", "httpx>=0.28,<1",
-  "python-dotenv>=1,<2", "fastapi>=0.115,<1", "uvicorn>=0.30,<1",
+  "langchain>=1.0,<2",
+  "langchain-openai>=1.0,<2",
+  "langgraph-checkpoint-sqlite>=3,<4",
+  "httpx>=0.28,<1",
+  "python-dotenv>=1,<2",
+  "fastapi>=0.115,<1",
+  "uvicorn>=0.30,<1",
+  "reportlab>=4,<5",
 ]
 
 [project.optional-dependencies]

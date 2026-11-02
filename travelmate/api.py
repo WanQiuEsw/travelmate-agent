@@ -8,10 +8,12 @@ from typing import Annotated
 
 from fastapi import FastAPI, HTTPException
 from fastapi import Path as PathParam
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, Response
 from pydantic import BaseModel, Field, field_validator
 
 from travelmate.agent import chat, conversation, conversations, open_agent, stream_chat
+from travelmate.workflow import Itinerary, get_workflow, save_workflow, validate_plan
+from travelmate.pdf_export import itinerary_pdf
 
 
 class ChatRequest(BaseModel):
@@ -74,6 +76,49 @@ def create_app(agent_factory=open_agent):
         except Exception:
             logging.getLogger(__name__).warning("Agent request failed")
             raise HTTPException(502, "智能体请求失败，请检查服务配置或稍后重试") from None
+
+    SessionId = Annotated[str, PathParam(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_-]+$")]
+
+    @app.get("/sessions/{session_id}/trip")
+    def trip(session_id: SessionId):
+        with lock:
+            return get_workflow(app.state.agent, session_id)
+
+    @app.put("/sessions/{session_id}/trip")
+    def edit_trip(session_id: SessionId, plan: Itinerary):
+        with lock:
+            state = get_workflow(app.state.agent, session_id)
+            if "plan" not in state:
+                raise HTTPException(409, "请先生成行程")
+            data = plan.model_dump(mode="json")
+            issues, total = validate_plan(state["requirements"], data)
+            state = {**state, "plan": data, "issues": issues, "total": total,
+                     "status": "blocked" if issues else "review"}
+            save_workflow(app.state.agent, session_id, state)
+            return state
+
+    @app.post("/sessions/{session_id}/trip/confirm")
+    def confirm_trip(session_id: SessionId, plan: Itinerary):
+        with lock:
+            state = get_workflow(app.state.agent, session_id)
+            if state.get("status") != "review" or state.get("plan") != plan.model_dump(mode="json"):
+                raise HTTPException(409, "行程已变更或尚未通过校验，请重新查看并确认")
+            issues, total = validate_plan(state["requirements"], state["plan"])
+            if issues:
+                raise HTTPException(409, "行程未通过校验")
+            state = {**state, "status": "confirmed", "total": total}
+            save_workflow(app.state.agent, session_id, state)
+            return state
+
+    @app.get("/sessions/{session_id}/trip/pdf")
+    def export_trip(session_id: SessionId):
+        with lock:
+            state = get_workflow(app.state.agent, session_id)
+            if state.get("status") != "confirmed":
+                raise HTTPException(409, "请先确认有效行程")
+            content = itinerary_pdf(state)
+        return Response(content, media_type="application/pdf",
+                        headers={"Content-Disposition": 'attachment; filename="travelmate.pdf"'})
 
     @app.post("/chat/stream")
     def respond_stream(request: ChatRequest):
