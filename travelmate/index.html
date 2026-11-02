@@ -31,6 +31,8 @@
 <main>
   <header><h1>TravelMate <small>旅行助手</small></h1><button id="new" type="button">新对话</button></header>
   <p class="intro">聊聊你想去哪里，我们一起安排下一趟旅行。</p>
+  <label for="history">历史对话</label>
+  <select id="history" aria-label="选择历史对话"><option value="">新对话</option></select>
   <section id="messages" aria-label="对话内容" role="log" aria-live="polite">
     <article class="message"><strong>TravelMate</strong><p>告诉我出发地、目的地、日期、人数和预算吧。也可以先说说你喜欢怎样的旅行。</p></article>
   </section>
@@ -39,7 +41,7 @@
     <textarea id="input" maxlength="8000" required placeholder="例如：从上海出发，两个人去杭州玩三天，预算3000元，喜欢自然风景。"></textarea>
     <div class="actions"><span id="status" role="status">准备好了</span><button id="send" type="submit">发送</button></div>
   </form>
-  <footer>预算与行程仅供参考，出行前请核实价格和开放时间。刷新页面会开始新对话；本地服务仍保留旧会话记录。</footer>
+  <footer>预算与行程仅供参考，出行前请核实价格和开放时间。对话保存在本地服务中，刷新后可继续。</footer>
 </main>
 <script>
   const form = document.querySelector('#form');
@@ -48,8 +50,52 @@
   const status = document.querySelector('#status');
   const send = document.querySelector('#send');
   const newChat = document.querySelector('#new');
-  let session = crypto.randomUUID();
+  const historySelect = document.querySelector('#history');
+  let session;
+  try { session = localStorage.getItem('travelmate-session'); } catch {}
+  if (!session || !/^[a-zA-Z0-9_-]{1,100}$/.test(session)) session = crypto.randomUUID();
   let busy = false;
+
+  function rememberSession() {
+    try { localStorage.setItem('travelmate-session', session); } catch {}
+  }
+
+  async function refreshSessions() {
+    const response = await fetch('/sessions');
+    if (!response.ok) throw new Error('history unavailable');
+    const data = await response.json();
+    historySelect.replaceChildren(new Option('新对话', ''));
+    for (const item of data.sessions) historySelect.add(new Option(item.title, item.session_id));
+    historySelect.value = [...historySelect.options].some(o => o.value === session) ? session : '';
+  }
+
+  async function loadConversation(id) {
+    if (busy) return;
+    busy = true;
+    send.disabled = newChat.disabled = historySelect.disabled = true;
+    status.textContent = '正在恢复对话…';
+    try {
+      const response = await fetch('/sessions/' + encodeURIComponent(id));
+      if (!response.ok) throw new Error('history unavailable');
+      const data = await response.json();
+      session = id;
+      rememberSession();
+      messages.replaceChildren();
+      for (const item of data.messages) appendMessage(item.role === 'user' ? '你' : 'TravelMate', item.content, item.role === 'user');
+      if (!data.messages.length) appendMessage('TravelMate', '告诉我目的地、日期和预算，我们开始规划。');
+      status.textContent = data.interrupted ? '上次回复未完成，可继续补充需求。' : '对话已恢复，可以继续聊';
+    } catch {
+      status.textContent = '历史对话加载失败，请刷新后重试。';
+    } finally {
+      busy = false;
+      send.disabled = newChat.disabled = historySelect.disabled = false;
+    }
+  }
+
+  historySelect.addEventListener('change', () => {
+    if (historySelect.value) loadConversation(historySelect.value);
+    else newChat.click();
+  });
 
   function appendMessage(label, text, user = false) {
     const article = document.createElement('article');
@@ -68,6 +114,8 @@
   newChat.addEventListener('click', () => {
     if (busy) return;
     session = crypto.randomUUID();
+    rememberSession();
+    historySelect.value = '';
     messages.replaceChildren();
     appendMessage('TravelMate', '新的旅行，从哪里开始？');
     status.textContent = '已开始新对话';
@@ -79,7 +127,7 @@
     const text = input.value.trim();
     if (!text || busy) return;
     busy = true;
-    send.disabled = newChat.disabled = true;
+    send.disabled = newChat.disabled = historySelect.disabled = true;
     input.disabled = true;
     appendMessage('你', text, true);
     status.textContent = '正在整理旅行建议，请稍候…';
@@ -119,15 +167,20 @@
       if (!done) throw new Error('incomplete stream');
       input.value = '';
       status.textContent = '可以继续补充你的想法';
+      refreshSessions().catch(() => { status.textContent = '回复已保存，历史列表暂时无法更新。'; });
     } catch {
       if (!reply.textContent) reply.textContent = '未能完成回复。';
       reply.textContent += '\n[本次回复中断]';
       status.textContent = '请求失败，请检查后端配置或网络。输入已保留，可重新发送。';
     } finally {
       busy = false;
-      send.disabled = newChat.disabled = input.disabled = false;
+      send.disabled = newChat.disabled = historySelect.disabled = input.disabled = false;
       input.focus();
     }
+  });
+  rememberSession();
+  refreshSessions().then(() => loadConversation(session)).catch(() => {
+    status.textContent = '历史列表加载失败，请刷新重试。';
   });
 </script>
 </html>

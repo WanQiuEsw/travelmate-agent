@@ -4,12 +4,14 @@ import json
 from pathlib import Path
 from contextlib import asynccontextmanager
 from threading import Lock
+from typing import Annotated
 
 from fastapi import FastAPI, HTTPException
+from fastapi import Path as PathParam
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
-from travelmate.agent import chat, open_agent, stream_chat
+from travelmate.agent import chat, conversation, conversations, open_agent, stream_chat
 
 
 class ChatRequest(BaseModel):
@@ -47,6 +49,17 @@ def create_app(agent_factory=open_agent):
     @app.get("/health")
     def health():
         return {"status": "ok"}
+
+    @app.get("/sessions")
+    def list_sessions():
+        with lock:
+            return {"sessions": conversations(app.state.agent)}
+
+    @app.get("/sessions/{session_id}")
+    def history(session_id: Annotated[str, PathParam(min_length=1, max_length=100,
+                                                   pattern=r"^[a-zA-Z0-9_-]+$")]):
+        with lock:
+            return conversation(app.state.agent, session_id)
 
     @app.post("/chat", response_model=ChatResponse)
     def respond(request: ChatRequest):

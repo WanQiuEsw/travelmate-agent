@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from travelmate.tools import estimate_budget, search_web
@@ -73,3 +74,32 @@ def stream_chat(agent, session_id: str, message: str):
     state = agent.get_state(config)
     last = state.values["messages"][-1]
     yield "done", {"answer": last.text, "session_id": session_id}
+
+
+def conversation(agent, session_id: str) -> dict:
+    state = agent.get_state({"configurable": {"thread_id": session_id}})
+    messages = []
+    for message in state.values.get("messages", []):
+        if isinstance(message, HumanMessage):
+            messages.append({"role": "user", "content": message.text})
+        elif isinstance(message, AIMessage) and not message.tool_calls and message.text:
+            messages.append({"role": "assistant", "content": message.text})
+    return {"session_id": session_id, "messages": messages, "interrupted": bool(state.next)}
+
+
+def conversations(agent) -> list:
+    # shortcut: scan checkpoints for the latest 50 local sessions; use a session table at larger scale.
+    seen, sessions = set(), []
+    with closing(agent.checkpointer.list(None)) as checkpoints:
+        for checkpoint in checkpoints:
+            session_id = checkpoint.config["configurable"]["thread_id"]
+            if session_id in seen:
+                continue
+            seen.add(session_id)
+            values = checkpoint.checkpoint.get("channel_values", {})
+            first = next((m for m in values.get("messages", []) if isinstance(m, HumanMessage)), None)
+            if first:
+                sessions.append({"session_id": session_id, "title": first.text[:36]})
+            if len(sessions) >= 50:
+                break
+    return sessions
