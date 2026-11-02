@@ -1,6 +1,7 @@
 """Checkpointed planning state and deterministic itinerary checks."""
 import json
-from datetime import date as CalendarDate, timedelta
+from copy import deepcopy
+from datetime import date as CalendarDate, timedelta, datetime, timezone
 from typing import NotRequired, Literal
 
 from langchain.agents import AgentState
@@ -8,7 +9,7 @@ from langchain.tools import ToolRuntime, tool
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 from langchain_core.messages import HumanMessage, AIMessage
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, create_model
 from travelmate.public import public_data
 
 
@@ -22,6 +23,43 @@ class Requirements(BaseModel):
     travelers: int = Field(ge=1, le=100)
     budget: float = Field(gt=0, le=1e8)
     preferences: str = Field(default="无特殊偏好", max_length=1000)
+    budget_currency: str | None = Field(default=None, min_length=3, max_length=10)
+    budget_scope: Literal["per_person", "total"] | None = None
+    budget_includes: str | None = Field(default=None, min_length=1, max_length=1000)
+    interests: list[str] = Field(default_factory=list, max_length=30)
+    exclusions: list[str] = Field(default_factory=list, max_length=30)
+    mobility: str | None = Field(default=None, max_length=1000)
+    accommodation: str | None = Field(default=None, max_length=1000)
+    dietary: str | None = Field(default=None, max_length=1000)
+    date_flexibility: str | None = Field(default=None, max_length=1000)
+    return_deadline: str | None = Field(default=None, pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    day_exclusions: dict[int, list[str]] = Field(default_factory=dict, description="第几天到排除项的映射，修改时保留其他天")
+    bookings: list["Booking"] = Field(default_factory=list, max_length=30)
+
+
+class Booking(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    description: str = Field(min_length=1, max_length=1000)
+    day: int | None = Field(default=None, ge=1, le=30)
+    departure: str | None = Field(default=None, pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    nonrefundable: bool | None = None
+
+
+Requirements.model_rebuild()
+partial_fields = {}
+for key, field in Requirements.model_fields.items():
+    if field.is_required():
+        optional_field = deepcopy(field)
+        optional_field.default = None
+        partial_fields[key] = (field.annotation | None, optional_field)
+PartialRequirements = create_model("PartialRequirements", __base__=Requirements, **partial_fields)
+
+
+def budget_total(requirements):
+    # Legacy checkpoints used total CNY; new conditions must explicitly supply scope.
+    return requirements["budget"] * (requirements["travelers"]
+        if requirements.get("budget_scope") == "per_person" else 1)
+
 
 
 class Stop(BaseModel):
@@ -60,8 +98,11 @@ def validate_plan(requirements, plan):
     if [day.date for day in plan.days] != expected:
         issues.append("行程日期与天数必须一致；未指定开始日期时，各天日期应留空")
     total = round(plan.other_cost + sum(s.cost for d in plan.days for s in d.stops), 2)
-    if total > req.budget:
-        issues.append(f"全员总费用 {total} 元超过预算 {req.budget} 元")
+    limit = budget_total(req.model_dump())
+    if req.budget_currency not in (None, "CNY"):
+        issues.append("当前校验仅支持 CNY，请确认人民币预算，不自动换汇")
+    if total > limit:
+        issues.append(f"全员总费用 {total} 元超过预算 {limit} 元")
     for day in plan.days:
         previous = 0
         for stop in day.stops:
@@ -71,6 +112,13 @@ def validate_plan(requirements, plan):
             if stop.city != req.destination:
                 issues.append(f"{stop.place} 所在城市与目的地不一致，请调整目的地或地点")
             previous = end
+    for index, day in enumerate(plan.days, 1):
+        deadlines = [b.departure for b in req.bookings if b.day == index and b.departure]
+        if index == req.days and req.return_deadline:
+            deadlines.append(req.return_deadline)
+        for deadline in deadlines:
+            if any(stop.end > deadline for stop in day.stops):
+                issues.append(f"第{index}天活动超过已订出发或返程时限 {deadline}，请调整并预留交通时间")
     return issues, total
 
 
@@ -80,24 +128,56 @@ def result(runtime, state):
 
 
 @tool
-def update_trip(conditions: dict, runtime: ToolRuntime) -> Command:
-    """从用户原话提取/修改旅行条件。仅传用户已给出的字段；缺失项返回追问。字段：origin(可选),destination,start_date(可选，YYYY-MM-DD),transport(不限/高铁/动车/火车/飞机/自驾/其他),days,travelers,budget(全员人民币),preferences。未提供出发地/日期时不要追问，不要猜测；可用 null 清除。"""
+def update_trip(conditions: dict, runtime: ToolRuntime, assumptions: dict | None = None,
+                allow_booking_change: bool = False) -> Command:
+    """更新用户明确条件，保留其他字段。budget为原始金额，budget_scope(per_person/total)、budget_currency(CNY等)、budget_includes必需澄清。可选day_exclusions(第几天到排除列表的映射)、interests/exclusions列表、mobility/accommodation/dietary/date_flexibility/return_deadline(HH:MM)、bookings(description/day/departure/nonrefundable)。assumptions仅暂定；已有预订修改须用户明确要求并设置allow_booking_change。"""
     old = runtime.state.get("workflow", {})
-    merged = {**old.get("requirements", {}), **conditions}
+    previous = old.get("requirements", {})
+    if "bookings" in conditions and previous.get("bookings") and conditions["bookings"] != previous["bookings"] and not allow_booking_change:
+        return {"error": "已有预订不能无声覆盖，请先说明冲突并取得用户明确修改要求"}
+    if "day_exclusions" in conditions and isinstance(conditions["day_exclusions"], dict):
+        conditions = {**conditions, "day_exclusions": {**previous.get("day_exclusions", {}),
+                      **{str(k): v for k, v in conditions["day_exclusions"].items()}}}
+    merged = {**previous, **conditions}
     for key in ("origin", "start_date"):
         if merged.get(key) == "":
             merged[key] = None
-    missing = [key for key in ("destination", "days", "travelers", "budget")
-               if merged.get(key) in (None, "")]
-    if missing:
-        return result(runtime, {"requirements": merged, "status": "collecting", "missing": missing})
     try:
-        req = Requirements.model_validate(merged).model_dump(mode="json")
+        parsed = PartialRequirements.model_validate(merged)
+        if assumptions is not None:
+            PartialRequirements.model_validate(assumptions)
     except ValueError as exc:
         return {"error": str(exc)}
-    if req == old.get("requirements"):
+    merged = parsed.model_dump(mode="json", exclude_unset=True)
+    missing = [key for key in ("destination", "days", "travelers", "budget",
+               "budget_scope", "budget_currency", "budget_includes") if merged.get(key) in (None, "")]
+    if any(not 1 <= int(day) <= (merged.get("days") or 30) for day in merged.get("day_exclusions", {})):
+        return {"error": "按天排除项必须在行程天数内"}
+    if any(b.get("day") and b["day"] > (merged.get("days") or 30) for b in merged.get("bookings", [])):
+        return {"error": "已订安排超出新行程天数，请先说明冲突并明确修改预订"}
+    changed = [key for key in conditions if merged.get(key) != previous.get(key)]
+    provisional = {**old.get("assumptions", {}), **(assumptions or {})}
+    provisional = {key: value for key, value in provisional.items() if merged.get(key) in (None, "")}
+    if not changed and provisional == old.get("assumptions", {}) and old.get("schema_version") == 2:
         return result(runtime, old)
-    return result(runtime, {"requirements": req, "status": "researching", "attempts": 0})
+    affected_days = list(range(1, (merged.get("days") or 0) + 1))
+    if changed == ["day_exclusions"]:
+        affected_days = sorted(int(day) for day, value in merged["day_exclusions"].items()
+                               if previous.get("day_exclusions", {}).get(day) != value)
+    given = set(old.get("given_fields", previous)) | set(conditions)
+    state = {**old, "schema_version": 2, "requirements": merged, "assumptions": provisional,
+             "missing": missing, "status": "collecting" if missing else "researching", "attempts": 0,
+             "changed_fields": changed, "affected_days": affected_days,
+             "given_fields": sorted(given),
+             "condition_status": {**{k: "given" for k in given if merged.get(k) is not None},
+                                  **{k: "missing" for k in missing},
+                                  **{k: "assumed" for k in provisional}},
+             "changes": [*old.get("changes", []), {"at": datetime.now(timezone.utc).isoformat(),
+                         "before": {k: previous.get(k) for k in changed},
+                         "after": {k: merged.get(k) for k in changed}}]}
+    if not missing:
+        state["requirements"] = Requirements.model_validate(merged).model_dump(mode="json")
+    return result(runtime, state)
 
 
 @tool

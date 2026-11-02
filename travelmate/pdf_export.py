@@ -20,10 +20,11 @@ def itinerary_pdf(state):
     def add(text, title=False):
         story.append(Paragraph(escape(str(text)), heading if title else style))
 
+    from travelmate.workflow import budget_total
     req, plan = state["requirements"], state["plan"]
     add(f'TravelMate · {req["destination"]}旅行行程', True)
     add(f'{req.get("origin") or "出发地待定"} / {req.get("start_date") or "日期待定"} / {req["days"]}天 / {req["travelers"]}人')
-    add(f'全员预算：{req["budget"]}元；估算总费用：{state["total"]}元')
+    add(f'全员预算：{budget_total(req)}元；估算总费用：{state["total"]}元')
     add(req.get("preferences", ""))
     for index, day in enumerate(plan["days"], 1):
         story.append(Spacer(1, 10))

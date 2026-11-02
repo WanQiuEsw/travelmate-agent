@@ -7,7 +7,7 @@ from travelmate.api import create_app
 from travelmate.workflow import update_trip, submit_itinerary, Itinerary, save_workflow
 from test_travelmate import BudgetModel
 
-REQ = dict(origin='上海', destination='杭州', start_date='2026-12-01', days=1, travelers=2, budget=1000)
+REQ = dict(origin='上海', destination='杭州', start_date='2026-12-01', days=1, travelers=2, budget=1000, budget_scope='total', budget_currency='CNY', budget_includes='全部费用')
 PLAN = dict(days=[dict(date='2026-12-01', stops=[dict(place='西湖', city='杭州', start='09:00', end='11:00', travel_minutes=30, cost=100, notes='步行，时间估算', source='未核实')])], other_cost=500, cost_notes='全员住宿及往返交通估算')
 
 def call(fn, state, **kwargs):
