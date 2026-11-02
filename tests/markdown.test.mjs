@@ -253,7 +253,9 @@ test('pinning persists selection on failure and deletion clears the current conv
   assert.ok(!elements.history.textContent.includes('移动所选'));
   const actions = nodes(elements.history).find(node => node.className === 'history-actions');
   assert.equal(actions.children[1].disabled, true);
-  assert.equal(elements.history.children[0].children[0].textContent, '全选 / 取消');
+  assert.ok(!elements.history.textContent.includes('全选'));
+  assert.ok(actions.textContent.includes('多选'));
+  assert.ok(actions.children.every(button => button.children[0].className === 'action-icon'));
   fail = true;
   await vm.runInContext("selectedSessions.add('old-session'); manageSessions('/sessions/delete', [...selectedSessions])", context);
   assert.equal(vm.runInContext('selectedSessions.size', context), 1);
@@ -296,4 +298,62 @@ test('progress hides intermediate errors, deduplicates updates, and has no numbe
   assert.equal(nodes(progress).filter(node => node.tagName === 'OL').length, 0);
   assert.equal(nodes(progress).filter(node => node.tagName === 'LI' && node.textContent === '正在通过高德查询…').length, 1);
   assert.ok(!progress.textContent.includes('失败'));
+});
+
+test('multi-select is opt-in, has only bottom deletion, and preserves selection on failure', async () => {
+  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history', 'sidebar']
+    .map(id => [id, new Node('div')]));
+  let sessions = [{session_id: 'one', title: '北京'}, {session_id: 'two', title: '厦门'}];
+  let fail = true;
+  const calls = [];
+  const context = vm.createContext({
+    document: {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []},
+    renderMarkdown, Event, crypto: {randomUUID: () => 'new'}, confirm: () => true,
+    localStorage: {getItem: () => 'one', setItem() {}},
+    fetch: async (url, options) => {
+      if (url === '/sessions') return {ok: true, json: async () => ({sessions})};
+      calls.push({url, data: JSON.parse(options.body)});
+      if (fail) return {ok: false};
+      sessions = sessions.filter(item => !calls.at(-1).data.session_ids.includes(item.session_id));
+      return {ok: true};
+    },
+  });
+  vm.runInContext(appSource, context);
+  await vm.runInContext('refreshSessions()', context);
+  assert.equal(nodes(elements.history).filter(node => node.type === 'checkbox').length, 0);
+  let actions = nodes(elements.history).find(node => node.className === 'history-actions');
+  actions.children.find(button => button.textContent === '多选').handlers.click();
+  await new Promise(resolve => setImmediate(resolve));
+  const checkboxes = nodes(elements.history).filter(node => node.type === 'checkbox');
+  assert.equal(checkboxes.length, 2);
+  assert.equal(checkboxes[0].checked, true);
+  assert.equal(nodes(elements.history).filter(node => node.className === 'history-menu').length, 0);
+  let footer = elements.history.children.at(-1);
+  assert.equal(footer.className, 'selection-footer');
+  assert.equal(footer.children.length, 1);
+  assert.equal(footer.textContent, '删除所选');
+  assert.ok(!elements.history.textContent.includes('置顶'));
+  checkboxes[0].checked = false; checkboxes[0].handlers.change();
+  assert.equal(footer.children[0].disabled, true);
+  checkboxes[1].checked = true; checkboxes[1].handlers.change();
+  assert.equal(footer.children[0].disabled, false);
+  await footer.children[0].handlers.click();
+  assert.equal(vm.runInContext('selectedSessions.size', context), 1);
+  assert.equal(vm.runInContext('multiSelect', context), true);
+  const cancel = nodes(elements.history).find(node => node.tagName === 'BUTTON' && node.textContent === '取消多选');
+  cancel.handlers.click();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(vm.runInContext('selectedSessions.size', context), 0);
+  assert.equal(nodes(elements.history).filter(node => node.type === 'checkbox').length, 0);
+  actions = nodes(elements.history).find(node => node.className === 'history-actions');
+  actions.children.find(button => button.textContent === '多选').handlers.click();
+  await new Promise(resolve => setImmediate(resolve));
+  fail = false;
+  footer = elements.history.children.at(-1);
+  await footer.children[0].handlers.click();
+  assert.equal(calls.at(-1).url, '/sessions/delete');
+  assert.deepEqual(calls.at(-1).data.session_ids, ['one']);
+  assert.equal(sessions.length, 1);
+  assert.equal(vm.runInContext('multiSelect', context), false);
+  assert.equal(nodes(elements.history).filter(node => node.className === 'selection-footer').length, 0);
 });

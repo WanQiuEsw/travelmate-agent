@@ -39,7 +39,12 @@
   #history .history-actions button { padding: 8px 12px; }
   #history .history-actions .history-delete { width: 100%; color: #c43d3d; }
   .history-tools { align-items: center; }
-  .history-tools span { width: 100%; font-size: 12px; color: var(--muted); }
+  .history-tools > span { width: 100%; font-size: 12px; color: var(--muted); }
+  .action-icon { display: inline-flex; width: 18px; height: 18px; margin-right: 8px; vertical-align: -3px; flex-shrink: 0; }
+  .action-icon svg { width: 100%; height: 100%; }
+  .selection-footer { position: fixed; bottom: 0; left: 0; width: 259px; padding: 12px 16px max(12px, env(safe-area-inset-bottom)); background: #f6f8fb; border-top: 1px solid var(--line); z-index: 3; }
+  #history .batch-delete { color: #c43d3d; background: #fff; border: 1px solid #efdbdb; text-align: center; }
+  #history input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
   #history { padding-bottom: 150px; }
   .history-empty { padding: 0 12px; font-size: 13px; color: var(--muted); }
   main { margin-left: 260px; height: 100dvh; display: flex; flex-direction: column; min-width: 0; }
@@ -107,6 +112,7 @@
   footer { text-align: center; margin-top: 4px; font-size: 11px; }
   @media (max-width: 700px) {
     .sidebar { position: relative; width: 100%; padding: 0 16px; max-height: 45dvh; border-right: 0; border-bottom: 1px solid var(--line); }
+    .selection-footer { position: sticky; width: auto; left: auto; bottom: 0; margin-top: 12px; padding: 10px 0; }
     .sidebar > summary { display: block; padding: 12px 0; cursor: pointer; font-size: 14px; color: var(--accent); }
     .sidebar:not([open]) > :not(summary) { display: none; }
     .brand { display: none !important; }
@@ -180,6 +186,21 @@
   if (!session || !/^[a-zA-Z0-9_-]{1,100}$/.test(session)) session = crypto.randomUUID();
   let busy = false;
   const selectedSessions = new Set();
+  let multiSelect = false;
+  function actionIcon(name) {
+    const paths = {
+      pin: 'm16 3 5 5-4 1-3 5-4-4 5-3Z M10 14l-7 7',
+      share: 'M12 16V3 m-5 5 5-5 5 5 M5 13v7h14v-7',
+      select: 'M9 5h12 M9 12h12 M9 19h12 M2 5l1 1 2-3 M2 12l1 1 2-3 M2 19l1 1 2-3',
+      delete: 'M3 6h18 M9 6V3h6v3 M5 6l1 15h12l1-15 M10 10v7 M14 10v7',
+      close: 'm6 6 12 12 M6 18 18 6',
+    };
+    const icon = document.createElement('span');
+    icon.className = 'action-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="' + paths[name] + '"/></svg>';
+    return icon;
+  }
   document.addEventListener?.('click', event => {
     for (const menu of document.querySelectorAll('.history-menu[open]')) {
       if (!menu.contains(event.target)) menu.open = false;
@@ -263,24 +284,24 @@
     historySelect.replaceChildren();
     const existing = new Set(data.sessions.map(item => item.session_id));
     for (const id of selectedSessions) if (!existing.has(id)) selectedSessions.delete(id);
-    if (data.sessions.length) {
-      const tools = document.createElement('div');
-      tools.className = 'history-tools';
-      const count = document.createElement('span');
-      count.textContent = '已选 ' + selectedSessions.size + ' 个对话';
-      const all = document.createElement('button');
-      all.type = 'button'; all.textContent = '全选 / 取消';
-      all.addEventListener('click', () => {
+    let selectionCount;
+    let batchDelete;
+    if (multiSelect && data.sessions.length) {
+      const tools = document.createElement('div'); tools.className = 'history-tools';
+      selectionCount = document.createElement('span');
+      selectionCount.textContent = '已选 ' + selectedSessions.size + ' 个对话';
+      const cancel = document.createElement('button'); cancel.type = 'button';
+      cancel.append(actionIcon('close'), document.createTextNode('取消多选'));
+      cancel.addEventListener('click', () => {
         if (busy) return;
-        if (selectedSessions.size === data.sessions.length) selectedSessions.clear();
-        else for (const item of data.sessions) selectedSessions.add(item.session_id);
+        multiSelect = false; selectedSessions.clear();
         refreshSessions().catch(() => { status.textContent = '对话列表加载失败'; });
       });
-      const remove = document.createElement('button');
-      remove.type = 'button'; remove.textContent = '删除所选';
-      remove.addEventListener('click', () => manageSessions('/sessions/delete', [...selectedSessions]));
-      tools.append(all, remove, count);
-      historySelect.append(tools);
+      tools.append(selectionCount, cancel); historySelect.append(tools);
+      batchDelete = document.createElement('button'); batchDelete.type = 'button';
+      batchDelete.className = 'batch-delete'; batchDelete.disabled = !selectedSessions.size;
+      batchDelete.append(actionIcon('delete'), document.createTextNode('删除所选'));
+      batchDelete.addEventListener('click', () => manageSessions('/sessions/delete', [...selectedSessions]));
     }
     for (const item of data.sessions) {
       const row = document.createElement('div'); row.className = 'history-row';
@@ -290,8 +311,8 @@
       checkbox.addEventListener('change', () => {
         if (busy) return;
         if (checkbox.checked) selectedSessions.add(item.session_id); else selectedSessions.delete(item.session_id);
-        const count = historySelect.querySelector('.history-tools span');
-        if (count) count.textContent = '已选 ' + selectedSessions.size + ' 个对话';
+        selectionCount.textContent = '已选 ' + selectedSessions.size + ' 个对话';
+        batchDelete.disabled = !selectedSessions.size;
       });
       const button = document.createElement('button');
       button.type = 'button'; button.className = 'history-open';
@@ -299,6 +320,11 @@
       button.setAttribute('aria-current', String(item.session_id === session));
       button.addEventListener('click', async () => {
         if (busy) return;
+        if (multiSelect) {
+          checkbox.checked = !checkbox.checked;
+          checkbox.dispatchEvent(new Event('change'));
+          return;
+        }
         await loadConversation(item.session_id);
         refreshSessions().catch(() => {});
         document.querySelector('#sidebar').open = false;
@@ -308,19 +334,35 @@
       more.setAttribute('aria-label', '更多操作：' + item.title);
       const actions = document.createElement('div'); actions.className = 'history-actions';
       const pin = document.createElement('button'); pin.type = 'button';
-      pin.textContent = item.pinned ? '取消置顶' : '置顶';
+      pin.append(actionIcon('pin'), document.createTextNode(item.pinned ? '取消置顶' : '置顶'));
       pin.addEventListener('click', () => manageSessions('/sessions/pin', [item.session_id], !item.pinned));
       const share = document.createElement('button'); share.type = 'button';
-      share.textContent = '分享（暂未开放）'; share.disabled = true;
+      share.append(actionIcon('share'), document.createTextNode('分享（暂未开放）')); share.disabled = true;
       const remove = document.createElement('button');
-      remove.type = 'button'; remove.className = 'history-delete'; remove.textContent = '删除';
+      remove.type = 'button'; remove.className = 'history-delete';
+      remove.append(actionIcon('delete'), document.createTextNode('删除'));
       remove.setAttribute('aria-label', '删除对话：' + item.title);
       remove.addEventListener('click', () => manageSessions('/sessions/delete', [item.session_id]));
-      actions.append(pin, share, remove); menu.append(more, actions);
+      const select = document.createElement('button'); select.type = 'button';
+      select.append(actionIcon('select'), document.createTextNode('多选'));
+      select.addEventListener('click', () => {
+        if (busy) return;
+        multiSelect = true; selectedSessions.clear(); selectedSessions.add(item.session_id);
+        refreshSessions().catch(() => { status.textContent = '对话列表加载失败'; });
+      });
+      actions.append(pin, share, select, remove); menu.append(more, actions);
       if (item.pinned) button.textContent = '置顶 · ' + item.title;
-      row.append(checkbox, button, menu); historySelect.append(row);
+      if (multiSelect) row.append(checkbox);
+      row.append(button);
+      if (!multiSelect) row.append(menu);
+      historySelect.append(row);
+    }
+    if (batchDelete) {
+      const footer = document.createElement('div'); footer.className = 'selection-footer';
+      footer.append(batchDelete); historySelect.append(footer);
     }
     if (!data.sessions.length) {
+      multiSelect = false;
       const empty = document.createElement('p');
       empty.className = 'history-empty';
       empty.textContent = '暂无历史对话';
@@ -342,6 +384,7 @@
       });
       if (!response.ok) throw new Error('update failed');
       for (const id of ids) selectedSessions.delete(id);
+      if (deleting) multiSelect = false;
       if (deleting && ids.includes(session)) resetConversation();
       await refreshSessions();
       status.textContent = deleting ? '所选对话已删除' : (pinned ? '对话已置顶' : '已取消置顶');
