@@ -79,6 +79,38 @@ uv run --extra dev --extra aliyun pytest -q
 
 先用真实密钥验证一条完整旅游需求，再按实际需要扩充天气与交通方式。
 
+## 单独验证高德（PowerShell）
+
+在项目根目录执行以下命令。通过标准输入运行 Python（`uv run python -`）时，应使用 `load_dotenv(".env")` 明确读取当前目录的配置；无参数的 `load_dotenv()` 在自动查找调用文件时可能抛出 `AssertionError`。其他标准输入诊断命令也使用同样写法。
+
+```powershell
+cd E:\travelmate-agent\travelmate-agent
+@'
+import json
+import os
+from dotenv import load_dotenv
+from travelmate.tools import search_places, search_route
+
+load_dotenv(".env")
+if not os.getenv("AMAP_API_KEY"):
+    raise SystemExit("请在项目根目录 .env 中填写 AMAP_API_KEY")
+
+first = search_places.invoke({"keyword": "杭州东站", "city": "杭州"})
+second = search_places.invoke({"keyword": "灵隐寺", "city": "杭州"})
+for label, result in (("起点", first), ("终点", second)):
+    print(label, json.dumps(result, ensure_ascii=False, indent=2))
+
+a, b = first.get("results", []), second.get("results", [])
+if a and b and a[0].get("location") and b[0].get("location"):
+    route = search_route.invoke({"origin": a[0]["location"], "destination": b[0]["location"]})
+    print("驾车路线", json.dumps(route, ensure_ascii=False, indent=2))
+else:
+    print("未获得可用地点坐标，暂不查询路线，请检查上方结果。")
+'@ | uv run python -
+```
+
+地点 `results` 和路线 `paths` 都非空才算联通；路线距离单位为米，耗时单位为秒。此命令会真实调用高德接口。
+
 ## 行程工作流
 
 旅行条件和行程与聊天一起持久化在 SQLite checkpoint 中，按会话隔离。模型从用户文字提取出发地、目的地、开始日期、天数、人数、全员人民币预算和偏好；关键条件缺失时返回缺失字段并追问，不猜测日期和预算口径。偏好默认无特殊偏好。
