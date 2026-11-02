@@ -2,13 +2,19 @@
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {test} from 'node:test';
+import vm from 'node:vm';
 
 // Minimal DOM stand-in records which nodes and attributes the renderer creates.
 class Node {
-  constructor(tag, text = '') { this.tagName = tag.toUpperCase(); this.text = text; this.children = []; }
+  constructor(tag, text = '') {
+    this.tagName = tag.toUpperCase(); this.text = text; this.children = [];
+    this.handlers = {}; this.value = ''; this.classList = {add() {}, remove() {}};
+  }
   append(...children) { this.children.push(...children); }
   replaceChildren(...children) { this.children = children; }
   setAttribute(name, value) { this[name] = value; }
+  addEventListener(event, handler) { this.handlers[event] = handler; }
+  focus() {}
   set textContent(value) { this.text = value; this.children = []; }
   get textContent() { return this.text + this.children.map(child => child.textContent).join(''); }
 }
@@ -38,3 +44,58 @@ test('does not create HTML or executable links from untrusted content', () => {
   renderMarkdown(root, '新回复');
   assert.equal(root.textContent, '新回复');
 });
+
+const html = await readFile(new URL('../travelmate/index.html', import.meta.url), 'utf8');
+const appSource = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
+  .replace(/import \{renderMarkdown\} from '[^']+';/, '')
+  .replace('  initialize();', '');
+
+for (const success of [true, false]) {
+  test(`hides raw streamed Markdown until completion (${success ? 'success' : 'failure'})`, async () => {
+    const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history']
+      .map(id => [id, new Node('div')]));
+    elements.input.value = '规划杭州';
+    elements.history.options = [];
+    elements.history.add = () => {};
+    let release;
+    const gate = new Promise(resolve => { release = resolve; });
+    const encoder = new TextEncoder();
+    let reads = 0;
+    const reader = {async read() {
+      reads++;
+      if (reads === 1) return {value: encoder.encode('event: token\ndata: {"text":"## 隐藏的原始标记 **","id":"one"}\n\n'), done: false};
+      if (reads === 2) {
+        await gate;
+        const frame = success ? 'event: done\ndata: {"answer":"## 完整行程\\n**西湖**"}\n\n'
+          : 'event: error\ndata: {"text":"失败"}\n\n';
+        return {value: encoder.encode(frame), done: false};
+      }
+      return {done: true};
+    }};
+    const pageDocument = {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []};
+    vm.runInNewContext(appSource, {
+      document: pageDocument, renderMarkdown, TextDecoder,
+      localStorage: {getItem: () => 'test', setItem() {}},
+      Option: class {},
+      fetch: async url => url === '/chat/stream' ? {ok: true, body: {getReader: () => reader}}
+        : {ok: true, json: async () => ({sessions: []})},
+    });
+    const completion = elements.form.handlers.submit({preventDefault() {}});
+    await new Promise(resolve => setImmediate(resolve));
+    assert.ok(elements.messages.textContent.includes('完成排版后'));
+    assert.ok(!elements.messages.textContent.includes('隐藏的原始标记'));
+    assert.equal(elements.send.disabled, true);
+    release();
+    await completion;
+    assert.ok(!elements.messages.textContent.includes('隐藏的原始标记'));
+    if (success) {
+      assert.ok(nodes(elements.messages).some(node => node.tagName === 'H3' && node.textContent === '完整行程'));
+      assert.ok(nodes(elements.messages).some(node => node.tagName === 'STRONG' && node.textContent === '西湖'));
+      assert.equal(elements.input.value, '');
+    } else {
+      assert.ok(elements.messages.textContent.includes('本次回复未完成'));
+      assert.equal(elements.input.value, '规划杭州');
+    }
+    assert.equal(elements.send.disabled, false);
+  });
+}

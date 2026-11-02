@@ -38,10 +38,10 @@ uv run uvicorn travelmate.api:app --host 127.0.0.1 --port 8000
 
 打开 http://127.0.0.1:8000 使用聊天页面。前端为原生 HTML/CSS/JavaScript，由 FastAPI 同时提供，无需 Node.js、npm 或额外运行依赖。
 
-- SSE 逐步展示模型回复，提示资料查询及计算进度；生成完成后进行排版。
+- SSE 接收模型回复并提示资料查询、计算及生成进度；生成过程中不展示未排版的正文，收到完整回复后进行 Markdown 排版并一次性展示。
 - 当前会话 ID 保存在浏览器 localStorage，刷新后从 SQLite 恢复消息；历史列表展示最近 50 个已有消息的会话，可切换或新建。浏览器禁用存储时仍可从历史列表选择。切换会话会清空未发送的输入。
 - 回复支持简单 Markdown 子集：标题、粗体、行内代码、代码块、单层列表、表格和 HTTP(S) 链接；不解析原始 HTML、图片或任意脚本。不支持完整 CommonMark 和复杂嵌套。
-- 失败保留输入和本次已收到的部分回复，并标注中断；刷新后以服务端已保存的消息为准。流式请求不自动重试，以免重复提交；手动重新发送可能在历史中留下重复问题。
+- 失败保留输入并提示未完成，不展示未排版的部分回复；刷新后以服务端已保存的消息为准。流式请求不自动重试，以免重复提交；手动重新发送可能在历史中留下重复问题。
 - Ctrl/Command + Enter 发送；手机布局和可见焦点样式。设计参考 UI UX Pro Max 的通用可读性、可访问性建议：https://github.com/nextlevelbuilder/ui-ux-pro-max-skill 。
 
 接口：`POST /chat/stream` 返回 SSE `status`、`token`、`done` 或 `error` 事件；`done` 包含最终回复，只有收到它才表示完整结束。`GET /sessions` 列出本地会话，`GET /sessions/{session_id}` 读取用户及最终助手消息，不返回工具内部消息。原 `POST /chat` 保留。

@@ -184,9 +184,9 @@
     input.disabled = true;
     appendMessage('你', text, true);
     status.textContent = '正在整理旅行建议，请稍候…';
-    const reply = appendMessage('TravelMate', '');
-    reply.classList.add('plain');
-    let answer = '', messageId = null, done = false;
+    const reply = appendMessage('TravelMate', '正在整理回复，完成排版后将显示在这里…');
+    reply.setAttribute('aria-busy', 'true');
+    let done = false;
     try {
       const response = await fetch('/chat/stream', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -210,11 +210,13 @@
           if (event === 'error') throw new Error(data.text);
           if (event === 'status') status.textContent = data.text;
           if (event === 'token') {
-            if (messageId !== data.id) { answer = ''; messageId = data.id; }
-            answer += data.text;
-            reply.textContent = answer;
+            status.textContent = '正在生成回复并整理排版…';
           }
-          if (event === 'done') { showReply(reply, data.answer); done = true; }
+          if (event === 'done') {
+            showReply(reply, data.answer);
+            reply.setAttribute('aria-busy', 'false');
+            done = true;
+          }
         }
         if (packet.done) break;
       }
@@ -223,9 +225,8 @@
       status.textContent = '可以继续补充你的想法';
       refreshSessions().catch(() => { status.textContent = '回复已保存，历史列表暂时无法更新。'; });
     } catch {
-      if (!reply.textContent) reply.textContent = '未能完成回复。';
-      reply.textContent += '\n[本次回复中断]';
-      reply.classList.add('plain');
+      showReply(reply, '本次回复未完成，请稍后重试。');
+      reply.setAttribute('aria-busy', 'false');
       status.textContent = '请求失败，请检查后端配置或网络。输入已保留，可重新发送。';
     } finally {
       busy = false;
