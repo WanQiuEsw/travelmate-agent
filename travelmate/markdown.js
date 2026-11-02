@@ -30,10 +30,26 @@ function inline(parent, text) {
 
 export function renderMarkdown(target, text) {
   const fragment = document.createDocumentFragment();
+  let references = null;
   const lines = text.replace(/\r\n/g, '\n').split('\n');
   let list = null;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    if (/^\s*(?:#{1,6}\s*)?(?:\*\*)?(?:参考来源|引用来源|参考资料|资料来源|来源说明|来源)(?:\*\*)?\s*[:：]?\s*$/.test(line)) {
+      references = document.createElement('details');
+      references.className = 'references';
+      const summary = document.createElement('summary');
+      summary.textContent = '参考来源 · 点击查看';
+      references.append(summary); fragment.append(references); list = null;
+      continue;
+    }
+    if (references) {
+      if (line.trim()) {
+        const row = document.createElement('p');
+        inline(row, line.replace(/^\s*[-*]\s+/, '')); references.append(row);
+      }
+      continue;
+    }
     if (!line.trim()) { list = null; continue; }
     if (line.startsWith('```')) {
       const code = [];

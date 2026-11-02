@@ -15,8 +15,10 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from travelmate.tools import estimate_budget, search_web, search_places, search_route
 from travelmate.knowledge import create_knowledge_tool
 from travelmate.workflow import PlanningState, update_trip, submit_itinerary
+from travelmate.public import public_data
 
 PROMPT = """你是 TravelMate 中文旅游规划助手。今天是 {today}。
+引用统一放在回复末尾的“## 参考来源”部分，只写可读文档标题、网站名称及公开链接；正文不堆叠来源说明。禁止输出知识库、索引、工作空间、文档内部 ID。
 涉及规划或修改条件，必须先调用 update_trip 从用户原话提取条件，不能猜测缺失值；budget 为全员总预算，不清楚口径先追问。
 工具返回 collecting 时只追问 missing 对应的条件，不生成行程。日期必须明确到具体开始日期。
 条件齐全后先检索攻略，再调用 search_places 查询地点，调用 search_route 查询相邻地点路线；失败则注明未核实，使用保守估算。
@@ -60,7 +62,7 @@ def open_agent(*, model=None, database=None, knowledge=None):
 def chat(agent, session_id: str, message: str) -> str:
     result = agent.invoke({"messages": [{"role": "user", "content": message}]},
                           {"configurable": {"thread_id": session_id}, "recursion_limit": 60})
-    return result["messages"][-1].text
+    return public_data(result["messages"][-1].text, result["messages"])
 
 
 def stream_chat(agent, session_id: str, message: str):
@@ -71,7 +73,8 @@ def stream_chat(agent, session_id: str, message: str):
             if mode == "messages":
                 chunk, metadata = value
                 if isinstance(chunk, AIMessage) and metadata.get("langgraph_node") == "model" and chunk.text:
-                    yield "token", {"text": chunk.text, "id": chunk.id}
+                    # Partial tokens can split internal IDs; expose only the sanitized complete answer.
+                    yield "token", {"text": "", "id": chunk.id}
             elif mode == "updates":
                 for update in value.values():
                     for item in (update or {}).get("messages", []):
@@ -81,7 +84,7 @@ def stream_chat(agent, session_id: str, message: str):
                             yield "status", {"text": "资料处理完成，正在组织回复…"}
     state = agent.get_state(config)
     last = state.values["messages"][-1]
-    yield "done", {"answer": last.text, "session_id": session_id}
+    yield "done", {"answer": public_data(last.text, state.values["messages"]), "session_id": session_id}
 
 
 def conversation(agent, session_id: str) -> dict:
@@ -91,7 +94,7 @@ def conversation(agent, session_id: str) -> dict:
         if isinstance(message, HumanMessage):
             messages.append({"role": "user", "content": message.text})
         elif isinstance(message, AIMessage) and not message.tool_calls and message.text:
-            messages.append({"role": "assistant", "content": message.text})
+            messages.append({"role": "assistant", "content": public_data(message.text, state.values.get("messages", []))})
     return {"session_id": session_id, "messages": messages, "interrupted": bool(state.next)}
 
 

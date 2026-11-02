@@ -67,7 +67,6 @@ def create_knowledge_tool(directory: Path):
                     metadata = {}
                 results.append({"source": str(metadata.get("doc_name") or
                                               metadata.get("title") or "云知识库文档"),
-                                "document_id": str(metadata.get("doc_id") or ""),
                                 "content": node.text[:2500], "score": node.score})
             return {"results": results,
                     "notice": "云知识库参考资料；无匹配时不要编造。价格及开放时间仍需实时核实。"}

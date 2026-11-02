@@ -2,7 +2,7 @@
 import logging
 import json
 from pathlib import Path
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from threading import Lock
 from typing import Annotated
 
@@ -43,6 +43,15 @@ def create_app(agent_factory=open_agent):
     app = FastAPI(title="TravelMate (local)", lifespan=lifespan)
     # Serialize checkpoint updates, including concurrent requests for the same session.
     lock = Lock()
+
+    @contextmanager
+    def trip_lock():
+        if not lock.acquire(timeout=1):
+            raise HTTPException(409, "正在生成回复或处理其他请求，请稍后再保存行程")
+        try:
+            yield
+        finally:
+            lock.release()
 
     @app.get("/", include_in_schema=False)
     def index():
@@ -86,7 +95,7 @@ def create_app(agent_factory=open_agent):
 
     @app.put("/sessions/{session_id}/trip")
     def edit_trip(session_id: SessionId, plan: Itinerary):
-        with lock:
+        with trip_lock():
             state = get_workflow(app.state.agent, session_id)
             if "plan" not in state:
                 raise HTTPException(409, "请先生成行程")
@@ -99,7 +108,7 @@ def create_app(agent_factory=open_agent):
 
     @app.post("/sessions/{session_id}/trip/confirm")
     def confirm_trip(session_id: SessionId, plan: Itinerary):
-        with lock:
+        with trip_lock():
             state = get_workflow(app.state.agent, session_id)
             if state.get("status") != "review" or state.get("plan") != plan.model_dump(mode="json"):
                 raise HTTPException(409, "行程已变更或尚未通过校验，请重新查看并确认")

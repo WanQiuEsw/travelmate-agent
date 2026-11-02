@@ -114,3 +114,34 @@ def test_api_failure():
         response = client.post("/chat", json={"session_id": "demo", "message": "hi"})
         assert response.status_code == 502
         assert "secret-token" not in response.text
+
+
+def test_trip_save_busy_returns_prompt_error(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    import travelmate.api as api
+    from test_workflow import PLAN
+
+    started, release = Event(), Event()
+
+    def slow_chat(*args):
+        started.set()
+        release.wait(5)
+        return '完成'
+
+    monkeypatch.setattr(api, 'chat', slow_chat)
+
+    @contextmanager
+    def factory():
+        yield object()
+
+    with TestClient(create_app(factory)) as client, ThreadPoolExecutor() as pool:
+        pending = pool.submit(client.post, '/chat', json={'session_id': 'demo', 'message': '规划'})
+        try:
+            assert started.wait(2)
+            response = client.put('/sessions/demo/trip', json=PLAN)
+            assert response.status_code == 409
+            assert '稍后' in response.json()['detail']
+        finally:
+            release.set()
+        assert pending.result(timeout=3).status_code == 200

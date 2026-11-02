@@ -8,6 +8,7 @@ from langchain.tools import ToolRuntime, tool
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 from pydantic import BaseModel, ConfigDict, Field
+from travelmate.public import public_data
 
 
 class Requirements(BaseModel):
@@ -109,7 +110,8 @@ def submit_itinerary(plan: Itinerary, runtime: ToolRuntime) -> Command:
 
 
 def get_workflow(agent, session_id):
-    return agent.get_state({"configurable": {"thread_id": session_id}}).values.get("workflow", {})
+    values = agent.get_state({"configurable": {"thread_id": session_id}}).values
+    return public_data(values.get("workflow", {}), values.get("messages", []))
 
 
 def save_workflow(agent, session_id, state):

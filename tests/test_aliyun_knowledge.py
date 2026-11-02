@@ -35,7 +35,7 @@ def test_mapping_and_request(cloud, tmp_path):
     payload, calls, _ = cloud
     tool = create_knowledge_tool(tmp_path)
     result = tool.invoke({"query": "杭州长辈行程"})
-    assert result["results"][0] == {"source": "杭州攻略.md", "document_id": "doc-1",
+    assert result["results"][0] == {"source": "杭州攻略.md",
                                        "content": "西湖适合慢行", "score": 0.9}
     workspace, request, runtime = calls[0]
     assert workspace == "workspace" and request.index_id == "index"

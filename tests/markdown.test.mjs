@@ -45,6 +45,16 @@ test('does not create HTML or executable links from untrusted content', () => {
   assert.equal(root.textContent, '新回复');
 });
 
+test('sources are collapsed with safe readable links', () => {
+  const root = new Node('div');
+  renderMarkdown(root, '行程正文\n## 参考来源\n- [杭州攻略](https://example.com/guide)');
+  const details = nodes(root).find(node => node.tagName === 'DETAILS');
+  assert.ok(details);
+  assert.ok(!details.open);
+  assert.ok(details.textContent.includes('杭州攻略'));
+  assert.equal(nodes(details).find(node => node.tagName === 'A').href, 'https://example.com/guide');
+});
+
 const html = await readFile(new URL('../travelmate/index.html', import.meta.url), 'utf8');
 const appSource = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
   .replace(/import \{renderMarkdown\} from '[^']+';/, '')
@@ -98,5 +108,39 @@ for (const success of [true, false]) {
       assert.equal(elements.input.value, '规划杭州');
     }
     assert.equal(elements.send.disabled, false);
+  });
+}
+
+for (const mode of ['success', 'invalid-json', 'server-error', 'timeout']) {
+  test(`trip save recovers controls (${mode})`, async () => {
+    const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history',
+      'trip-panel', 'trip-data', 'trip-status', 'trip-confirm', 'trip-save', 'trip-pdf', 'trip-preview']
+      .map(id => [id, new Node('div')]));
+    const plan = {days: [], other_cost: 100, cost_notes: '估算'};
+    let calls = 0;
+    const context = vm.createContext({
+      document: {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []},
+      renderMarkdown, TextDecoder, AbortController, setTimeout, clearTimeout,
+      localStorage: {getItem: () => 'test', setItem() {}},
+      fetch: async () => {
+        calls++;
+        if (mode === 'timeout') throw Object.assign(new Error(), {name: 'AbortError'});
+        if (mode === 'server-error') return {ok: false, json: async () => ({detail: '正在生成回复，请稍后保存'})};
+        return {ok: true, json: async () => ({status: 'review', total: 100, plan})};
+      },
+    });
+    vm.runInContext(appSource, context);
+    vm.runInContext(`displayTrip(${JSON.stringify({status: 'review', total: 100, plan})})`, context);
+    if (mode === 'invalid-json') elements['trip-data'].value = '{bad';
+    const original = elements['trip-data'].value;
+    await elements['trip-save'].handlers.click();
+    assert.equal(elements.send.disabled, false);
+    assert.equal(elements['trip-save'].disabled, false);
+    assert.equal(elements['trip-data'].disabled, false);
+    assert.equal(elements['trip-data'].value, original);
+    assert.equal(elements['trip-confirm'].disabled, mode === 'invalid-json');
+    assert.equal(calls, mode === 'invalid-json' ? 0 : 1);
+    if (mode === 'timeout') assert.ok(elements['trip-status'].textContent.includes('请求超时'));
+    if (mode === 'server-error') assert.ok(elements['trip-status'].textContent.includes('正在生成回复'));
   });
 }
