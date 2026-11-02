@@ -14,6 +14,7 @@ from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.sqlite import SqliteSaver
 
+from travelmate.evidence import capture_evidence
 from travelmate.rail import search_train_tickets
 from travelmate.tools import estimate_budget, search_web, search_places, search_route
 from travelmate.knowledge import create_knowledge_tool
@@ -41,7 +42,7 @@ def open_agent(*, model=None, database=None, knowledge=None):
     db = Path(database or os.getenv("DATABASE_PATH", "data/checkpoints.sqlite"))
     db.parent.mkdir(parents=True, exist_ok=True)
     with SqliteSaver.from_conn_string(str(db)) as saver:
-        yield create_agent(model=model, state_schema=PlanningState,
+        yield create_agent(model=model, state_schema=PlanningState, middleware=[capture_evidence],
                            tools=[search_train_tickets, estimate_budget, search_web, search_places, search_route, update_trip, submit_itinerary,
                            create_knowledge_tool(Path(knowledge or os.getenv("KNOWLEDGE_DIR", "knowledge")))],
                            system_prompt=PROMPT.format(today=date.today().isoformat()),

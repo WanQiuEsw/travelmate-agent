@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, field_validator, StringConstraints
 
 from travelmate.rail import search_train_tickets
 from travelmate.agent import chat, conversation, conversations, open_agent, stream_chat, pin_sessions, delete_sessions
+from travelmate.evidence import validate_evidence
 from travelmate.workflow import Itinerary, get_workflow, save_workflow, validate_plan
 from travelmate.pdf_export import itinerary_pdf, answer_pdf
 
@@ -157,6 +158,7 @@ def create_app(agent_factory=open_agent):
                 raise HTTPException(409, "请先生成行程")
             data = plan.model_dump(mode="json")
             issues, total = validate_plan(state["requirements"], data)
+            issues += validate_evidence(state["requirements"], data, state.get("evidence", {}))
             state = {**state, "plan": data, "issues": issues, "total": total,
                      "status": "blocked" if issues else "review"}
             save_workflow(app.state.agent, session_id, state)
@@ -169,6 +171,7 @@ def create_app(agent_factory=open_agent):
             if state.get("status") != "review" or state.get("plan") != plan.model_dump(mode="json"):
                 raise HTTPException(409, "行程已变更或尚未通过校验，请重新查看并确认")
             issues, total = validate_plan(state["requirements"], state["plan"])
+            issues += validate_evidence(state["requirements"], state["plan"], state.get("evidence", {}))
             if issues:
                 raise HTTPException(409, "行程未通过校验")
             state = {**state, "status": "confirmed", "total": total}

@@ -77,6 +77,8 @@ def search_train_tickets(origin: str, destination: str, departure_date: str,
             raise ValueError
     except ValueError:
         return {"error": "请选择今天或以后的有效出发日期（YYYY-MM-DD）；未定日期可以先生成攻略。"}
+    if day > china_today() + timedelta(days=14):
+        return {"status": "out_of_range", "error": "超出当前15天预售查询范围，暂不能核实余票，以12306实际放票为准。"}
     url = os.getenv("RAIL_MCP_URL", "").strip()
     if not url:
         return {"error": "车次查询尚未启用，请按 docs/12306-mcp-setup.md 启动本地服务并配置 RAIL_MCP_URL。"}

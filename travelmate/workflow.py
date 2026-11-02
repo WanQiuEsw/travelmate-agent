@@ -2,7 +2,7 @@
 import json
 from copy import deepcopy
 from datetime import date as CalendarDate, timedelta, datetime, timezone
-from typing import NotRequired, Literal
+from typing import NotRequired, Literal, Annotated
 
 from langchain.agents import AgentState
 from langchain.tools import ToolRuntime, tool
@@ -11,6 +11,7 @@ from langgraph.types import Command
 from langchain_core.messages import HumanMessage, AIMessage
 from pydantic import BaseModel, ConfigDict, Field, create_model
 from travelmate.public import public_data
+from travelmate.evidence import merge_evidence, validate_evidence
 
 
 class Requirements(BaseModel):
@@ -71,6 +72,9 @@ class Stop(BaseModel):
     travel_minutes: int = Field(ge=0, le=1440)
     cost: float = Field(ge=0, le=1e8, description="全员费用，人民币")
     notes: str = Field(default="", max_length=1000)
+    fact_refs: dict[Literal["place", "cost", "opening_hours", "travel_minutes"], str] = Field(default_factory=dict)
+    opening_hours: str | None = None
+    transport_mode: Literal["unknown", "driving", "walking", "transit", "rail"] = "unknown"
     source: str = Field(default="未核实", max_length=1000)
 
 
@@ -79,15 +83,23 @@ class Day(BaseModel):
     stops: list[Stop] = Field(min_length=1, max_length=20)
 
 
+class RailSegment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    evidence_id: str
+    ticket: dict
+
+
 class Itinerary(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     days: list[Day] = Field(min_length=1, max_length=30)
     other_cost: float = Field(ge=0, le=1e8, description="全员住宿、往返交通等未计入活动的费用")
+    rail_segments: list[RailSegment] = Field(default_factory=list, max_length=30)
     cost_notes: str = Field(min_length=1, max_length=2000)
 
 
 class PlanningState(AgentState):
     workflow: NotRequired[dict]
+    evidence: Annotated[dict, merge_evidence]
 
 
 def validate_plan(requirements, plan):
@@ -197,6 +209,7 @@ def submit_itinerary(plan: Itinerary, runtime: ToolRuntime) -> Command:
         return {"error": "请先补齐旅行条件；本轮调整达到上限时停止，并请用户补充或修改需求。"}
     data = plan.model_dump(mode="json")
     issues, total = validate_plan(old["requirements"], data)
+    issues += validate_evidence(old["requirements"], data, runtime.state.get("evidence", {}))
     attempts = old.get("attempts", 0) + 1
     state = {**old, "plan": data, "issues": issues, "total": total, "attempts": attempts,
              "status": ("blocked" if attempts >= 3 else "adjusting") if issues else "review"}
@@ -205,7 +218,7 @@ def submit_itinerary(plan: Itinerary, runtime: ToolRuntime) -> Command:
 
 def get_workflow(agent, session_id):
     values = agent.get_state({"configurable": {"thread_id": session_id}}).values
-    return public_data(values.get("workflow", {}), values.get("messages", []))
+    return public_data({**values.get("workflow", {}), **({"evidence": values["evidence"]} if values.get("evidence") else {})}, values.get("messages", []))
 
 
 def save_workflow(agent, session_id, state):
