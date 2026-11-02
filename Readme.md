@@ -81,35 +81,16 @@ uv run --extra dev --extra aliyun pytest -q
 
 ## 单独验证高德（PowerShell）
 
-在项目根目录执行以下命令。通过标准输入运行 Python（`uv run python -`）时，应使用 `load_dotenv(".env")` 明确读取当前目录的配置；无参数的 `load_dotenv()` 在自动查找调用文件时可能抛出 `AssertionError`。其他标准输入诊断命令也使用同样写法。
+在项目根目录直接运行内置检查命令，无需复制多行 Python：
 
 ```powershell
 cd E:\travelmate-agent\travelmate-agent
-@'
-import json
-import os
-from dotenv import load_dotenv
-from travelmate.tools import search_places, search_route
-
-load_dotenv(".env")
-if not os.getenv("AMAP_API_KEY"):
-    raise SystemExit("请在项目根目录 .env 中填写 AMAP_API_KEY")
-
-first = search_places.invoke({"keyword": "杭州东站", "city": "杭州"})
-second = search_places.invoke({"keyword": "灵隐寺", "city": "杭州"})
-for label, result in (("起点", first), ("终点", second)):
-    print(label, json.dumps(result, ensure_ascii=False, indent=2))
-
-a, b = first.get("results", []), second.get("results", [])
-if a and b and a[0].get("location") and b[0].get("location"):
-    route = search_route.invoke({"origin": a[0]["location"], "destination": b[0]["location"]})
-    print("驾车路线", json.dumps(route, ensure_ascii=False, indent=2))
-else:
-    print("未获得可用地点坐标，暂不查询路线，请检查上方结果。")
-'@ | uv run python -
+uv run python -m travelmate.check_amap
 ```
 
-地点 `results` 和路线 `paths` 都非空才算联通；路线距离单位为米，耗时单位为秒。此命令会真实调用高德接口。
+脚本明确读取当前目录的 `.env`，兼容 UTF-8 BOM，不使用 `find_dotenv()` 自动查找，避免标准输入运行时的 `AssertionError`。`AMAP_API_KEY` 必须填写高德控制台生成的真实 Web 服务 Key，不能原样填写“这里替换为你刚申请的高德Key”。系统环境变量仍优先于 `.env`。
+
+命令会真实查询两个地点和一条驾车路线；地点和路线都非空才返回成功，否则返回非零退出码并提示失败步骤。不会输出 Key。距离单位为米，耗时单位为秒。
 
 ## 行程工作流
 
