@@ -37,6 +37,27 @@ def test_budget():
     assert "error" in estimate_budget.invoke({**args, "travelers": 0})
 
 
+def test_deepseek_configuration(tmp_path, monkeypatch):
+    import travelmate.agent as module
+
+    captured = {}
+
+    def fake_client(**kwargs):
+        captured.update(kwargs)
+        return BudgetModel()
+
+    monkeypatch.setattr(module, "ChatOpenAI", fake_client)
+    monkeypatch.setenv("MODEL_API_KEY", "test-only")
+    monkeypatch.setenv("MODEL_NAME", "deepseek-flash")
+    monkeypatch.setenv("MODEL_BASE_URL", "https://api.deepseek.com")
+    with open_agent(database=tmp_path / "config.sqlite"):
+        assert captured["model"] == "deepseek-flash"
+        assert captured["extra_body"] == {"thinking": {"type": "disabled"}}
+    monkeypatch.setenv("MODEL_BASE_URL", "https://other.example/v1")
+    with open_agent(database=tmp_path / "other.sqlite"):
+        assert captured["extra_body"] is None
+
+
 def test_knowledge_and_search(tmp_path, monkeypatch):
     (tmp_path / "杭州.md").write_text("杭州西湖游览建议", encoding="utf-8")
     tool = knowledge_tool(tmp_path)

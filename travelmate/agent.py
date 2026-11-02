@@ -3,6 +3,7 @@ import os
 from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 from langchain.agents import create_agent
@@ -29,8 +30,11 @@ def open_agent(*, model=None, database=None, knowledge=None):
         key = os.getenv("MODEL_API_KEY")
         if not key:
             raise ValueError("请在 .env 配置 MODEL_API_KEY")
-        model = ChatOpenAI(api_key=key, model=os.getenv("MODEL_NAME", "qwen-plus"),
-                           base_url=os.getenv("MODEL_BASE_URL") or None,
+        base_url = os.getenv("MODEL_BASE_URL", "https://api.deepseek.com")
+        # ChatOpenAI does not preserve DeepSeek reasoning_content for tool turns.
+        extra = {"thinking": {"type": "disabled"}} if urlparse(base_url).hostname == "api.deepseek.com" else None
+        model = ChatOpenAI(api_key=key, model=os.getenv("MODEL_NAME", "deepseek-flash"),
+                           base_url=base_url or None, extra_body=extra,
                            timeout=60, max_retries=1, temperature=0.3)
     db = Path(database or os.getenv("DATABASE_PATH", "data/checkpoints.sqlite"))
     db.parent.mkdir(parents=True, exist_ok=True)
