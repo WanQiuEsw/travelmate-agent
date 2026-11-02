@@ -41,6 +41,18 @@ def test_time_city_date_checks():
     assert len(issues) == 3
 
 
+def test_followup_revises_without_manual_review():
+    from langchain_core.messages import HumanMessage, AIMessage
+    old = call(update_trip, {}, conditions=REQ)
+    old = call(submit_itinerary, old, plan=Itinerary.model_validate(PLAN))
+    runtime = SimpleNamespace(state={'workflow': old, 'messages': [
+        HumanMessage(content='请把行程调整得更轻松'),
+        AIMessage(content='', tool_calls=[{'name': 'submit_itinerary', 'args': {}, 'id': 'new'}])]},
+        tool_call_id='new')
+    updated = submit_itinerary.func(plan=Itinerary.model_validate(PLAN), runtime=runtime).update['workflow']
+    assert updated['status'] == 'review' and updated['attempts'] == 1
+
+
 def test_review_confirmation_pdf_and_restart(tmp_path):
     database = tmp_path / 'workflow.sqlite'
     @contextmanager

@@ -39,6 +39,8 @@ def test_sse_real_tool_loop(tmp_path):
         history = client.get("/sessions/sse").json()
         assert [m["role"] for m in history["messages"]] == ["user", "assistant"]
         assert history["messages"][-1]["content"] == data[-1]["answer"]
+        assert history["messages"][-1]["message_id"] == data[-1]["message_id"]
+        assert client.get(f"/sessions/sse/answers/{data[-1]['message_id']}/pdf").status_code == 200
         assert not history["interrupted"]
         assert client.get("/sessions").json()["sessions"] == [{"session_id": "sse", "title": "预算"}]
         assert client.get("/sessions/other").json()["messages"] == []

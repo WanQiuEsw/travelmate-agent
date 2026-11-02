@@ -77,7 +77,7 @@ for (const success of [true, false]) {
       if (reads === 1) return {value: encoder.encode('event: token\ndata: {"text":"## 隐藏的原始标记 **","id":"one"}\n\n'), done: false};
       if (reads === 2) {
         await gate;
-        const frame = success ? 'event: done\ndata: {"answer":"## 完整行程\\n**西湖**"}\n\n'
+        const frame = success ? 'event: done\ndata: {"answer":"## 完整行程\\n**西湖**","message_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}\n\n'
           : 'event: error\ndata: {"text":"失败"}\n\n';
         return {value: encoder.encode(frame), done: false};
       }
@@ -100,10 +100,12 @@ for (const success of [true, false]) {
     await completion;
     assert.ok(!elements.messages.textContent.includes('隐藏的原始标记'));
     if (success) {
+      assert.equal(nodes(elements.messages).filter(node => node.className === 'export-pdf').length, 1);
       assert.ok(nodes(elements.messages).some(node => node.tagName === 'H3' && node.textContent === '完整行程'));
       assert.ok(nodes(elements.messages).some(node => node.tagName === 'STRONG' && node.textContent === '西湖'));
       assert.equal(elements.input.value, '');
     } else {
+      assert.equal(nodes(elements.messages).filter(node => node.className === 'export-pdf').length, 0);
       assert.ok(elements.messages.textContent.includes('本次回复未完成'));
       assert.equal(elements.input.value, '规划杭州');
     }
@@ -111,36 +113,24 @@ for (const success of [true, false]) {
   });
 }
 
-for (const mode of ['success', 'invalid-json', 'server-error', 'timeout']) {
-  test(`trip save recovers controls (${mode})`, async () => {
-    const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history',
-      'trip-panel', 'trip-data', 'trip-status', 'trip-confirm', 'trip-save', 'trip-pdf', 'trip-preview']
-      .map(id => [id, new Node('div')]));
-    const plan = {days: [], other_cost: 100, cost_notes: '估算'};
-    let calls = 0;
-    const context = vm.createContext({
-      document: {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []},
-      renderMarkdown, TextDecoder, AbortController, setTimeout, clearTimeout,
-      localStorage: {getItem: () => 'test', setItem() {}},
-      fetch: async () => {
-        calls++;
-        if (mode === 'timeout') throw Object.assign(new Error(), {name: 'AbortError'});
-        if (mode === 'server-error') return {ok: false, json: async () => ({detail: '正在生成回复，请稍后保存'})};
-        return {ok: true, json: async () => ({status: 'review', total: 100, plan})};
-      },
-    });
-    vm.runInContext(appSource, context);
-    vm.runInContext(`displayTrip(${JSON.stringify({status: 'review', total: 100, plan})})`, context);
-    if (mode === 'invalid-json') elements['trip-data'].value = '{bad';
-    const original = elements['trip-data'].value;
-    await elements['trip-save'].handlers.click();
-    assert.equal(elements.send.disabled, false);
-    assert.equal(elements['trip-save'].disabled, false);
-    assert.equal(elements['trip-data'].disabled, false);
-    assert.equal(elements['trip-data'].value, original);
-    assert.equal(elements['trip-confirm'].disabled, mode === 'invalid-json');
-    assert.equal(calls, mode === 'invalid-json' ? 0 : 1);
-    if (mode === 'timeout') assert.ok(elements['trip-status'].textContent.includes('请求超时'));
-    if (mode === 'server-error') assert.ok(elements['trip-status'].textContent.includes('正在生成回复'));
+test('each export link keeps its answer and session, without review controls', () => {
+  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history']
+    .map(id => [id, new Node('div')]));
+  const context = vm.createContext({
+    document: {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []},
+    renderMarkdown, localStorage: {getItem: () => 'session-shanghai', setItem() {}},
   });
-}
+  vm.runInContext(appSource, context);
+  vm.runInContext(`const oldBody = appendMessage('TravelMate', '上海 12月1日');
+    addExport(oldBody, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+    session = 'session-chongqing';
+    const newBody = appendMessage('TravelMate', '重庆 12月2日');
+    addExport(newBody, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
+    addExport(appendMessage('TravelMate', '未完成'), null);`, context);
+  const links = nodes(elements.messages).filter(node => node.className === 'export-pdf');
+  assert.equal(links.length, 2);
+  assert.equal(links[0].href, '/sessions/session-shanghai/answers/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/pdf');
+  assert.equal(links[1].href, '/sessions/session-chongqing/answers/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/pdf');
+  assert.ok(!html.includes('id="trip-panel"'));
+  assert.ok(!html.includes('保存并校验'));
+});

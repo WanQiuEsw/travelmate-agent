@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from travelmate.agent import chat, conversation, conversations, open_agent, stream_chat
 from travelmate.workflow import Itinerary, get_workflow, save_workflow, validate_plan
-from travelmate.pdf_export import itinerary_pdf
+from travelmate.pdf_export import itinerary_pdf, answer_pdf
 
 
 class ChatRequest(BaseModel):
@@ -92,6 +92,18 @@ def create_app(agent_factory=open_agent):
     def trip(session_id: SessionId):
         with lock:
             return get_workflow(app.state.agent, session_id)
+
+    @app.get("/sessions/{session_id}/answers/{message_id}/pdf")
+    def export_answer(session_id: SessionId,
+                      message_id: Annotated[str, PathParam(pattern=r"^[a-f0-9]{32}$")]):
+        with trip_lock():
+            messages = conversation(app.state.agent, session_id)["messages"]
+            answer = next((m for m in messages if m.get("message_id") == message_id), None)
+            if answer is None:
+                raise HTTPException(404, "这条回答不存在或尚未完成，请刷新对话后重试")
+            text = answer["content"]
+        return Response(answer_pdf(text), media_type="application/pdf",
+                        headers={"Content-Disposition": f'attachment; filename="travelmate-{message_id[:8]}.pdf"'})
 
     @app.put("/sessions/{session_id}/trip")
     def edit_trip(session_id: SessionId, plan: Itinerary):

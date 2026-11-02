@@ -1,5 +1,6 @@
 """LangChain tool-loop with durable session checkpoints."""
 import os
+from hashlib import sha256
 from contextlib import closing, contextmanager
 from datetime import date
 from pathlib import Path
@@ -24,7 +25,7 @@ PROMPT = """你是 TravelMate 中文旅游规划助手。今天是 {today}。
 条件齐全后先检索攻略，再调用 search_places 查询地点，调用 search_route 查询相邻地点路线；失败则注明未核实，使用保守估算。
 然后调用 submit_itinerary 提交逐日结构化行程，必须包含住宿、往返交通等 other_cost 和说明；source 写实际来源或未核实。
 按工具 issues 调整，最多提交三次（首次加两次调整）；blocked 后说明冲突并请用户修改条件，不继续循环。
-review 时向用户展示有效行程、费用和未核实信息，提示在页面查看/修改并点击确认后下载 PDF。绝不能代用户确认。
+校验由系统在后台完成。向用户直接展示完整行程、具体日期、目的地、费用及未核实信息，不要求用户审核、保存 JSON 或确认。用户可在对应回答下直接导出 PDF，修改需求直接继续聊天。
 先确认目的地、出发地、出行日期/天数、人数、预算、兴趣和行动限制；缺少关键条件时先简短追问。
 按需调用工具检索知识、核实最新资料并计算预算，再提供逐日路线、交通建议、预算和备选安排。
 逐日安排考虑地理顺序、休息和交通时间，不保证未经地图验证的距离和耗时。
@@ -84,17 +85,24 @@ def stream_chat(agent, session_id: str, message: str):
                             yield "status", {"text": "资料处理完成，正在组织回复…"}
     state = agent.get_state(config)
     last = state.values["messages"][-1]
-    yield "done", {"answer": public_data(last.text, state.values["messages"]), "session_id": session_id}
+    yield "done", {"answer": public_data(last.text, state.values["messages"]), "session_id": session_id,
+                   "message_id": answer_id(last, len(state.values["messages"]) - 1)}
+
+
+def answer_id(message, index):
+    return sha256(f"{index}:{message.id or ''}:{message.text}".encode()).hexdigest()[:32]
 
 
 def conversation(agent, session_id: str) -> dict:
     state = agent.get_state({"configurable": {"thread_id": session_id}})
     messages = []
-    for message in state.values.get("messages", []):
+    stored = state.values.get("messages", [])
+    for index, message in enumerate(stored):
         if isinstance(message, HumanMessage):
             messages.append({"role": "user", "content": message.text})
         elif isinstance(message, AIMessage) and not message.tool_calls and message.text:
-            messages.append({"role": "assistant", "content": public_data(message.text, state.values.get("messages", []))})
+            messages.append({"role": "assistant", "content": public_data(message.text, stored),
+                             "message_id": answer_id(message, index) if index < len(stored) - 1 or not state.next else None})
     return {"session_id": session_id, "messages": messages, "interrupted": bool(state.next)}
 
 

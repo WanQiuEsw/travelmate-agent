@@ -7,6 +7,7 @@ from langchain.agents import AgentState
 from langchain.tools import ToolRuntime, tool
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
+from langchain_core.messages import HumanMessage, AIMessage
 from pydantic import BaseModel, ConfigDict, Field
 from travelmate.public import public_data
 
@@ -99,8 +100,17 @@ def update_trip(conditions: dict, runtime: ToolRuntime) -> Command:
 def submit_itinerary(plan: Itinerary, runtime: ToolRuntime) -> Command:
     """提交结构化行程进行预算、日期、城市与时间校验。首次失败后最多修改两次；费用均为全员人民币。"""
     old = runtime.state.get("workflow", {})
+    # A follow-up can revise the same conditions; keep the retry limit within each user turn.
+    messages = runtime.state.get("messages", [])
+    latest_user = next((i for i in range(len(messages) - 1, -1, -1)
+                        if isinstance(messages[i], HumanMessage)), None)
+    if latest_user is not None:
+        submissions = sum(call["name"] == "submit_itinerary" for message in messages[latest_user + 1:]
+                          if isinstance(message, AIMessage) for call in message.tool_calls)
+        if submissions <= 1 and old.get("status") in ("review", "confirmed", "blocked"):
+            old = {**old, "status": "researching", "attempts": 0}
     if old.get("status") not in ("researching", "adjusting"):
-        return {"error": "先补齐条件；需重新规划时先修改条件。已有有效行程请由用户在页面修改。"}
+        return {"error": "请先补齐旅行条件；本轮调整达到上限时停止，并请用户补充或修改需求。"}
     data = plan.model_dump(mode="json")
     issues, total = validate_plan(old["requirements"], data)
     attempts = old.get("attempts", 0) + 1

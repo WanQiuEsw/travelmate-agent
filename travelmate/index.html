@@ -46,7 +46,7 @@
   .content pre code { padding: 0; }
   .references { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 10px; color: var(--muted); font-size: 13px; }
   summary { cursor: pointer; }
-  #trip-panel { padding: 20px 24px; border: 1px solid var(--line); background: var(--surface); border-radius: 16px; }
+  .export-pdf { display: inline-block; margin-top: 18px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
   .table-scroll { overflow-x: auto; margin: 16px 0; }
   table { border-collapse: collapse; width: 100%; font-size: 14px; }
   th, td { border: 1px solid var(--line); padding: 10px 12px; text-align: left; min-width: 80px; }
@@ -74,16 +74,6 @@
   <section id="messages" aria-label="对话内容" role="log" aria-live="off">
     <article class="message"><strong>TravelMate</strong><p>告诉我出发地、目的地、日期、人数和预算吧。也可以先说说你喜欢怎样的旅行。</p></article>
   </section>
-  <section id="trip-panel" hidden aria-label="结构化行程">
-    <h3>确认你的行程</h3><p id="trip-status" role="status"></p>
-    <p>这里是导出前的最终行程：检查日期、安排和全员费用；需要调整时可继续聊天修改条件，或展开编辑行程数据。保存并通过校验后，点击确认即可下载 PDF。</p>
-    <div id="trip-preview" class="content"></div>
-    <details><summary>编辑行程数据</summary><label for="trip-data">结构化行程（可编辑）</label>
-    <textarea id="trip-data" style="min-height:300px"></textarea></details>
-    <button id="trip-save" type="button">保存并校验</button>
-    <button id="trip-confirm" type="button">确认当前行程</button>
-    <a id="trip-pdf" hidden>下载 PDF</a>
-  </section>
   <form id="form">
     <label for="input">你的旅行想法</label>
     <textarea id="input" maxlength="8000" required placeholder="例如：从上海出发，两个人去杭州玩三天，预算3000元，喜欢自然风景。"></textarea>
@@ -104,78 +94,16 @@
   try { session = localStorage.getItem('travelmate-session'); } catch {}
   if (!session || !/^[a-zA-Z0-9_-]{1,100}$/.test(session)) session = crypto.randomUUID();
   let busy = false;
-  const tripPanel = document.querySelector('#trip-panel');
-  const tripData = document.querySelector('#trip-data');
-  const tripStatus = document.querySelector('#trip-status');
-  const tripConfirm = document.querySelector('#trip-confirm');
-  const tripSave = document.querySelector('#trip-save');
-  const tripPdf = document.querySelector('#trip-pdf');
-  let savedTrip = {};
-  function displayTrip(data) {
-    savedTrip = data;
-    tripPanel.hidden = !data.plan;
-    tripData.value = data.plan ? JSON.stringify(data.plan, null, 2) : '';
-    const stage = {collecting: '补充条件', researching: '查询资料', adjusting: '调整中', blocked: '需要修改', review: '校验通过，待确认', confirmed: '已确认，可下载 PDF'};
-    tripStatus.textContent = `状态：${stage[data.status] || '补充条件'}；估算费用：${data.total ?? '-'}元。 ${(data.issues || []).join('；')}`;
-    tripConfirm.disabled = data.status !== 'review';
-    tripPdf.hidden = data.status !== 'confirmed';
-    tripPdf.href = '/sessions/' + encodeURIComponent(session) + '/trip/pdf';
-    const preview = document.querySelector('#trip-preview');
-    preview.replaceChildren();
-    for (const day of data.plan?.days || []) {
-      const heading = document.createElement('h3');
-      heading.textContent = day.date;
-      preview.append(heading);
-      for (const stop of day.stops) {
-        const row = document.createElement('p');
-        row.textContent = `${stop.start}-${stop.end} ${stop.place}：交通预留${stop.travel_minutes}分钟，全员${stop.cost}元。${stop.notes}`;
-        preview.append(row);
-      }
-    }
-    const sources = [...new Set((data.plan?.days || []).flatMap(day => day.stops.map(stop => stop.source)).filter(Boolean))];
-    if (sources.length) {
-      const references = document.createElement('div');
-      renderMarkdown(references, '## 参考来源\n' + sources.map(source => '- ' + source).join('\n'));
-      preview.append(references);
-    }
+  function addExport(body, messageId, sessionId = session) {
+    if (!/^[a-f0-9]{32}$/.test(messageId || '')) return;
+    const link = document.createElement('a');
+    link.className = 'export-pdf';
+    link.textContent = '导出这份回答为 PDF';
+    link.href = '/sessions/' + encodeURIComponent(sessionId) + '/answers/' + messageId + '/pdf';
+    link.target = '_blank';
+    link.rel = 'noopener';
+    body.append(link);
   }
-  async function refreshTrip() {
-    const response = await fetch('/sessions/' + encodeURIComponent(session) + '/trip');
-    if (!response.ok) throw new Error('trip unavailable');
-    displayTrip(await response.json());
-  }
-  tripData.addEventListener('input', () => { tripConfirm.disabled = true; tripPdf.hidden = true; });
-  async function changeTrip(confirm) {
-    if (busy) return;
-    busy = true;
-    tripSave.disabled = tripConfirm.disabled = send.disabled = newChat.disabled = historySelect.disabled = true;
-    tripData.disabled = true;
-    tripStatus.textContent = confirm ? '正在确认行程…' : '正在保存并检查预算、日期和时间…';
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 15000);
-    try {
-      const plan = JSON.parse(tripData.value);
-      const response = await fetch('/sessions/' + encodeURIComponent(session) + '/trip' + (confirm ? '/confirm' : ''), {
-        signal: controller.signal, method: confirm ? 'POST' : 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(plan)
-      });
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(typeof error.detail === 'string' ? error.detail : '行程格式不正确，请检查日期、时间及费用字段。');
-      }
-      displayTrip(await response.json());
-    } catch (error) {
-      tripStatus.textContent = error.name === 'AbortError' ? '请求超时，输入已保留。请刷新查看保存结果后重试。' : error instanceof SyntaxError ? '行程数据不是有效 JSON，请检查引号和逗号，修改内容已保留。' : error.message;
-    }
-    finally {
-      clearTimeout(timer);
-      busy = false;
-      tripData.disabled = false;
-      tripConfirm.disabled = savedTrip.status !== 'review' || tripData.value !== JSON.stringify(savedTrip.plan, null, 2);
-      tripSave.disabled = send.disabled = newChat.disabled = historySelect.disabled = false;
-    }
-  }
-  tripSave.addEventListener('click', () => changeTrip(false));
-  tripConfirm.addEventListener('click', () => changeTrip(true));
   function showReply(body, text) { body.classList.remove('plain'); renderMarkdown(body, text); }
 
   function rememberSession() {
@@ -201,11 +129,13 @@
       if (!response.ok) throw new Error('history unavailable');
       const data = await response.json();
       session = id;
-      await refreshTrip();
       rememberSession();
       input.value = '';
       messages.replaceChildren();
-      for (const item of data.messages) appendMessage(item.role === 'user' ? '你' : 'TravelMate', item.content, item.role === 'user');
+      for (const item of data.messages) {
+        const body = appendMessage(item.role === 'user' ? '你' : 'TravelMate', item.content, item.role === 'user');
+        if (item.role === 'assistant') addExport(body, item.message_id, id);
+      }
       if (!data.messages.length) appendMessage('TravelMate', '告诉我目的地、日期和预算，我们开始规划。');
       status.textContent = data.interrupted ? '上次回复未完成，可继续补充需求。' : '对话已恢复，可以继续聊';
     } catch {
@@ -239,7 +169,6 @@
   newChat.addEventListener('click', () => {
     if (busy) return;
     session = crypto.randomUUID();
-    displayTrip({});
     rememberSession();
     input.value = '';
     historySelect.value = '';
@@ -301,6 +230,7 @@
           }
           if (event === 'done') {
             showReply(reply, data.answer);
+            addExport(reply, data.message_id);
             reply.setAttribute('aria-busy', 'false');
             done = true;
           }
@@ -308,7 +238,6 @@
         if (packet.done) break;
       }
       if (!done) throw new Error('incomplete stream');
-      await refreshTrip();
       input.value = '';
       status.textContent = '可以继续补充你的想法';
       refreshSessions().catch(() => { status.textContent = '回复已保存，历史列表暂时无法更新。'; });
