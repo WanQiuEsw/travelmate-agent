@@ -34,7 +34,9 @@ MODEL_BASE_URL=https://api.deepseek.com
 uv run uvicorn travelmate.api:app --host 127.0.0.1 --port 8000
 ```
 
-打开 http://127.0.0.1:8000/docs，通过 POST /chat 发送：
+打开 http://127.0.0.1:8000 使用聊天页面。前端为原生 HTML/CSS/JavaScript，由 FastAPI 同时提供，无需 Node.js、npm 或额外依赖。支持发送消息、等待提示、失败后保留输入、新建会话；刷新会开始新会话，旧记录仍保存在服务端。回答以纯文本展示，不额外引入 Markdown 渲染器。
+
+也可打开 http://127.0.0.1:8000/docs，通过 POST /chat 发送：
 
 ```json
 {"session_id":"demo","message":"两个人去杭州三天，帮我规划"}

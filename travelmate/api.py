@@ -1,9 +1,11 @@
 """Local single-user HTTP service. Bind to loopback only."""
 import logging
+from pathlib import Path
 from contextlib import asynccontextmanager
 from threading import Lock
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 
 from travelmate.agent import chat, open_agent
@@ -36,6 +38,10 @@ def create_app(agent_factory=open_agent):
     app = FastAPI(title="TravelMate (local)", lifespan=lifespan)
     # Serialize checkpoint updates, including concurrent requests for the same session.
     lock = Lock()
+
+    @app.get("/", include_in_schema=False)
+    def index():
+        return FileResponse(Path(__file__).with_name("index.html"))
 
     @app.get("/health")
     def health():

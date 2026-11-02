@@ -22,5 +22,8 @@ travelmate = "travelmate.cli:main"
 [tool.setuptools.packages.find]
 include = ["travelmate*"]
 
+[tool.setuptools.package-data]
+travelmate = ["index.html"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
