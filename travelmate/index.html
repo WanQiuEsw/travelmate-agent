@@ -25,6 +25,13 @@
   #history { border: 0; padding: 0; margin: 0; min-width: 0; }
   #history button { display: block; width: 100%; margin: 4px 0; border: 0; background: transparent; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #history button:hover, #history button[aria-current="true"] { background: #e7eef7; color: var(--accent); }
+  .history-row { display: flex; align-items: center; gap: 4px; }
+  #history .history-row .history-open { flex: 1; min-width: 0; }
+  #history .history-row .history-delete { width: auto; flex-shrink: 0; font-size: 12px; padding: 6px; }
+  .history-tools { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0; }
+  .history-tools input, .history-tools select { width: 100%; min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
+  #history .history-tools button { width: auto; border: 1px solid var(--line); font-size: 12px; }
+  .history-group > summary { padding: 8px; font-size: 13px; color: var(--muted); }
   .history-empty { padding: 0 12px; font-size: 13px; color: var(--muted); }
   main { margin-left: 260px; height: 100dvh; display: flex; flex-direction: column; min-width: 0; }
   .topbar { padding: 18px 32px; font-size: 14px; color: var(--muted); border-bottom: 1px solid #f2f4f7; }
@@ -157,6 +164,7 @@
   try { session = localStorage.getItem('travelmate-session'); } catch {}
   if (!session || !/^[a-zA-Z0-9_-]{1,100}$/.test(session)) session = crypto.randomUUID();
   let busy = false;
+  const selectedSessions = new Set();
   function addExport(body, messageId, sessionId = session) {
     if (!/^[a-f0-9]{32}$/.test(messageId || '')) return;
     const link = document.createElement('a');
@@ -220,11 +228,63 @@
     if (!response.ok) throw new Error('history unavailable');
     const data = await response.json();
     historySelect.replaceChildren();
+    const existing = new Set(data.sessions.map(item => item.session_id));
+    for (const id of selectedSessions) if (!existing.has(id)) selectedSessions.delete(id);
+    if (data.sessions.length) {
+      const tools = document.createElement('div');
+      tools.className = 'history-tools';
+      const count = document.createElement('span');
+      count.textContent = '已选 ' + selectedSessions.size + ' 个对话';
+      const all = document.createElement('button');
+      all.type = 'button'; all.textContent = '全选 / 取消';
+      all.addEventListener('click', () => {
+        if (busy) return;
+        if (selectedSessions.size === data.sessions.length) selectedSessions.clear();
+        else for (const item of data.sessions) selectedSessions.add(item.session_id);
+        refreshSessions().catch(() => { status.textContent = '对话列表加载失败'; });
+      });
+      const remove = document.createElement('button');
+      remove.type = 'button'; remove.textContent = '删除所选';
+      remove.addEventListener('click', () => manageSessions('/sessions/delete', [...selectedSessions]));
+      const group = document.createElement('input');
+      group.maxLength = 60; group.placeholder = '输入分组名称，留空移出分组';
+      group.setAttribute('aria-label', '分组名称');
+      const existingGroups = document.createElement('select');
+      existingGroups.setAttribute('aria-label', '选择已有分组');
+      const option = document.createElement('option'); option.value = ''; option.textContent = '选择已有分组';
+      existingGroups.append(option);
+      for (const name of new Set(data.sessions.map(item => item.group).filter(Boolean))) {
+        const choice = document.createElement('option'); choice.value = name; choice.textContent = name;
+        existingGroups.append(choice);
+      }
+      existingGroups.addEventListener('change', () => { group.value = existingGroups.value; });
+      const move = document.createElement('button');
+      move.type = 'button'; move.textContent = '移动所选';
+      move.addEventListener('click', () => manageSessions('/sessions/group', [...selectedSessions], group.value.trim()));
+      tools.append(count, all, remove, existingGroups, group, move);
+      historySelect.append(tools);
+    }
+    const groups = new Map();
     for (const item of data.sessions) {
+      const groupName = item.group || '未分组';
+      if (!groups.has(groupName)) {
+        const section = document.createElement('details'); section.className = 'history-group'; section.open = true;
+        const title = document.createElement('summary'); title.textContent = groupName;
+        section.append(title); groups.set(groupName, section); historySelect.append(section);
+      }
+      const row = document.createElement('div'); row.className = 'history-row';
+      const checkbox = document.createElement('input'); checkbox.type = 'checkbox';
+      checkbox.checked = selectedSessions.has(item.session_id);
+      checkbox.setAttribute('aria-label', '选择对话：' + item.title);
+      checkbox.addEventListener('change', () => {
+        if (busy) return;
+        if (checkbox.checked) selectedSessions.add(item.session_id); else selectedSessions.delete(item.session_id);
+        const count = historySelect.querySelector('.history-tools span');
+        if (count) count.textContent = '已选 ' + selectedSessions.size + ' 个对话';
+      });
       const button = document.createElement('button');
-      button.type = 'button';
-      button.textContent = item.title;
-      button.title = item.title;
+      button.type = 'button'; button.className = 'history-open';
+      button.textContent = item.title; button.title = item.title;
       button.setAttribute('aria-current', String(item.session_id === session));
       button.addEventListener('click', async () => {
         if (busy) return;
@@ -232,13 +292,42 @@
         refreshSessions().catch(() => {});
         document.querySelector('#sidebar').open = false;
       });
-      historySelect.append(button);
+      const remove = document.createElement('button');
+      remove.type = 'button'; remove.className = 'history-delete'; remove.textContent = '删除';
+      remove.setAttribute('aria-label', '删除对话：' + item.title);
+      remove.addEventListener('click', () => manageSessions('/sessions/delete', [item.session_id]));
+      row.append(checkbox, button, remove); groups.get(groupName).append(row);
     }
     if (!data.sessions.length) {
       const empty = document.createElement('p');
       empty.className = 'history-empty';
       empty.textContent = '暂无历史对话';
       historySelect.append(empty);
+    }
+  }
+
+  async function manageSessions(url, ids, group) {
+    if (busy) return;
+    if (!ids.length) { status.textContent = '请先勾选对话'; return; }
+    const deleting = url === '/sessions/delete';
+    if (deleting && !confirm('确定删除这 ' + ids.length + ' 个对话？删除后无法恢复。')) return;
+    busy = true;
+    send.disabled = newChat.disabled = historySelect.disabled = true;
+    try {
+      const response = await fetch(url, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({session_ids: ids, ...(deleting ? {} : {group})})
+      });
+      if (!response.ok) throw new Error('update failed');
+      for (const id of ids) selectedSessions.delete(id);
+      if (deleting && ids.includes(session)) resetConversation();
+      await refreshSessions();
+      status.textContent = deleting ? '所选对话已删除' : (group ? '已移动到分组：' + group : '已移出分组');
+    } catch {
+      status.textContent = '操作未能完成，请刷新列表后重试。';
+    } finally {
+      busy = false;
+      send.disabled = newChat.disabled = historySelect.disabled = false;
     }
   }
 
@@ -284,18 +373,18 @@
     return body;
   }
 
-  newChat.addEventListener('click', () => {
-    if (busy) return;
+  function resetConversation() {
     session = crypto.randomUUID();
     rememberSession();
     input.value = '';
-    for (const button of historySelect.children) button.setAttribute('aria-current', 'false');
+    for (const button of historySelect.querySelectorAll('[aria-current]')) button.setAttribute('aria-current', 'false');
     document.querySelector('#sidebar').open = false;
     messages.replaceChildren();
 
     status.textContent = '已开始新对话';
     input.focus();
-  });
+  }
+  newChat.addEventListener('click', () => { if (!busy) resetConversation(); });
 
   input.addEventListener('keydown', event => {
     if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229) return;
