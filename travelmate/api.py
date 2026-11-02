@@ -1,14 +1,15 @@
 """Local single-user HTTP service. Bind to loopback only."""
 import logging
+import json
 from pathlib import Path
 from contextlib import asynccontextmanager
 from threading import Lock
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
-from travelmate.agent import chat, open_agent
+from travelmate.agent import chat, open_agent, stream_chat
 
 
 class ChatRequest(BaseModel):
@@ -56,6 +57,20 @@ def create_app(agent_factory=open_agent):
         except Exception:
             logging.getLogger(__name__).warning("Agent request failed")
             raise HTTPException(502, "智能体请求失败，请检查服务配置或稍后重试") from None
+
+    @app.post("/chat/stream")
+    def respond_stream(request: ChatRequest):
+        def events():
+            with lock:
+                try:
+                    yield 'event: status\ndata: {"text":"正在理解你的旅行需求…"}\n\n'
+                    for event, data in stream_chat(app.state.agent, request.session_id, request.message):
+                        yield f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+                except Exception:
+                    logging.getLogger(__name__).warning("Agent stream failed")
+                    yield 'event: error\ndata: {"text":"回复中断，请检查配置或网络后重试"}\n\n'
+        return StreamingResponse(events(), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     return app
 

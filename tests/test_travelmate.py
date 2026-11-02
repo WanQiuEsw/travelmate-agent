@@ -89,7 +89,7 @@ def test_api(tmp_path):
         page = client.get("/")
         assert page.status_code == 200
         assert "text/html" in page.headers["content-type"]
-        assert "fetch('/chat'" in page.text
+        assert "fetch('/chat/stream'" in page.text
         assert client.get("/health").status_code == 200
         response = client.post("/chat", json={"session_id": "demo", "message": "预算"})
         assert response.status_code == 200

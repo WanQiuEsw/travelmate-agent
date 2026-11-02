@@ -1,6 +1,6 @@
 """LangChain tool-loop with durable session checkpoints."""
 import os
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from datetime import date
 from pathlib import Path
 from urllib.parse import urlparse
@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
+from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from travelmate.tools import estimate_budget, search_web
@@ -51,3 +52,24 @@ def chat(agent, session_id: str, message: str) -> str:
     result = agent.invoke({"messages": [{"role": "user", "content": message}]},
                           {"configurable": {"thread_id": session_id}, "recursion_limit": 20})
     return result["messages"][-1].text
+
+
+def stream_chat(agent, session_id: str, message: str):
+    config = {"configurable": {"thread_id": session_id}, "recursion_limit": 20}
+    with closing(agent.stream({"messages": [{"role": "user", "content": message}]},
+                              config, stream_mode=["messages", "updates"])) as stream:
+        for mode, value in stream:
+            if mode == "messages":
+                chunk, metadata = value
+                if isinstance(chunk, AIMessage) and metadata.get("langgraph_node") == "model" and chunk.text:
+                    yield "token", {"text": chunk.text, "id": chunk.id}
+            elif mode == "updates":
+                for update in value.values():
+                    for item in (update or {}).get("messages", []):
+                        if isinstance(item, AIMessage) and item.tool_calls:
+                            yield "status", {"text": "正在查询资料或计算预算…"}
+                        elif isinstance(item, ToolMessage):
+                            yield "status", {"text": "资料处理完成，正在组织回复…"}
+    state = agent.get_state(config)
+    last = state.values["messages"][-1]
+    yield "done", {"answer": last.text, "session_id": session_id}
