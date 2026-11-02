@@ -4,37 +4,46 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TravelMate · 旅行规划助手</title>
 <style>
-  :root { --bg: #f6f5ef; --surface: #fffefa; --text: #213d34; --muted: #586d63; --line: #d9e0d6; --green: #265c45; --tint: #e9eee4; }
+  :root { --bg: #fff; --surface: #fff; --text: #243247; --muted: #69778b; --line: #e5eaf0; --accent: #3568a8; --tint: #eff4fa; }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.75 system-ui, "Microsoft YaHei", sans-serif; }
-  main { max-width: 920px; margin: auto; padding: 28px 24px; }
-  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-  .brand { display: flex; align-items: center; gap: 12px; }
-  .brand svg { width: 40px; height: 40px; padding: 8px; background: var(--green); border-radius: 12px; color: white; }
-  h1 { margin: 0; font-size: 22px; letter-spacing: -.5px; }
-  header small { display: block; color: var(--muted); font-size: 12px; letter-spacing: 1px; font-weight: 500; }
-  .hero { padding: 44px 0 20px; }
-  .eyebrow { color: var(--green); font-size: 12px; letter-spacing: 2px; font-weight: 700; }
-  h2 { font-size: clamp(28px, 5vw, 40px); line-height: 1.3; font-weight: 600; margin: 12px 0; text-wrap: balance; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.75 system-ui, "Microsoft YaHei", sans-serif; }
+  button, textarea { font: inherit; }
+  button { cursor: pointer; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 9px 14px; min-height: 44px; touch-action: manipulation; }
+  button:hover:enabled { background: var(--tint); }
+  button:disabled { opacity: .55; cursor: wait; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .sidebar { position: fixed; inset: 0 auto 0 0; width: 260px; padding: 28px 16px; background: #f6f8fb; border-right: 1px solid var(--line); overflow-y: auto; }
+  .sidebar > summary { display: none; }
+  .sidebar:not([open]) > :not(summary) { display: block; }
+  @media (min-width: 701px) { .sidebar::details-content { content-visibility: visible; display: block; } }
+  .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; }
+  .brand svg { width: 32px; height: 32px; color: var(--accent); }
+  h1 { font-size: 20px; margin: 0; letter-spacing: -.5px; }
+  .brand small { display: block; color: var(--muted); font-size: 12px; font-weight: 400; }
+  #new { width: 100%; text-align: left; color: var(--accent); }
+  .history-label { color: var(--muted); font-size: 12px; margin: 28px 12px 10px; }
+  #history { border: 0; padding: 0; margin: 0; min-width: 0; }
+  #history button { display: block; width: 100%; margin: 4px 0; border: 0; background: transparent; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #history button:hover, #history button[aria-current="true"] { background: #e7eef7; color: var(--accent); }
+  .history-empty { padding: 0 12px; font-size: 13px; color: var(--muted); }
+  main { margin-left: 260px; height: 100dvh; display: flex; flex-direction: column; min-width: 0; }
+  .topbar { padding: 18px 32px; font-size: 14px; color: var(--muted); border-bottom: 1px solid #f2f4f7; }
+  .conversation { flex: 1; overflow-y: auto; min-height: 0; padding: 20px 28px; }
+  .chat-width { width: 100%; max-width: 800px; margin: 0 auto; }
+  .hero { display: none; text-align: center; padding: 24px 0; }
+  main:has(#messages:empty) .conversation { display: flex; align-items: center; }
+  main:has(#messages:empty) .hero { display: block; }
+  h2 { font-size: clamp(23px, 3vw, 30px); line-height: 1.5; font-weight: 600; margin: 0 0 12px; }
   .intro { color: var(--muted); margin: 0; }
-  .suggestions { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0; }
-  .suggestions button { font-size: 14px; background: transparent; }
-  .toolbar { display: flex; align-items: center; gap: 12px; padding: 18px 0; border-top: 1px solid var(--line); }
-  .toolbar label { flex-shrink: 0; font-size: 13px; color: var(--muted); }
-  button, textarea, select { font: inherit; }
-  button, select { min-height: 44px; border: 1px solid var(--line); border-radius: 10px; padding: 9px 16px; background: var(--surface); color: var(--text); }
-  select { min-width: 0; max-width: 100%; flex: 1; }
-  button { cursor: pointer; transition: background .15s, border-color .15s; touch-action: manipulation; }
-  button:hover:enabled { background: var(--tint); border-color: #92a895; }
-  button:disabled { cursor: wait; opacity: .6; }
-  :focus-visible { outline: 3px solid #699577; outline-offset: 3px; }
-  #messages { min-height: 120px; padding-bottom: 8px; }
-  .message { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 20px 24px; margin: 16px 0; overflow-wrap: anywhere; }
-  .message.user { background: var(--tint); margin-left: 15%; border-color: transparent; }
-  .speaker { display: block; font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: .5px; margin-bottom: 8px; }
+  .suggestions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 24px; }
+  .suggestions button { font-size: 13px; border-radius: 24px; color: var(--muted); }
+  .message { margin: 12px 0 28px; overflow-wrap: anywhere; }
+  .message.user { width: fit-content; max-width: 85%; margin-left: auto; background: var(--tint); padding: 12px 18px; border-radius: 18px 18px 4px 18px; }
+  .speaker { display: block; font-size: 12px; color: var(--accent); font-weight: 600; margin-bottom: 8px; }
+  .user .speaker { color: var(--muted); text-align: right; }
   .content { min-width: 0; }
   .content.plain { white-space: pre-wrap; }
-  .content p { margin: 8px 0; }
+  .content p { margin: 0 0 10px; }
   .content h3 { font-size: 18px; margin: 24px 0 10px; }
   .content > :first-child { margin-top: 0; }
   .content > :last-child { margin-bottom: 0; }
@@ -46,7 +55,7 @@
   .content pre code { padding: 0; }
   .progress { border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; margin-bottom: 18px; background: var(--tint); font-size: 14px; }
   .progress ol { max-height: 280px; overflow-y: auto; margin-bottom: 0; }
-  .progress summary { color: var(--green); }
+  .progress summary { color: var(--accent); }
   .references { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 10px; color: var(--muted); font-size: 13px; }
   summary { cursor: pointer; }
   .export-pdf { display: inline-block; margin-top: 18px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
@@ -54,35 +63,63 @@
   table { border-collapse: collapse; width: 100%; font-size: 14px; }
   th, td { border: 1px solid var(--line); padding: 10px 12px; text-align: left; min-width: 80px; }
   th { background: var(--tint); }
-  form { background: var(--surface); padding: 20px; border: 1px solid #a6bba9; border-radius: 16px; margin-top: 20px; box-shadow: 0 6px 24px #213d3408; }
-  label { display: block; font-weight: 600; font-size: 14px; }
-  textarea { width: 100%; resize: vertical; min-height: 96px; max-height: 300px; border: 0; border-radius: 8px; padding: 10px 0; margin: 8px 0; color: inherit; background: transparent; }
-  .actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-  #send { background: var(--green); color: white; border-color: var(--green); min-width: 88px; flex-shrink: 0; }
-  #send:hover:enabled { background: #184831; }
-  #status { font-size: 13px; color: var(--muted); }
-  footer { margin: 18px 0; font-size: 12px; color: var(--muted); text-align: center; }
-  .skip { position: absolute; left: 16px; top: -100px; }
-  .skip:focus { top: 8px; background: white; padding: 8px; z-index: 2; }
-  @media (max-width: 480px) { main { padding: 20px 16px; } .hero { padding-top: 32px; } .message { padding: 16px; } .message.user { margin-left: 24px; } .actions { align-items: flex-end; } }
-  @media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
+  .composer { padding: 12px 28px max(12px, env(safe-area-inset-bottom)); background: var(--surface); }
+  form { padding: 14px 18px; border: 1px solid #d9e1eb; border-radius: 20px; box-shadow: 0 4px 20px #24324706; }
+  form:focus-within { border-color: #91afd2; }
+  .input-label, .skip { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .skip:focus { width: auto; height: auto; clip-path: none; background: white; padding: 8px; z-index: 3; }
+  textarea { display: block; width: 100%; resize: vertical; min-height: 64px; max-height: 180px; border: 0; padding: 4px 0; color: inherit; background: transparent; }
+  textarea:focus-visible { outline: 0; }
+  textarea::placeholder { color: #8591a2; }
+  .actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 8px; }
+  .keyboard-hint, #status, footer { font-size: 12px; color: var(--muted); }
+  #status { margin: 8px 4px 0; min-height: 21px; }
+  #send { background: var(--accent); color: white; border: 0; border-radius: 12px; }
+  #send:hover:enabled { background: #28578f; }
+  footer { text-align: center; margin-top: 4px; font-size: 11px; }
+  @media (max-width: 700px) {
+    .sidebar { position: relative; width: 100%; padding: 0 16px; max-height: 45dvh; border-right: 0; border-bottom: 1px solid var(--line); }
+    .sidebar > summary { display: block; padding: 12px 0; cursor: pointer; font-size: 14px; color: var(--accent); }
+    .sidebar:not([open]) > :not(summary) { display: none; }
+    .brand { display: none !important; }
+    #new { margin-bottom: 8px; }
+    .history-label { margin-top: 12px; }
+    body { height: 100dvh; display: flex; flex-direction: column; }
+    main { margin-left: 0; height: auto; flex: 1; min-height: 0; }
+    .topbar { display: none; }
+    .conversation { padding: 16px; }
+    .composer { padding: 10px 12px max(10px, env(safe-area-inset-bottom)); }
+    .message.user { max-width: 92%; }
+    .keyboard-hint { font-size: 11px; }
+    .suggestions { gap: 6px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
 </style>
 <a class="skip" href="#input">跳到消息输入框</a>
+<details class="sidebar" id="sidebar">
+  <summary>☰ 对话记录</summary>
+  <div class="brand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m16 8-2.5 5.5L8 16l2.5-5.5Z"/></svg><h1>TravelMate<small>智能旅游助手</small></h1></div>
+  <button id="new" type="button">＋ 开启新对话</button>
+  <p class="history-label">最近对话</p>
+  <fieldset id="history" aria-label="历史对话"><p class="history-empty">暂无历史对话</p></fieldset>
+</details>
 <main>
-  <header><div class="brand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m16 8-2.5 5.5L8 16l2.5-5.5Z"/></svg><h1>TravelMate<small>你的旅行规划伙伴</small></h1></div><button id="new" type="button">＋ 新对话</button></header>
-  <section class="hero" aria-labelledby="welcome"><span class="eyebrow">PLAN LESS. EXPLORE MORE.</span><h2 id="welcome">下一站，想去哪里？</h2><p class="intro">从一个想法出发，把路线、预算和沿途的期待慢慢安排好。</p>
-    <div class="suggestions" aria-label="旅行灵感"><button type="button">杭州周末慢游</button><button type="button">带父母轻松出行</button><button type="button">帮我估算预算</button></div>
-  </section>
-  <div class="toolbar"><label for="history">我的对话</label><select id="history" aria-label="选择历史对话"><option value="">新对话</option></select></div>
-  <section id="messages" aria-label="对话内容" role="log" aria-live="off">
-    <article class="message"><strong>TravelMate</strong><p>告诉我出发地、目的地、日期、人数和预算吧。也可以先说说你喜欢怎样的旅行。</p></article>
-  </section>
-  <form id="form">
-    <label for="input">你的旅行想法</label>
-    <textarea id="input" maxlength="8000" required placeholder="例如：从上海出发，两个人去杭州玩三天，预算3000元，喜欢自然风景。"></textarea>
-    <div class="actions"><span id="status" role="status" aria-live="polite">准备好了 · Ctrl / ⌘ + Enter 发送</span><button id="send" type="submit">发送 ↗</button></div>
-  </form>
-  <footer>预算与行程仅供参考，出行前请核实价格和开放时间。对话保存在本地服务中，刷新后可继续。</footer>
+  <header class="topbar">TravelMate · 你的智能旅游助手</header>
+  <div class="conversation"><div class="chat-width">
+    <section class="hero" aria-labelledby="welcome"><h2 id="welcome">你好，我是智能旅游助手 TravelMate</h2><p class="intro">想去哪里走走？一起规划你的下一段旅程。</p>
+      <div class="suggestions" aria-label="旅行灵感"><button type="button">杭州周末慢游</button><button type="button">带父母轻松出行</button><button type="button">帮我估算预算</button></div>
+    </section>
+    <section id="messages" aria-label="对话内容" role="log" aria-live="off"></section>
+  </div></div>
+  <div class="composer"><div class="chat-width">
+    <form id="form">
+      <label class="input-label" for="input">你的旅行想法</label>
+      <textarea id="input" maxlength="8000" required placeholder="告诉我目的地、出发时间，或任何旅行想法…"></textarea>
+      <div class="actions"><span class="keyboard-hint">Enter 发送 · Ctrl + Enter 换行</span><button id="send" type="submit">发送 ↑</button></div>
+    </form>
+    <p id="status" role="status" aria-live="polite">准备好了，随时出发</p>
+    <footer>行程建议仅供参考，出行前请核实价格和开放时间。</footer>
+  </div></div>
 </main>
 <script type="module">
   import {renderMarkdown} from '/assets/markdown.js';
@@ -159,9 +196,27 @@
     const response = await fetch('/sessions');
     if (!response.ok) throw new Error('history unavailable');
     const data = await response.json();
-    historySelect.replaceChildren(new Option('新对话', ''));
-    for (const item of data.sessions) historySelect.add(new Option(item.title, item.session_id));
-    historySelect.value = [...historySelect.options].some(o => o.value === session) ? session : '';
+    historySelect.replaceChildren();
+    for (const item of data.sessions) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = item.title;
+      button.title = item.title;
+      button.setAttribute('aria-current', String(item.session_id === session));
+      button.addEventListener('click', async () => {
+        if (busy) return;
+        await loadConversation(item.session_id);
+        refreshSessions().catch(() => {});
+        document.querySelector('#sidebar').open = false;
+      });
+      historySelect.append(button);
+    }
+    if (!data.sessions.length) {
+      const empty = document.createElement('p');
+      empty.className = 'history-empty';
+      empty.textContent = '暂无历史对话';
+      historySelect.append(empty);
+    }
   }
 
   async function loadConversation(id) {
@@ -181,7 +236,7 @@
         const body = appendMessage(item.role === 'user' ? '你' : 'TravelMate', item.content, item.role === 'user');
         if (item.role === 'assistant') addExport(body, item.message_id, id);
       }
-      if (!data.messages.length) appendMessage('TravelMate', '告诉我目的地、日期和预算，我们开始规划。');
+
       status.textContent = data.interrupted ? '上次回复未完成，可继续补充需求。' : '对话已恢复，可以继续聊';
     } catch {
       status.textContent = '历史对话加载失败，请刷新后重试。';
@@ -190,11 +245,6 @@
       send.disabled = newChat.disabled = historySelect.disabled = false;
     }
   }
-
-  historySelect.addEventListener('change', () => {
-    if (historySelect.value) loadConversation(historySelect.value);
-    else newChat.click();
-  });
 
   function appendMessage(label, text, user = false) {
     const article = document.createElement('article');
@@ -216,9 +266,10 @@
     session = crypto.randomUUID();
     rememberSession();
     input.value = '';
-    historySelect.value = '';
+    for (const button of historySelect.children) button.setAttribute('aria-current', 'false');
+    document.querySelector('#sidebar').open = false;
     messages.replaceChildren();
-    appendMessage('TravelMate', '新的旅行，从哪里开始？');
+
     status.textContent = '已开始新对话';
     input.focus();
   });
@@ -231,9 +282,16 @@
     });
   }
   input.addEventListener('keydown', event => {
-    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.isComposing) {
-      event.preventDefault(); form.requestSubmit();
+    if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229) return;
+    if (event.ctrlKey || event.metaKey) {
+      event.preventDefault();
+      input.setRangeText('\n', input.selectionStart, input.selectionEnd, 'end');
+      input.dispatchEvent(new Event('input', {bubbles: true}));
+      return;
     }
+    if (event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    form.requestSubmit();
   });
 
   form.addEventListener('submit', async event => {
@@ -312,7 +370,8 @@
     try { await refreshSessions(); }
     catch { status.textContent = '历史列表加载失败，仍可尝试恢复当前对话。'; }
     busy = false;
-    await loadConversation(session);
+    send.disabled = newChat.disabled = historySelect.disabled = false;
+    if (historySelect.querySelector('[aria-current="true"]')) await loadConversation(session);
   }
   initialize();
 </script>

@@ -60,6 +60,43 @@ const appSource = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
   .replace(/import \{renderMarkdown\} from '[^']+';/, '')
   .replace('  initialize();', '');
 
+test('Enter sends, Ctrl/Command+Enter inserts a newline, and IME confirmation stays untouched', () => {
+  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history']
+    .map(id => [id, new Node('div')]));
+  let submissions = 0;
+  elements.form.requestSubmit = () => { submissions++; };
+  const input = elements.input;
+  input.setRangeText = (text, start, end) => {
+    input.value = input.value.slice(0, start) + text + input.value.slice(end);
+    input.selectionStart = input.selectionEnd = start + text.length;
+  };
+  input.dispatchEvent = () => {};
+  vm.runInNewContext(appSource, {
+    document: {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []},
+    renderMarkdown, Event, localStorage: {getItem: () => 'test', setItem() {}},
+  });
+  function press(overrides = {}) {
+    let prevented = false;
+    input.handlers.keydown({key: 'Enter', preventDefault() { prevented = true; }, ...overrides});
+    return prevented;
+  }
+  assert.equal(press(), true);
+  assert.equal(submissions, 1);
+  for (const modifier of ['ctrlKey', 'metaKey']) {
+    input.value = 'before selected after';
+    input.selectionStart = 7;
+    input.selectionEnd = 15;
+    assert.equal(press({[modifier]: true}), true);
+    assert.equal(input.value, 'before \n after');
+    assert.equal(input.selectionStart, 8);
+    assert.equal(submissions, 1);
+  }
+  for (const event of [{isComposing: true}, {keyCode: 229}, {shiftKey: true}, {key: 'a'}]) {
+    assert.equal(press(event), false);
+  }
+  assert.equal(submissions, 1);
+});
+
 for (const success of [true, false]) {
   test(`hides raw streamed Markdown until completion (${success ? 'success' : 'failure'})`, async () => {
     const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history',
@@ -137,4 +174,31 @@ test('each export link keeps its answer and session, without review controls', (
   assert.equal(links[1].href, '/sessions/session-chongqing/answers/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/pdf');
   assert.ok(!html.includes('id="trip-panel"'));
   assert.ok(!html.includes('保存并校验'));
+});
+
+test('sidebar loads a conversation and new chat clears messages and selection', async () => {
+  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history', 'sidebar']
+    .map(id => [id, new Node('div')]));
+  const context = vm.createContext({
+    document: {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []},
+    renderMarkdown, crypto: {randomUUID: () => 'new-session'},
+    localStorage: {getItem: () => 'old-session', setItem() {}},
+    fetch: async url => ({ok: true, json: async () => url === '/sessions'
+      ? {sessions: [{title: '<旅行计划>', session_id: 'old-session'}]}
+      : {messages: [{role: 'user', content: '去杭州'}, {role: 'assistant', content: '好的'}]}}),
+  });
+  vm.runInContext(appSource, context);
+  await vm.runInContext('refreshSessions()', context);
+  const button = elements.history.children[0];
+  assert.equal(button.textContent, '<旅行计划>');
+  assert.equal(button['aria-current'], 'true');
+  await button.handlers.click();
+  assert.equal(elements.messages.children[0].className, 'message user');
+  assert.equal(elements.messages.children[1].className, 'message');
+  elements.input.value = '未发送';
+  elements.new.handlers.click();
+  assert.equal(elements.messages.children.length, 0);
+  assert.equal(elements.input.value, '');
+  assert.equal(elements.history.children[0]['aria-current'], 'false');
+  assert.equal(elements.sidebar.open, false);
 });
