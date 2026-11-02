@@ -100,3 +100,21 @@ def test_real_workflow_tool_runtime(tmp_path):
     with open_agent(model=PlanningModel(), database=tmp_path / 'real.sqlite', knowledge=tmp_path) as agent:
         assert chat(agent, 'demo', '规划旅行') == '请审核行程'
         assert get_workflow(agent, 'demo')['status'] == 'review'
+
+
+def test_optional_origin_date_and_transport_support_relative_days():
+    from travelmate.workflow import validate_plan
+    from travelmate.pdf_export import itinerary_pdf
+    req = {key: value for key, value in REQ.items() if key not in ("origin", "start_date")}
+    state = call(update_trip, {}, conditions={**req, "transport": "高铁"})
+    assert state["status"] == "researching"
+    assert state["requirements"]["start_date"] is None
+    assert state["requirements"]["origin"] is None
+    plan = {**PLAN, "days": [{**PLAN["days"][0], "date": None}]}
+    assert validate_plan(state["requirements"], plan)[0] == []
+    assert validate_plan(state["requirements"], PLAN)[0]
+    state = call(submit_itinerary, state, plan=Itinerary.model_validate(plan))
+    assert state["status"] == "review"
+    assert itinerary_pdf(state).startswith(b"%PDF-")
+    revised = call(update_trip, state, conditions={"origin": "上海", "start_date": "2026-12-01"})
+    assert validate_plan(revised["requirements"], PLAN)[0] == []

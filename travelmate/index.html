@@ -75,7 +75,10 @@
   #trip-form { border: 0; border-radius: 0; box-shadow: none; padding: 8px 0; }
   .trip-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
   .trip-grid label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
-  .trip-grid input { min-width: 0; width: 100%; min-height: 44px; border: 1px solid var(--line); border-radius: 8px; padding: 8px; font: inherit; color: var(--text); background: var(--surface); }
+  .trip-grid input, .trip-grid select { min-width: 0; width: 100%; min-height: 44px; border: 1px solid var(--line); border-radius: 8px; padding: 8px; font: inherit; color: var(--text); background: var(--surface); }
+  .trip-optional { color: var(--muted); font-size: 11px; font-weight: normal; }
+  .trip-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .train-results { white-space: pre-wrap; font-size: 13px; max-height: 220px; overflow-y: auto; margin-top: 10px; }
   .trip-note { margin: 8px 0; font-size: 12px; color: var(--muted); }
   @media (max-width: 700px) { .trip-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   .composer { padding: 12px 28px max(12px, env(safe-area-inset-bottom)); background: var(--surface); }
@@ -126,19 +129,21 @@
   </div></div>
   <div class="composer"><div class="chat-width">
     <details class="quick-fill" id="quick-fill">
-      <summary>快速填写 · 人数 / 日期 / 地点 / 预算</summary>
+      <summary>快速规划 · 填写目的地，选择交通方式</summary>
       <form id="trip-form">
         <div class="trip-grid">
-          <label>【人数】<input name="people" type="number" min="1" max="100" step="1" required placeholder="例如 2" inputmode="numeric"></label>
-          <label>【出发日期】<input name="date" type="date" required></label>
-          <label>【出发地】<input name="origin" required maxlength="80" placeholder="例如 福建厦门" list="trip-cities"></label>
-          <label>【目的地】<input name="destination" required maxlength="80" placeholder="例如 北京" list="trip-cities"></label>
-          <label>【总预算 / 元】<input name="budget" type="number" min="1" max="10000000" step="1" required placeholder="例如 3000" inputmode="numeric"></label>
-          <label>【游玩天数】<input name="days" type="number" min="1" max="365" step="1" required placeholder="例如 3" inputmode="numeric"></label>
+          <label>目的地<input name="destination" required maxlength="80" placeholder="想去哪里？例如北京" list="trip-cities"></label>
+          <label>游玩天数<input name="days" type="number" min="1" max="30" step="1" required placeholder="例如 3" inputmode="numeric"></label>
+          <label>出行人数<input name="people" type="number" min="1" max="100" step="1" required placeholder="例如 2" inputmode="numeric"></label>
+          <label>全员总预算 / 元<input name="budget" type="number" min="1" max="10000000" step="1" required placeholder="例如 3000" inputmode="numeric"></label>
+          <label>交通方式<select name="transport"><option>不限</option><option>高铁</option><option>动车</option><option>火车</option><option>飞机</option><option>自驾</option><option>其他</option></select></label>
+          <label>出发日期 <span class="trip-optional">选填，未定可留空</span><input name="date" type="date"></label>
+          <label>出发地 <span class="trip-optional">选填，查车次时填写</span><input name="origin" maxlength="80" placeholder="城市或车站，例如厦门北" list="trip-cities"></label>
         </div>
         <datalist id="trip-cities"><option value="福建厦门"><option value="北京"><option value="上海"><option value="杭州"><option value="成都"><option value="广州"><option value="西安"></datalist>
-        <p class="trip-note">地点可选择常用城市，也可自行输入。预算为所有人的总预算。</p>
-        <button type="submit">填入对话框</button>
+        <p class="trip-note">出发地和日期未定也能规划攻略。查询铁路车次时，请选择高铁、动车或火车，并填写出发地、目的地和日期。</p>
+        <div class="trip-actions"><button type="submit">生成旅行需求</button><button type="button" id="train-search">查询铁路车次</button></div>
+        <div id="train-results" class="train-results" role="status" aria-live="polite"></div>
       </form>
     </details>
     <form id="form">
@@ -492,18 +497,56 @@
     tripInput.dispatchEvent(new Event('input', {bubbles: true}));
   }
   document.querySelector('#preset').addEventListener('click', () => {
-    fillTripDraft('我们【2人】准备【2026年12月10日】从【福建厦门】出发到【北京】玩【3天】，总预算【3000元】，请帮我们规划行程。');
+    const tomorrow = new Intl.DateTimeFormat('zh-CN', {timeZone: 'Asia/Shanghai', year: 'numeric', month: 'numeric', day: 'numeric'}).format(new Date(Date.now() + 86400000)).split('/');
+    fillTripDraft(`我们【2人】准备【${tomorrow[0]}年${tomorrow[1]}月${tomorrow[2]}日】从【厦门】出发到【北京】玩【3天】，总预算【3000元】，交通方式【高铁】，请帮我们规划行程。`);
   });
   tripForm.addEventListener('submit', event => {
     event.preventDefault();
     if (!tripForm.reportValidity()) return;
     const fields = tripForm.elements;
-    if (!fields.origin.value.trim() || !fields.destination.value.trim()) {
-      document.querySelector('#status').textContent = '请填写出发地和目的地，不能只输入空格。';
+    if (!fields.destination.value.trim()) {
+      document.querySelector('#status').textContent = '请填写目的地，不能只输入空格。';
       return;
     }
-    const [year, month, day] = fields.date.value.split('-');
-    fillTripDraft(`我们【${fields.people.value}人】准备【${year}年${Number(month)}月${Number(day)}日】从【${fields.origin.value.trim()}】出发到【${fields.destination.value.trim()}】玩【${fields.days.value}天】，总预算【${fields.budget.value}元】，请帮我们规划行程。`);
+    const origin = fields.origin.value.trim();
+    let departure = '';
+    if (fields.date.value) {
+      const [year, month, day] = fields.date.value.split('-');
+      departure = `准备【${year}年${Number(month)}月${Number(day)}日】`;
+    }
+    fillTripDraft(`我们【${fields.people.value}人】${departure}${origin ? `从【${origin}】出发` : ''}到【${fields.destination.value.trim()}】玩【${fields.days.value}天】，总预算【${fields.budget.value}元】，交通方式【${fields.transport.value}】。${!origin ? '出发地待定，' : ''}${!fields.date.value ? '出发日期待定，按第几天规划，' : ''}请帮我们规划行程。`);
+  });
+  const trainSearch = document.querySelector('#train-search');
+  const trainResults = document.querySelector('#train-results');
+  trainSearch.addEventListener('click', async () => {
+    if (trainSearch.disabled || document.querySelector('#send').disabled) return;
+    const fields = tripForm.elements;
+    if (!['高铁', '动车', '火车'].includes(fields.transport.value)) {
+      trainResults.textContent = '请选择高铁、动车或火车。飞机和自驾可以直接生成旅行需求。'; return;
+    }
+    if (!fields.origin.value.trim() || !fields.destination.value.trim() || !fields.date.value) {
+      trainResults.textContent = '查车次需要出发地、目的地和日期；暂未确定时可直接生成攻略。'; return;
+    }
+    trainSearch.disabled = true;
+    trainResults.textContent = '正在通过12306查询车次…';
+    const query = {origin: fields.origin.value.trim(), destination: fields.destination.value.trim(),
+      departure_date: fields.date.value, transport: fields.transport.value};
+    try {
+      const response = await fetch('/transport/trains', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(query)
+      });
+      if (!response.ok) throw new Error('query failed');
+      const data = await response.json();
+      if (data.error) { trainResults.textContent = data.error; return; }
+      const rows = data.results.map(train => {
+        const seats = (train.prices || []).map(seat => `${seat.seat_name}：${seat.price}元 / ${seat.num || '余票待核实'}`).join('；');
+        return `${train.start_train_code} · ${train.from_station} → ${train.to_station}\n${train.start_date || query.departure_date} ${train.start_time} → ${train.arrive_date || ''} ${train.arrive_time} · 历时 ${train.lishi}\n${seats}`;
+      });
+      trainResults.textContent = `${query.departure_date} · ${query.origin} → ${query.destination}\n` +
+        (rows.length ? rows.join('\n\n') : '未查到符合条件的车次；可能尚未开售、无直达车次或服务暂未返回数据，可改日期或具体车站再查。') + '\n' + data.notice;
+    } catch {
+      trainResults.textContent = '车次查询失败，请检查服务或稍后重试。仍可生成旅行攻略。';
+    } finally { trainSearch.disabled = false; }
   });
 </script>
 </html>

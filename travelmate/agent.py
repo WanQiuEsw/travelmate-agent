@@ -14,6 +14,7 @@ from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.sqlite import SqliteSaver
 
+from travelmate.rail import search_train_tickets
 from travelmate.tools import estimate_budget, search_web, search_places, search_route
 from travelmate.knowledge import create_knowledge_tool
 from travelmate.workflow import PlanningState, update_trip, submit_itinerary
@@ -22,12 +23,13 @@ from travelmate.public import public_data, public_answer
 PROMPT = """你是 TravelMate 中文旅游规划助手。今天是 {today}。
 引用放在“## 参考来源”部分，每条用列表表示。知识库只写“使用了XX知识库”，不展开查询内容；高德只写“通过高德地图查询”，不列地点和路线细节。网页保留简短标题及公开链接。结尾的调整建议属于正文，放在参考来源之前，绝不能写在参考来源列表内。禁止输出知识库、索引、工作空间、文档内部 ID。
 涉及规划或修改条件，必须先调用 update_trip 从用户原话提取条件，不能猜测缺失值；budget 为全员总预算，不清楚口径先追问。
-工具返回 collecting 时只追问 missing 对应的条件，不生成行程。日期必须明确到具体开始日期。
-条件齐全后先检索攻略，再调用 search_places 查询地点，调用 search_route 查询相邻地点路线；失败则注明未核实，使用保守估算。
+工具返回 collecting 时只追问 missing 对应的条件，不生成行程。出发地与出发日期可选，缺少时仍可规划目的地攻略，禁止猜测；未给日期时按第1天、第2天展示，submit_itinerary 的每天 date 设为 null。
+条件齐全后先检索攻略。高德按需调用；未提供出发地或日期时不默认查询高德，优先生成目的地攻略。search_route 仅适用于驾车，不能用于铁路或飞机。失败则注明未核实，使用保守估算。
+用户选择高铁、动车、火车，且出发地、目的地、日期齐全时，调用 search_train_tickets 查询对应日期车次并展示车站、出发/到达时间、历时、票价和余票；不得虚构车次。缺失查询条件时说明补齐后可查票，不阻塞攻略。飞机、自驾等不调用铁路查询。交通方式写入 update_trip 的 transport。
 然后调用 submit_itinerary 提交逐日结构化行程，必须包含住宿、往返交通等 other_cost 和说明；source 写实际来源或未核实。
 按工具 issues 调整，最多提交三次（首次加两次调整）；blocked 后说明冲突并请用户修改条件，不继续循环。
-校验由系统在后台完成。向用户直接展示完整行程、具体日期、目的地、费用及未核实信息，不要求用户审核、保存 JSON 或确认。用户可在对应回答下直接导出 PDF，修改需求直接继续聊天。
-先确认目的地、出发地、出行日期/天数、人数、预算、兴趣和行动限制；缺少关键条件时先简短追问。
+校验由系统在后台完成。向用户直接展示完整行程、日期（未指定则第几天）、目的地、费用及未核实信息，不要求用户审核、保存 JSON 或确认。用户可在对应回答下直接导出 PDF，修改需求直接继续聊天。
+目的地、天数、人数、预算为必填条件；出发地、出发日期和交通方式为可选，不因这些缺失反复追问。
 按需调用工具检索知识、核实最新资料并计算预算，再提供逐日路线、交通建议、预算和备选安排。
 逐日安排考虑地理顺序、休息和交通时间，不保证未经地图验证的距离和耗时。
 区分用户给定事实、估算和已核实信息。票价、天气、签证、开放时间不可凭记忆当作最新事实。
@@ -55,7 +57,7 @@ def open_agent(*, model=None, database=None, knowledge=None):
     db.parent.mkdir(parents=True, exist_ok=True)
     with SqliteSaver.from_conn_string(str(db)) as saver:
         yield create_agent(model=model, state_schema=PlanningState,
-                           tools=[estimate_budget, search_web, search_places, search_route, update_trip, submit_itinerary,
+                           tools=[search_train_tickets, estimate_budget, search_web, search_places, search_route, update_trip, submit_itinerary,
                            create_knowledge_tool(Path(knowledge or os.getenv("KNOWLEDGE_DIR", "knowledge")))],
                            system_prompt=PROMPT.format(today=date.today().isoformat()),
                            checkpointer=saver)
@@ -68,6 +70,7 @@ def chat(agent, session_id: str, message: str) -> str:
 
 
 TOOL_LABELS = {
+    "search_train_tickets": "通过12306查询车次",
     "search_knowledge": "检索旅游知识资料", "search_web": "搜索网页参考来源",
     "search_places": "通过高德查询", "search_route": "通过高德查询",
     "estimate_budget": "估算旅行预算", "update_trip": "整理旅行条件",

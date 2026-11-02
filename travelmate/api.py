@@ -4,13 +4,14 @@ import json
 from pathlib import Path
 from contextlib import asynccontextmanager, contextmanager
 from threading import Lock
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import FastAPI, HTTPException
 from fastapi import Path as PathParam
 from fastapi.responses import FileResponse, StreamingResponse, Response
 from pydantic import BaseModel, Field, field_validator, StringConstraints
 
+from travelmate.rail import search_train_tickets
 from travelmate.agent import chat, conversation, conversations, open_agent, stream_chat, move_sessions, delete_sessions
 from travelmate.workflow import Itinerary, get_workflow, save_workflow, validate_plan
 from travelmate.pdf_export import itinerary_pdf, answer_pdf
@@ -49,6 +50,13 @@ class SessionGroup(SessionSelection):
         return value.strip()
 
 
+class RailRequest(BaseModel):
+    origin: str = Field(min_length=1, max_length=80)
+    destination: str = Field(min_length=1, max_length=80)
+    departure_date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    transport: Literal["高铁", "动车", "火车"] = "火车"
+
+
 def create_app(agent_factory=open_agent):
     @asynccontextmanager
     async def lifespan(app):
@@ -80,6 +88,10 @@ def create_app(agent_factory=open_agent):
     @app.get("/health")
     def health():
         return {"status": "ok"}
+
+    @app.post("/transport/trains")
+    def train_search(request: RailRequest):
+        return search_train_tickets.invoke(request.model_dump())
 
     @app.get("/sessions")
     def list_sessions():
