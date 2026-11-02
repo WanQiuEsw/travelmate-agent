@@ -46,6 +46,10 @@ def create_app(agent_factory=open_agent):
     def index():
         return FileResponse(Path(__file__).with_name("index.html"))
 
+    @app.get("/assets/markdown.js", include_in_schema=False)
+    def markdown_script():
+        return FileResponse(Path(__file__).with_name("markdown.js"), media_type="text/javascript")
+
     @app.get("/health")
     def health():
         return {"status": "ok"}

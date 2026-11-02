@@ -90,6 +90,8 @@ def test_api(tmp_path):
         assert page.status_code == 200
         assert "text/html" in page.headers["content-type"]
         assert "fetch('/chat/stream'" in page.text
+        script = client.get("/assets/markdown.js")
+        assert script.status_code == 200 and "text/javascript" in script.headers["content-type"]
         assert client.get("/health").status_code == 200
         response = client.post("/chat", json={"session_id": "demo", "message": "预算"})
         assert response.status_code == 200
