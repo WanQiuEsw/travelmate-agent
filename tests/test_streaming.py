@@ -24,7 +24,7 @@ class StreamingBudgetModel(BudgetModel):
 def test_sse_real_tool_loop(tmp_path):
     @contextmanager
     def factory():
-        with open_agent(model=StreamingBudgetModel(), database=tmp_path / "sse.sqlite") as agent:
+        with open_agent(legacy_tool_loop=True, model=StreamingBudgetModel(), database=tmp_path / "sse.sqlite") as agent:
             yield agent
 
     with TestClient(create_app(factory)) as client:

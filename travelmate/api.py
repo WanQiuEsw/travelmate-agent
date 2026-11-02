@@ -159,8 +159,16 @@ def create_app(agent_factory=open_agent):
             data = plan.model_dump(mode="json")
             issues, total = validate_plan(state["requirements"], data)
             issues += validate_evidence(state["requirements"], data, state.get("evidence", {}))
-            state = {**state, "plan": data, "issues": issues, "total": total,
-                     "status": "blocked" if issues else "review"}
+            if issues:
+                state = {**state, "candidate": data, "issues": issues, "status": "blocked"}
+            else:
+                versions = list(state.get("versions", []))
+                if not versions:
+                    versions.append({"version": 1, "plan": state["plan"], "requirements": state.get("plan_requirements", state["requirements"]), "total": state.get("total")})
+                version = len(versions) + 1
+                versions.append({"version": version, "plan": data, "requirements": state["requirements"], "total": total})
+                state = {**state, "plan": data, "plan_requirements": state["requirements"], "versions": versions,
+                         "version": version, "issues": [], "total": total, "status": "review"}
             save_workflow(app.state.agent, session_id, state)
             return state
 

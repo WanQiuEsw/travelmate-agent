@@ -29,7 +29,7 @@ def test_export_selected_answer_across_turns_sessions_and_restart(tmp_path, monk
 
     @contextmanager
     def factory():
-        with open_agent(model=TravelAnswerModel(), database=tmp_path / "answers.sqlite", knowledge=tmp_path) as agent:
+        with open_agent(legacy_tool_loop=True, model=TravelAnswerModel(), database=tmp_path / "answers.sqlite", knowledge=tmp_path) as agent:
             yield agent
 
     with TestClient(create_app(factory)) as client:

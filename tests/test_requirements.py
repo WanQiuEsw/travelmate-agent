@@ -68,10 +68,10 @@ def test_old_and_new_checkpoint_restart(tmp_path):
     assert not validate_plan(legacy, PLAN)[0]
     new = call(update_trip, {}, conditions={**REQ, "budget_scope": "per_person"})
     db = tmp_path / "compat.sqlite"
-    with open_agent(model=BudgetModel(), database=db, knowledge=tmp_path) as agent:
+    with open_agent(legacy_tool_loop=True, model=BudgetModel(), database=db, knowledge=tmp_path) as agent:
         save_workflow(agent, "old", {"requirements": legacy, "plan": PLAN, "status": "review"})
         save_workflow(agent, "new", new)
-    with open_agent(model=BudgetModel(), database=db, knowledge=tmp_path) as agent:
+    with open_agent(legacy_tool_loop=True, model=BudgetModel(), database=db, knowledge=tmp_path) as agent:
         assert get_workflow(agent, "old")["requirements"] == legacy
         assert get_workflow(agent, "new")["requirements"] == new["requirements"]
         upgraded = call(update_trip, get_workflow(agent, "old"), conditions={"preferences": "美食"})

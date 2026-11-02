@@ -3,7 +3,6 @@ import os
 import json
 from hashlib import sha256
 from contextlib import closing, contextmanager
-from datetime import date
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -15,7 +14,7 @@ from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from travelmate.evidence import capture_evidence
-from travelmate.rail import search_train_tickets
+from travelmate.rail import search_train_tickets, china_today
 from travelmate.tools import estimate_budget, search_web, search_places, search_route
 from travelmate.knowledge import create_knowledge_tool
 from travelmate.workflow import PlanningState, update_trip, submit_itinerary
@@ -27,7 +26,7 @@ PROMPT = "\n".join((Path(__file__).parent / "prompts" / name).read_text(encoding
 
 
 @contextmanager
-def open_agent(*, model=None, database=None, knowledge=None):
+def open_agent(*, model=None, database=None, knowledge=None, legacy_tool_loop=False):
     load_dotenv()
     if model is None:
         key = os.getenv("MODEL_API_KEY")
@@ -42,10 +41,17 @@ def open_agent(*, model=None, database=None, knowledge=None):
     db = Path(database or os.getenv("DATABASE_PATH", "data/checkpoints.sqlite"))
     db.parent.mkdir(parents=True, exist_ok=True)
     with SqliteSaver.from_conn_string(str(db)) as saver:
+        knowledge_tool = create_knowledge_tool(Path(knowledge or os.getenv("KNOWLEDGE_DIR", "knowledge")))
+        if not legacy_tool_loop:
+            from travelmate.planner import build_planner
+            yield build_planner(model, saver, knowledge_tool,
+                                {t.name: t for t in (search_train_tickets, search_places, search_route, search_web)},
+                                PROMPT.format(today=china_today().isoformat()))
+            return
         yield create_agent(model=model, state_schema=PlanningState, middleware=[capture_evidence],
                            tools=[search_train_tickets, estimate_budget, search_web, search_places, search_route, update_trip, submit_itinerary,
-                           create_knowledge_tool(Path(knowledge or os.getenv("KNOWLEDGE_DIR", "knowledge")))],
-                           system_prompt=PROMPT.format(today=date.today().isoformat()),
+                           knowledge_tool],
+                           system_prompt=PROMPT.format(today=china_today().isoformat()),
                            checkpointer=saver)
 
 
@@ -104,7 +110,9 @@ def stream_chat(agent, session_id: str, message: str):
                     # Partial tokens can split internal IDs; expose only the sanitized complete answer.
                     yield "token", {"text": "", "id": chunk.id}
             elif mode == "updates":
-                for update in value.values():
+                for node, update in value.items():
+                    if node in ("intake", "research", "organize", "verify_places", "generate", "check", "save", "present"):
+                        yield "status", {"text": {"intake": "整理旅行条件", "research": "检索旅行依据", "organize": "组织地点片区", "verify_places": "核实候选地点", "generate": "生成行程方案", "check": "检查行程约束", "save": "保存方案版本", "present": "整理攻略完成"}[node]}
                     for item in (update or {}).get("messages", []):
                         if isinstance(item, AIMessage) and item.tool_calls:
                             for call in item.tool_calls:
@@ -116,6 +124,9 @@ def stream_chat(agent, session_id: str, message: str):
                         elif isinstance(item, ToolMessage):
                             yield "status", tool_progress(item)
     state = agent.get_state(config)
+    if state.next:
+        yield "error", {"text": "运行尚未完成，可继续对话恢复；此前方案已保留。"}
+        return
     last = state.values["messages"][-1]
     yield "done", {"answer": public_answer(last.text, state.values["messages"]), "session_id": session_id,
                    "message_id": answer_id(last, len(state.values["messages"]) - 1)}

@@ -38,7 +38,7 @@ def public_answer(text, messages=()):
             in_sources = False
         elif in_sources:
             label = re.sub(r"^\s*(?:[-*]|\d+[.)])\s+", "", line).strip()
-            if label.startswith("高德"):
+            if label.startswith("高德") and not any(word in label for word in ("查询匹配", "查询失败", "无结果", "超查询范围")):
                 line = "- 通过高德地图查询"
             elif "知识库" in label and not re.search(r"https?://", label):
                 line = "- 使用了" + re.split(r"[（(:：]", label)[0].removeprefix("使用了").strip()

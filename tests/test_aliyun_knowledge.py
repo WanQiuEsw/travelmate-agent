@@ -85,6 +85,6 @@ def test_agent_cloud_tool_loop(cloud, tmp_path):
                     "args": {"query": "杭州长辈行程"}, "id": "search-1"}])
             return ChatResult(generations=[ChatGeneration(message=answer)])
 
-    with open_agent(model=KnowledgeModel(), database=tmp_path / "cloud.sqlite") as agent:
+    with open_agent(legacy_tool_loop=True, model=KnowledgeModel(), database=tmp_path / "cloud.sqlite") as agent:
         answer = chat(agent, "cloud", "杭州长辈行程")
         assert "杭州攻略.md" in answer and "西湖适合慢行" in answer

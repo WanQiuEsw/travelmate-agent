@@ -100,6 +100,10 @@ class Itinerary(BaseModel):
 class PlanningState(AgentState):
     workflow: NotRequired[dict]
     evidence: Annotated[dict, merge_evidence]
+    intake_result: NotRequired[dict]
+    candidate: NotRequired[dict | None]
+    areas: NotRequired[dict]
+    research_data: NotRequired[list]
 
 
 def validate_plan(requirements, plan):

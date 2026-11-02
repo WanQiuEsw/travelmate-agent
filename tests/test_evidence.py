@@ -58,3 +58,14 @@ def test_driving_is_not_walking():
     assert validate_evidence(REQ, plan, evidence)
     plan["days"][0]["stops"][0]["transport_mode"] = "driving"
     assert not validate_evidence(REQ, plan, evidence)
+
+
+def test_train_date_and_unbacked_text():
+    row = {"start_train_code": "G123", "from_station": "上海虹桥", "to_station": "杭州东",
+           "start_date": "2026-12-01", "start_time": "08:00", "arrive_time": "09:00", "prices": []}
+    evidence = normalize("search_train_tickets", {"departure_date": "2026-12-02"}, {"results": [row]}, "rail", REQ)
+    plan = {**PLAN, "rail_segments": [{"ticket": row, "evidence_id": "rail:0"}]}
+    assert validate_evidence(REQ, plan, evidence)
+    plan = deepcopy(PLAN)
+    plan["days"][0]["stops"][0]["notes"] = "乘坐G9999"
+    assert validate_evidence(REQ, plan, {})

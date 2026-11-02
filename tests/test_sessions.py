@@ -14,7 +14,7 @@ from test_travelmate import BudgetModel
 def test_session_pins_and_deletion_persist(tmp_path):
     @contextmanager
     def factory():
-        with open_agent(model=BudgetModel(), database=tmp_path / "sessions.sqlite") as agent:
+        with open_agent(legacy_tool_loop=True, model=BudgetModel(), database=tmp_path / "sessions.sqlite") as agent:
             yield agent
 
     with TestClient(create_app(factory)) as client:
@@ -62,7 +62,7 @@ def test_reference_labels_are_short_and_closing_advice_is_preserved():
 
 
 def test_delete_rolls_back_if_database_write_fails(tmp_path):
-    with open_agent(model=BudgetModel(), database=tmp_path / "rollback.sqlite") as agent:
+    with open_agent(legacy_tool_loop=True, model=BudgetModel(), database=tmp_path / "rollback.sqlite") as agent:
         chat(agent, "one", "预算")
         pin_sessions(agent, ["one"], True)
         with agent.checkpointer.cursor() as cur:

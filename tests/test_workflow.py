@@ -57,7 +57,7 @@ def test_review_confirmation_pdf_and_restart(tmp_path):
     database = tmp_path / 'workflow.sqlite'
     @contextmanager
     def factory():
-        with open_agent(model=BudgetModel(), database=database, knowledge=tmp_path) as agent:
+        with open_agent(legacy_tool_loop=True, model=BudgetModel(), database=database, knowledge=tmp_path) as agent:
             yield agent
     with TestClient(create_app(factory)) as client:
         state = call(update_trip, {}, conditions=REQ)
@@ -97,7 +97,7 @@ def test_real_workflow_tool_runtime(tmp_path):
             else:
                 message = AIMessage(content='请审核行程')
             return ChatResult(generations=[ChatGeneration(message=message)])
-    with open_agent(model=PlanningModel(), database=tmp_path / 'real.sqlite', knowledge=tmp_path) as agent:
+    with open_agent(legacy_tool_loop=True, model=PlanningModel(), database=tmp_path / 'real.sqlite', knowledge=tmp_path) as agent:
         assert chat(agent, 'demo', '规划旅行') == '请审核行程'
         assert get_workflow(agent, 'demo')['status'] == 'review'
 

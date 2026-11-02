@@ -1,5 +1,6 @@
 """Tool-owned evidence, with field-level references and conservative expiry."""
 import json
+import re
 from datetime import datetime, timezone, timedelta
 from hashlib import sha256
 from urllib.parse import urlparse
@@ -88,8 +89,8 @@ def validate_evidence(requirements, plan, evidence):
                     problem = "驾车依据不能核实其他交通方式"
                 if problem:
                     issues.append(f"第{day_no}天 {stop['place']} {field}: {problem}")
-            if "已核实" in stop.get("source", "") and not refs:
-                issues.append(f"第{day_no}天 {stop['place']}: 已核实声明缺少字段引用")
+            if "已核实" in stop.get("source", ""):
+                issues.append(f"第{day_no}天 {stop['place']}: 来源文字不能笼统声明已核实，请使用字段级引用")
     for segment in plan.get("rail_segments", []):
         problem = check_reference(evidence, segment["evidence_id"], "train", segment["ticket"], requirements)
         record = evidence.get(segment["evidence_id"], {})
@@ -97,6 +98,10 @@ def validate_evidence(requirements, plan, evidence):
             problem = "铁路查询日期不匹配旅行日期"
         if problem:
             issues.append("铁路: " + problem)
+    supported_trains = {str(segment["ticket"].get("start_train_code")) for segment in plan.get("rail_segments", [])}
+    text = json.dumps(plan, ensure_ascii=False)
+    for code in set(re.findall(r"(?<![A-Za-z0-9])[GDCZTK]\d{1,5}(?![A-Za-z0-9])", text)) - supported_trains:
+        issues.append(f"车次{code}缺少关联的铁路查询结果")
     return issues
 
 
@@ -109,6 +114,8 @@ def capture_evidence(request, handler):
     data = {}
     try:
         data = json.loads(output.content)
+        if not isinstance(data, dict):
+            data = {"error": "invalid_result"}
         records = normalize(name, request.tool_call["args"], data, request.tool_call["id"],
                             request.state.get("workflow", {}).get("requirements", {}))
     except (ValueError, TypeError, KeyError):

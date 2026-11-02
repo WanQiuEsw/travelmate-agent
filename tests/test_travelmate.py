@@ -50,11 +50,11 @@ def test_deepseek_configuration(tmp_path, monkeypatch):
     monkeypatch.setenv("MODEL_API_KEY", "test-only")
     monkeypatch.setenv("MODEL_NAME", "deepseek-flash")
     monkeypatch.setenv("MODEL_BASE_URL", "https://api.deepseek.com")
-    with open_agent(database=tmp_path / "config.sqlite"):
+    with open_agent(legacy_tool_loop=True, database=tmp_path / "config.sqlite"):
         assert captured["model"] == "deepseek-flash"
         assert captured["extra_body"] == {"thinking": {"type": "disabled"}}
     monkeypatch.setenv("MODEL_BASE_URL", "https://other.example/v1")
-    with open_agent(database=tmp_path / "other.sqlite"):
+    with open_agent(legacy_tool_loop=True, database=tmp_path / "other.sqlite"):
         assert captured["extra_body"] is None
 
 
@@ -69,9 +69,9 @@ def test_knowledge_and_search(tmp_path, monkeypatch):
 
 def test_real_agent_loop_persistence_and_isolation(tmp_path):
     database = tmp_path / "memory.sqlite"
-    with open_agent(model=BudgetModel(), database=database, knowledge=tmp_path) as agent:
+    with open_agent(legacy_tool_loop=True, model=BudgetModel(), database=database, knowledge=tmp_path) as agent:
         assert "1800" in chat(agent, "alice", "算预算")
-    with open_agent(model=BudgetModel(), database=database, knowledge=tmp_path) as agent:
+    with open_agent(legacy_tool_loop=True, model=BudgetModel(), database=database, knowledge=tmp_path) as agent:
         state = agent.get_state({"configurable": {"thread_id": "alice"}})
         assert len(state.values["messages"]) == 4
         assert not agent.get_state({"configurable": {"thread_id": "bob"}}).values
@@ -82,7 +82,7 @@ def test_real_agent_loop_persistence_and_isolation(tmp_path):
 def test_api(tmp_path):
     @contextmanager
     def factory():
-        with open_agent(model=BudgetModel(), database=tmp_path / "api.sqlite") as agent:
+        with open_agent(legacy_tool_loop=True, model=BudgetModel(), database=tmp_path / "api.sqlite") as agent:
             yield agent
 
     with TestClient(create_app(factory)) as client:
