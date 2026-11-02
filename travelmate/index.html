@@ -44,6 +44,9 @@
   .content code { font: .9em/1.6 ui-monospace, monospace; background: var(--tint); padding: 2px 5px; border-radius: 4px; }
   .content pre { overflow: auto; background: var(--tint); padding: 16px; border-radius: 8px; }
   .content pre code { padding: 0; }
+  .progress { border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; margin-bottom: 18px; background: var(--tint); font-size: 14px; }
+  .progress ol { max-height: 280px; overflow-y: auto; margin-bottom: 0; }
+  .progress summary { color: var(--green); }
   .references { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 10px; color: var(--muted); font-size: 13px; }
   summary { cursor: pointer; }
   .export-pdf { display: inline-block; margin-top: 18px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
@@ -105,6 +108,48 @@
     body.append(link);
   }
   function showReply(body, text) { body.classList.remove('plain'); renderMarkdown(body, text); }
+
+  function createProgress(reply) {
+    const box = document.createElement('details');
+    box.className = 'progress';
+    box.open = true;
+    const summary = document.createElement('summary');
+    const steps = document.createElement('ol');
+    steps.setAttribute('aria-label', '执行记录');
+    box.append(summary, steps);
+    reply.replaceChildren(box);
+    const answer = document.createElement('div');
+    reply.append(answer);
+    const started = Date.now();
+    let phase = '正在处理';
+    const tick = () => { summary.textContent = phase + ' · 已用时 ' + Math.floor((Date.now() - started) / 1000) + ' 秒'; };
+    tick();
+    const timer = setInterval(tick, 1000);
+    function add(text, sources = []) {
+      const row = document.createElement('li');
+      row.textContent = text;
+      for (const source of sources) {
+        const item = document.createElement('span');
+        item.textContent = ' · ' + source.title;
+        if (/^https?:\/\//i.test(source.url || '')) {
+          const link = document.createElement('a');
+          link.textContent = source.title;
+          link.href = source.url;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          item.replaceChildren(document.createTextNode(' · '), link);
+        }
+        row.append(item);
+      }
+      steps.append(row);
+    }
+    add('正在读取本轮需求与对话上下文。');
+    return {answer, add, finish(success) {
+      clearInterval(timer);
+      phase = success ? '已完成' : '已中断';
+      tick();
+    }};
+  }
 
   function rememberSession() {
     try { localStorage.setItem('travelmate-session', session); } catch {}
@@ -201,7 +246,9 @@
     appendMessage('你', text, true);
     status.textContent = '正在整理旅行建议，请稍候…';
     const reply = appendMessage('TravelMate', '正在整理回复，完成排版后将显示在这里…');
+    const progress = createProgress(reply);
     reply.setAttribute('aria-busy', 'true');
+    let generating = false;
     let done = false;
     try {
       const response = await fetch('/chat/stream', {
@@ -224,13 +271,18 @@
           if (!dataLine) continue;
           const data = JSON.parse(dataLine.slice(6));
           if (event === 'error') throw new Error(data.text);
-          if (event === 'status') status.textContent = data.text;
+          if (event === 'status') {
+            status.textContent = data.text;
+            progress.add(data.text, data.sources);
+          }
           if (event === 'token') {
+            if (!generating) progress.add('正在结合查询结果组织回答与参考来源，完成排版后展示。');
+            generating = true;
             status.textContent = '正在生成回复并整理排版…';
           }
           if (event === 'done') {
-            showReply(reply, data.answer);
-            addExport(reply, data.message_id);
+            showReply(progress.answer, data.answer);
+            addExport(progress.answer, data.message_id);
             reply.setAttribute('aria-busy', 'false');
             done = true;
           }
@@ -242,10 +294,12 @@
       status.textContent = '可以继续补充你的想法';
       refreshSessions().catch(() => { status.textContent = '回复已保存，历史列表暂时无法更新。'; });
     } catch {
-      showReply(reply, '本次回复未完成，请稍后重试。');
+      progress.add('请求中断，已保留本次执行记录。');
+      showReply(progress.answer, '本次回复未完成，请稍后重试。');
       reply.setAttribute('aria-busy', 'false');
       status.textContent = '请求失败，请检查后端配置或网络。输入已保留，可重新发送。';
     } finally {
+      progress.finish(done);
       busy = false;
       send.disabled = newChat.disabled = historySelect.disabled = input.disabled = false;
       input.focus();
