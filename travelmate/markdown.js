@@ -43,6 +43,10 @@ export function renderMarkdown(target, text) {
       references.append(summary); fragment.append(references); list = null;
       continue;
     }
+    if (references && (/^#{1,6}\s/.test(line) || /^\s*(?:[-*]\s*)?(?:如需|如果|欢迎|你可以|告诉我|需要我)/.test(line))) {
+      references = null;
+      list = null;
+    }
     if (references) {
       if (line.trim()) {
         const row = document.createElement('p');

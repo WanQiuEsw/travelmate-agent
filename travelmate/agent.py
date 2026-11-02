@@ -17,10 +17,10 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from travelmate.tools import estimate_budget, search_web, search_places, search_route
 from travelmate.knowledge import create_knowledge_tool
 from travelmate.workflow import PlanningState, update_trip, submit_itinerary
-from travelmate.public import public_data
+from travelmate.public import public_data, public_answer
 
 PROMPT = """你是 TravelMate 中文旅游规划助手。今天是 {today}。
-引用统一放在回复末尾的“## 参考来源”部分，只写可读文档标题、网站名称及公开链接；正文不堆叠来源说明。禁止输出知识库、索引、工作空间、文档内部 ID。
+引用放在“## 参考来源”部分，每条用列表表示。知识库只写“使用了XX知识库”，不展开查询内容；高德只写“通过高德地图查询”，不列地点和路线细节。网页保留简短标题及公开链接。结尾的调整建议属于正文，放在参考来源之前，绝不能写在参考来源列表内。禁止输出知识库、索引、工作空间、文档内部 ID。
 涉及规划或修改条件，必须先调用 update_trip 从用户原话提取条件，不能猜测缺失值；budget 为全员总预算，不清楚口径先追问。
 工具返回 collecting 时只追问 missing 对应的条件，不生成行程。日期必须明确到具体开始日期。
 条件齐全后先检索攻略，再调用 search_places 查询地点，调用 search_route 查询相邻地点路线；失败则注明未核实，使用保守估算。
@@ -64,12 +64,12 @@ def open_agent(*, model=None, database=None, knowledge=None):
 def chat(agent, session_id: str, message: str) -> str:
     result = agent.invoke({"messages": [{"role": "user", "content": message}]},
                           {"configurable": {"thread_id": session_id}, "recursion_limit": 60})
-    return public_data(result["messages"][-1].text, result["messages"])
+    return public_answer(result["messages"][-1].text, result["messages"])
 
 
 TOOL_LABELS = {
     "search_knowledge": "检索旅游知识资料", "search_web": "搜索网页参考来源",
-    "search_places": "核实地点与地址", "search_route": "查询驾车路线",
+    "search_places": "通过高德查询", "search_route": "通过高德查询",
     "estimate_budget": "估算旅行预算", "update_trip": "整理旅行条件",
     "submit_itinerary": "校验行程安排与预算",
 }
@@ -93,8 +93,13 @@ def tool_progress(item):
             title = result.get("title") or result.get("source") or result.get("name")
             if isinstance(title, str):
                 sources.append({"title": title[:200], "url": result.get("url", "")})
+    if name in ("search_places", "search_route"):
+        return {"text": "已通过高德查询。"}
+    if name == "search_knowledge":
+        titles = list(dict.fromkeys(source["title"].split("（")[0].split("(")[0].removesuffix(".md") for source in sources))
+        return public_data({"text": "已使用" + "、".join(titles) + "。" if titles else "知识库未找到匹配资料。"}, [item])
     text = label + "完成。"
-    if name in ("search_web", "search_knowledge", "search_places"):
+    if name == "search_web":
         text = label + (f"完成，找到 {len(results)} 条结果。" if results else "完成，未找到匹配结果。")
     return public_data({"text": text, "sources": sources}, [item])
 
@@ -117,13 +122,13 @@ def stream_chat(agent, session_id: str, message: str):
                                 label = TOOL_LABELS.get(call["name"], "处理旅行资料")
                                 args = call.get("args", {})
                                 query = args.get("query") or args.get("keyword")
-                                detail = "：" + query[:300] if isinstance(query, str) else "…"
+                                detail = "：" + query[:300] if isinstance(query, str) and call["name"] == "search_web" else "…"
                                 yield "status", public_data({"text": "正在" + label + detail})
                         elif isinstance(item, ToolMessage):
                             yield "status", tool_progress(item)
     state = agent.get_state(config)
     last = state.values["messages"][-1]
-    yield "done", {"answer": public_data(last.text, state.values["messages"]), "session_id": session_id,
+    yield "done", {"answer": public_answer(last.text, state.values["messages"]), "session_id": session_id,
                    "message_id": answer_id(last, len(state.values["messages"]) - 1)}
 
 
@@ -139,13 +144,14 @@ def conversation(agent, session_id: str) -> dict:
         if isinstance(message, HumanMessage):
             messages.append({"role": "user", "content": message.text})
         elif isinstance(message, AIMessage) and not message.tool_calls and message.text:
-            messages.append({"role": "assistant", "content": public_data(message.text, stored),
+            messages.append({"role": "assistant", "content": public_answer(message.text, stored),
                              "message_id": answer_id(message, index) if index < len(stored) - 1 or not state.next else None})
     return {"session_id": session_id, "messages": messages, "interrupted": bool(state.next)}
 
 
 def conversations(agent) -> list:
-    # shortcut: scan checkpoints for the latest 50 local sessions; use a session table at larger scale.
+    # shortcut: scan local checkpoints; add a session index when history grows large.
+    groups = session_groups(agent)
     seen, sessions = set(), []
     with closing(agent.checkpointer.list(None)) as checkpoints:
         for checkpoint in checkpoints:
@@ -156,7 +162,32 @@ def conversations(agent) -> list:
             values = checkpoint.checkpoint.get("channel_values", {})
             first = next((m for m in values.get("messages", []) if isinstance(m, HumanMessage)), None)
             if first:
-                sessions.append({"session_id": session_id, "title": first.text[:36]})
-            if len(sessions) >= 50:
-                break
+                sessions.append({"session_id": session_id, "title": first.text[:36],
+                                 **({"group": groups[session_id]} if groups.get(session_id) else {})})
     return sessions
+
+
+def session_groups(agent):
+    with agent.checkpointer.cursor() as cur:
+        cur.execute("CREATE TABLE IF NOT EXISTS session_groups (session_id TEXT PRIMARY KEY, name TEXT NOT NULL)")
+        return dict(cur.execute("SELECT session_id, name FROM session_groups").fetchall())
+
+
+def move_sessions(agent, session_ids, group):
+    session_groups(agent)
+    with agent.checkpointer.cursor() as cur, agent.checkpointer.conn:
+        for session_id in set(session_ids):
+            if group:
+                cur.execute("INSERT OR REPLACE INTO session_groups VALUES (?, ?)", (session_id, group))
+            else:
+                cur.execute("DELETE FROM session_groups WHERE session_id = ?", (session_id,))
+
+
+def delete_sessions(agent, session_ids):
+    session_groups(agent)
+    # Use one transaction so a batch cannot be partially deleted.
+    with agent.checkpointer.cursor() as cur, agent.checkpointer.conn:
+        for session_id in set(session_ids):
+            cur.execute("DELETE FROM checkpoints WHERE thread_id = ?", (session_id,))
+            cur.execute("DELETE FROM writes WHERE thread_id = ?", (session_id,))
+            cur.execute("DELETE FROM session_groups WHERE session_id = ?", (session_id,))

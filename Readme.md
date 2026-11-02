@@ -44,6 +44,12 @@ uv run uvicorn travelmate.api:app --host 127.0.0.1 --port 8000
 - 失败保留输入并提示未完成，不展示未排版的部分回复；刷新后以服务端已保存的消息为准。流式请求不自动重试，以免重复提交；手动重新发送可能在历史中留下重复问题。
 - Enter 发送，Ctrl/Command + Enter 换行；中文输入法选字时不会误发送。蓝灰色页面、左侧历史记录、用户消息靠右与助手回复靠左、底部输入框；手机端可展开对话记录，支持手机布局和可见焦点样式。设计参考 UI UX Pro Max 的通用可读性、可访问性建议：https://github.com/nextlevelbuilder/ui-ux-pro-max-skill 。
 
+左侧历史记录支持单条删除、勾选后批量删除，以及批量移动到分组。输入新名称即可创建分组，也可选择已有分组；名称留空可移出分组。分组保存在同一个 SQLite 数据库中，重启后保留。删除需确认，并清除对应聊天、行程和回答导出记录。
+
+进度与参考来源简要显示知识库名称和高德查询，网页来源保留链接；正文末尾的调整建议不会折叠进参考来源。
+
+会话管理接口：`DELETE /sessions/{session_id}` 删除单条；`POST /sessions/delete` 接收 `{"session_ids":["demo"]}` 批量删除；`POST /sessions/group` 接收 `{"session_ids":["demo"],"group":"家庭游"}` 批量分组（空字符串表示移出分组）。`GET /sessions` 的已分组会话附带 `group` 字段。
+
 接口：`POST /chat/stream` 返回 SSE `status`、`token`、`done` 或 `error` 事件；`done` 包含最终回复，只有收到它才表示完整结束。`GET /sessions` 列出本地会话，`GET /sessions/{session_id}` 读取用户及最终助手消息，不返回工具内部消息。原 `POST /chat` 保留。
 
 这是单用户学习版：历史接口没有身份认证，流式请求仍串行执行；不要直接暴露公网。网页断开连接不保证立即中止已发出的模型/工具请求。部署反向代理时需关闭 SSE 缓冲，并配置合适的读取超时。

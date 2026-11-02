@@ -22,3 +22,29 @@ def public_data(value, messages=()):
         return item
 
     return clean(value)
+
+
+def public_answer(text, messages=()):
+    """Keep reference labels short without changing the travel advice."""
+    text = public_data(text, messages)
+    lines = text.splitlines()
+    in_sources = False
+    seen = set()
+    output = []
+    for line in lines:
+        if re.match(r"^\s*(?:#{1,6}\s*)?(?:\*\*)?(?:参考来源|引用来源|参考资料|资料来源|来源说明|来源)(?:\*\*)?\s*[:：]?\s*$", line):
+            in_sources = True
+        elif in_sources and (re.match(r"^#{1,6}\s", line) or re.match(r"^\s*(?:[-*]\s*)?(?:如需|如果|欢迎|你可以|告诉我|需要我)", line)):
+            in_sources = False
+        elif in_sources:
+            label = re.sub(r"^\s*(?:[-*]|\d+[.)])\s+", "", line).strip()
+            if label.startswith("高德"):
+                line = "- 通过高德地图查询"
+            elif "知识库" in label and not re.search(r"https?://", label):
+                line = "- 使用了" + re.split(r"[（(:：]", label)[0].removeprefix("使用了").strip()
+            if line.strip():
+                if line in seen:
+                    continue
+                seen.add(line)
+        output.append(line)
+    return "\n".join(output)

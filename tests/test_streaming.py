@@ -80,3 +80,10 @@ def test_tool_progress_sources_and_failure(monkeypatch):
     assert "失败" in failed["text"] and "private-key" not in str(failed)
     empty = tool_progress(ToolMessage(name="search_knowledge", tool_call_id="three", content='{"results":[]}'))
     assert "未找到" in empty["text"]
+
+
+def test_map_and_knowledge_progress_are_concise():
+    mapped = tool_progress(ToolMessage(name="search_places", tool_call_id="map", content='{"results":[{"name":"机场细节"}]}'))
+    assert mapped == {"text": "已通过高德查询。"}
+    knowledge = tool_progress(ToolMessage(name="search_knowledge", tool_call_id="kb", content=json.dumps({"results": [{"source": "重庆知识库（城市概况）", "content": "长篇资料"}]})))
+    assert knowledge == {"text": "已使用重庆知识库。"}

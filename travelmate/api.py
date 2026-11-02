@@ -9,9 +9,9 @@ from typing import Annotated
 from fastapi import FastAPI, HTTPException
 from fastapi import Path as PathParam
 from fastapi.responses import FileResponse, StreamingResponse, Response
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, StringConstraints
 
-from travelmate.agent import chat, conversation, conversations, open_agent, stream_chat
+from travelmate.agent import chat, conversation, conversations, open_agent, stream_chat, move_sessions, delete_sessions
 from travelmate.workflow import Itinerary, get_workflow, save_workflow, validate_plan
 from travelmate.pdf_export import itinerary_pdf, answer_pdf
 
@@ -31,6 +31,22 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     session_id: str
     answer: str
+
+
+SessionKey = Annotated[str, StringConstraints(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_-]+$")]
+
+
+class SessionSelection(BaseModel):
+    session_ids: list[SessionKey] = Field(min_length=1, max_length=500)
+
+
+class SessionGroup(SessionSelection):
+    group: str = Field(max_length=60)
+
+    @field_validator("group")
+    @classmethod
+    def clean_group(cls, value):
+        return value.strip()
 
 
 def create_app(agent_factory=open_agent):
@@ -87,6 +103,27 @@ def create_app(agent_factory=open_agent):
             raise HTTPException(502, "智能体请求失败，请检查服务配置或稍后重试") from None
 
     SessionId = Annotated[str, PathParam(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_-]+$")]
+
+    @app.post("/sessions/delete")
+    def remove_selected(request: SessionSelection):
+        with trip_lock():
+            delete_sessions(app.state.agent, request.session_ids)
+        return {"deleted": list(dict.fromkeys(request.session_ids))}
+
+    @app.delete("/sessions/{session_id}")
+    def remove_session(session_id: SessionId):
+        with trip_lock():
+            delete_sessions(app.state.agent, [session_id])
+        return {"deleted": [session_id]}
+
+    @app.post("/sessions/group")
+    def group_selected(request: SessionGroup):
+        with trip_lock():
+            existing = {item["session_id"] for item in conversations(app.state.agent)}
+            if any(key not in existing for key in request.session_ids):
+                raise HTTPException(404, "所选对话不存在，请刷新列表")
+            move_sessions(app.state.agent, request.session_ids, request.group)
+        return {"group": request.group}
 
     @app.get("/sessions/{session_id}/trip")
     def trip(session_id: SessionId):

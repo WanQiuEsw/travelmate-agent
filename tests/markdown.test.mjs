@@ -14,6 +14,13 @@ class Node {
   replaceChildren(...children) { this.children = children; }
   setAttribute(name, value) { this[name] = value; }
   addEventListener(event, handler) { this.handlers[event] = handler; }
+  querySelectorAll(selector) {
+    const descendants = this.children.flatMap(nodes);
+    if (selector === '[aria-current]') return descendants.filter(node => node['aria-current'] !== undefined);
+    if (selector === '.history-tools span') return descendants.filter(node => node.tagName === 'SPAN');
+    return [];
+  }
+  querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
   focus() {}
   set textContent(value) { this.text = value; this.children = []; }
   get textContent() { return this.text + this.children.map(child => child.textContent).join(''); }
@@ -189,7 +196,7 @@ test('sidebar loads a conversation and new chat clears messages and selection', 
   });
   vm.runInContext(appSource, context);
   await vm.runInContext('refreshSessions()', context);
-  const button = elements.history.children[0];
+  const button = nodes(elements.history).find(node => node.className === 'history-open');
   assert.equal(button.textContent, '<旅行计划>');
   assert.equal(button['aria-current'], 'true');
   await button.handlers.click();
@@ -199,6 +206,60 @@ test('sidebar loads a conversation and new chat clears messages and selection', 
   elements.new.handlers.click();
   assert.equal(elements.messages.children.length, 0);
   assert.equal(elements.input.value, '');
-  assert.equal(elements.history.children[0]['aria-current'], 'false');
+  assert.ok(nodes(elements.history).filter(node => node.className === 'history-open').every(node => node['aria-current'] === 'false'));
   assert.equal(elements.sidebar.open, false);
+});
+
+
+test('closing advice and later headings stay outside collapsed references', () => {
+  for (const ending of ['如需把交通改成飞机，告诉我即可调整。', '## 温馨提示\n出行前核实开放时间。']) {
+    const root = new Node('div');
+    renderMarkdown(root, '正文\n## 参考来源\n- 重庆旅行知识库\n- 高德地图\n\n' + ending);
+    const details = nodes(root).find(node => node.tagName === 'DETAILS');
+    assert.ok(details.textContent.includes('重庆旅行知识库'));
+    assert.ok(!details.textContent.includes('告诉我'));
+    assert.ok(!details.textContent.includes('温馨提示'));
+    assert.ok(nodes(root).some(node => node.tagName === 'P' && (node.textContent.includes('告诉我') || node.textContent.includes('出行前'))));
+  }
+});
+
+test('batch move persists selection on failure and deletion clears the current conversation', async () => {
+  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history', 'sidebar']
+    .map(id => [id, new Node('div')]));
+  let sessions = [{session_id: 'old-session', title: '重庆'}, {session_id: 'other', title: '杭州', group: '周末'}];
+  const calls = [];
+  let fail = false;
+  let approve = true;
+  const context = vm.createContext({
+    document: {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []},
+    renderMarkdown, crypto: {randomUUID: () => 'new-session'}, confirm: () => approve,
+    localStorage: {getItem: () => 'old-session', setItem() {}},
+    fetch: async (url, options) => {
+      if (url === '/sessions') return {ok: true, json: async () => ({sessions})};
+      const data = JSON.parse(options.body); calls.push({url, data});
+      if (fail) return {ok: false};
+      if (url === '/sessions/group') sessions = sessions.map(item => data.session_ids.includes(item.session_id) ? {...item, group: data.group} : item);
+      if (url === '/sessions/delete') sessions = sessions.filter(item => !data.session_ids.includes(item.session_id));
+      return {ok: true};
+    },
+  });
+  vm.runInContext(appSource, context);
+  await vm.runInContext('refreshSessions()', context);
+  await vm.runInContext("selectedSessions.add('old-session'); selectedSessions.add('other'); manageSessions('/sessions/group', [...selectedSessions], '家庭游')", context);
+  assert.equal(calls[0].data.session_ids.length, 2);
+  assert.equal(sessions[0].group, '家庭游');
+  assert.ok(elements.history.textContent.includes('家庭游'));
+  fail = true;
+  await vm.runInContext("selectedSessions.add('old-session'); manageSessions('/sessions/delete', [...selectedSessions])", context);
+  assert.equal(vm.runInContext('selectedSessions.size', context), 1);
+  assert.equal(sessions.length, 2);
+  fail = false; approve = false;
+  await vm.runInContext("manageSessions('/sessions/delete', [...selectedSessions])", context);
+  assert.equal(sessions.length, 2);
+  approve = true;
+  elements.messages.append(new Node('p', '旧对话'));
+  await vm.runInContext("manageSessions('/sessions/delete', [...selectedSessions])", context);
+  assert.equal(sessions.length, 1);
+  assert.equal(vm.runInContext('session', context), 'new-session');
+  assert.equal(elements.messages.children.length, 0);
 });
