@@ -22,12 +22,12 @@ def itinerary_pdf(state):
 
     req, plan = state["requirements"], state["plan"]
     add(f'TravelMate · {req["destination"]}旅行行程', True)
-    add(f'{req["origin"]}出发 / {req["start_date"]} / {req["days"]}天 / {req["travelers"]}人')
+    add(f'{req.get("origin") or "出发地待定"} / {req.get("start_date") or "日期待定"} / {req["days"]}天 / {req["travelers"]}人')
     add(f'全员预算：{req["budget"]}元；估算总费用：{state["total"]}元')
     add(req.get("preferences", ""))
-    for day in plan["days"]:
+    for index, day in enumerate(plan["days"], 1):
         story.append(Spacer(1, 10))
-        add(day["date"], True)
+        add(day.get("date") or f"第{index}天", True)
         for stop in day["stops"]:
             add(f'{stop["start"]}-{stop["end"]} {stop["city"]} · {stop["place"]}')
             add(f'交通预留 {stop["travel_minutes"]} 分钟；全员费用 {stop["cost"]} 元。{stop["notes"]}')

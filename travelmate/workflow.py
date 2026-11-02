@@ -1,7 +1,7 @@
 """Checkpointed planning state and deterministic itinerary checks."""
 import json
-from datetime import date, timedelta
-from typing import NotRequired
+from datetime import date as CalendarDate, timedelta
+from typing import NotRequired, Literal
 
 from langchain.agents import AgentState
 from langchain.tools import ToolRuntime, tool
@@ -14,9 +14,10 @@ from travelmate.public import public_data
 
 class Requirements(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
-    origin: str = Field(min_length=1, max_length=100)
+    origin: str | None = Field(default=None, min_length=1, max_length=100)
     destination: str = Field(min_length=1, max_length=100)
-    start_date: date
+    start_date: CalendarDate | None = None
+    transport: Literal["不限", "高铁", "动车", "火车", "飞机", "自驾", "其他"] = "不限"
     days: int = Field(ge=1, le=30)
     travelers: int = Field(ge=1, le=100)
     budget: float = Field(gt=0, le=1e8)
@@ -36,7 +37,7 @@ class Stop(BaseModel):
 
 
 class Day(BaseModel):
-    date: date
+    date: CalendarDate | None = Field(default=None, description="未提供出发日期时为 null，按列表顺序表示第几天")
     stops: list[Stop] = Field(min_length=1, max_length=20)
 
 
@@ -55,9 +56,9 @@ def validate_plan(requirements, plan):
     req = Requirements.model_validate(requirements)
     plan = Itinerary.model_validate(plan)
     issues = []
-    expected = [req.start_date + timedelta(days=i) for i in range(req.days)]
+    expected = [req.start_date + timedelta(days=i) if req.start_date else None for i in range(req.days)]
     if [day.date for day in plan.days] != expected:
-        issues.append("行程日期必须连续，且与开始日期、天数一致")
+        issues.append("行程日期与天数必须一致；未指定开始日期时，各天日期应留空")
     total = round(plan.other_cost + sum(s.cost for d in plan.days for s in d.stops), 2)
     if total > req.budget:
         issues.append(f"全员总费用 {total} 元超过预算 {req.budget} 元")
@@ -80,10 +81,13 @@ def result(runtime, state):
 
 @tool
 def update_trip(conditions: dict, runtime: ToolRuntime) -> Command:
-    """从用户原话提取/修改旅行条件。仅传用户已给出的字段；缺失项返回追问。字段：origin,destination,start_date(YYYY-MM-DD),days,travelers,budget(全员人民币),preferences。"""
+    """从用户原话提取/修改旅行条件。仅传用户已给出的字段；缺失项返回追问。字段：origin(可选),destination,start_date(可选，YYYY-MM-DD),transport(不限/高铁/动车/火车/飞机/自驾/其他),days,travelers,budget(全员人民币),preferences。未提供出发地/日期时不要追问，不要猜测；可用 null 清除。"""
     old = runtime.state.get("workflow", {})
     merged = {**old.get("requirements", {}), **conditions}
-    missing = [key for key in ("origin", "destination", "start_date", "days", "travelers", "budget")
+    for key in ("origin", "start_date"):
+        if merged.get(key) == "":
+            merged[key] = None
+    missing = [key for key in ("destination", "days", "travelers", "budget")
                if merged.get(key) in (None, "")]
     if missing:
         return result(runtime, {"requirements": merged, "status": "collecting", "missing": missing})

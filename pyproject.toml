@@ -20,6 +20,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<10"]
+rail = ["mcp>=1.26,<2"]
 aliyun = [
     "alibabacloud-bailian20231229>=2.14.5",
 ]
