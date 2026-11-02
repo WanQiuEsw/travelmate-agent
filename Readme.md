@@ -62,6 +62,15 @@ GET /health 为进程健康检查，不验证外部模型是否可用。API 为�
 uv run pytest -q
 ```
 
+离线测试会隔离本机 `.env` 和真实服务密钥，默认使用本地知识库。不安装阿里云 SDK 时，3 项 SDK 相关测试会显示 `skipped`，这是正常跳过。若实际运行配置为 `KNOWLEDGE_PROVIDER=aliyun`，或要运行完整云知识库模拟测试，请执行：
+
+```powershell
+uv sync --extra dev --extra aliyun
+uv run --extra dev --extra aliyun pytest -q
+```
+
+测试报错时先执行 `uv run pytest -x -q --tb=short`，只显示首个失败，优先排查最后一条异常；测试通过后再进行真实服务联调。
+
 可选前端渲染回归检查（开发验证才需要 Node）：`node --test tests/markdown.test.mjs`。已用离线测试模型完成网页逐步显示、表格与链接、刷新恢复、历史切换、错误保留输入和窄屏检查；不代表真实模型和云知识库联调。
 
 离线测试使用确定性的测试模型驱动真实 create_agent 工具循环，不调用付费接口。覆盖预算、知识检索、未配置搜索、SQLite 重启与隔离、API 校验和上游错误脱敏。尚未验证真实模型与 Tavily 的账号权限、网络和生成质量。
