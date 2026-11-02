@@ -5,13 +5,13 @@ import pytest
 
 from fastapi.testclient import TestClient
 
-from travelmate.agent import open_agent, chat, delete_sessions, move_sessions, conversation
+from travelmate.agent import open_agent, chat, delete_sessions, pin_sessions, conversation
 from travelmate.api import create_app
 from travelmate.public import public_answer
 from test_travelmate import BudgetModel
 
 
-def test_session_groups_and_deletion_persist(tmp_path):
+def test_session_pins_and_deletion_persist(tmp_path):
     @contextmanager
     def factory():
         with open_agent(model=BudgetModel(), database=tmp_path / "sessions.sqlite") as agent:
@@ -21,18 +21,23 @@ def test_session_groups_and_deletion_persist(tmp_path):
         for key in ("one", "two", "three"):
             assert client.post("/chat", json={"session_id": key, "message": "预算"}).status_code == 200
         answer_id = client.get("/sessions/one").json()["messages"][-1]["message_id"]
-        assert client.post("/sessions/group", json={"session_ids": ["one", "two"], "group": " 家庭游 "}).status_code == 200
+        assert client.post("/sessions/pin", json={"session_ids": ["one", "two"], "pinned": True}).status_code == 200
         sessions = client.get("/sessions").json()["sessions"]
-        assert {row["session_id"] for row in sessions if row.get("group") == "家庭游"} == {"one", "two"}
-        assert client.post("/sessions/group", json={"session_ids": ["one", "missing"], "group": "错误"}).status_code == 404
+        assert {row["session_id"] for row in sessions if row.get("pinned") is True} == {"one", "two"}
+        assert client.post("/sessions/pin", json={"session_ids": ["one", "missing"], "pinned": True}).status_code == 404
         assert client.post("/sessions/delete", json={"session_ids": ["one", "../bad"]}).status_code == 422
         assert client.post("/sessions/delete", json={"session_ids": []}).status_code == 422
-        assert client.post("/sessions/group", json={"session_ids": ["one"], "group": "x" * 61}).status_code == 422
+        assert client.post("/sessions/pin", json={"session_ids": ["one"], "pinned": "invalid"}).status_code == 422
         assert client.get("/sessions/one").json()["messages"]
+        assert all(row["pinned"] for row in sessions[:2])
+        assert client.post("/sessions/group", json={"session_ids": ["one"], "group": "旧分组"}).status_code == 405
 
     with TestClient(create_app(factory)) as client:
-        assert sum(row.get("group") == "家庭游" for row in client.get("/sessions").json()["sessions"]) == 2
-        assert client.post("/sessions/group", json={"session_ids": ["two"], "group": ""}).status_code == 200
+        assert sum(row.get("pinned") is True for row in client.get("/sessions").json()["sessions"]) == 2
+        assert client.post("/sessions/pin", json={"session_ids": ["two"], "pinned": False}).status_code == 200
+        rows = client.get("/sessions").json()["sessions"]
+        assert rows[0]["session_id"] == "one" and rows[0]["pinned"] is True
+        assert next(row for row in rows if row["session_id"] == "two")["pinned"] is False
         assert client.delete("/sessions/three").status_code == 200
         assert client.post("/sessions/delete", json={"session_ids": ["one", "two", "one"]}).status_code == 200
         assert client.get("/sessions").json()["sessions"] == []
@@ -42,10 +47,10 @@ def test_session_groups_and_deletion_persist(tmp_path):
 
     with TestClient(create_app(factory)) as client:
         assert client.get("/sessions").json()["sessions"] == []
-        # Reusing an old key must not revive messages or group metadata.
+        # Reusing an old key must not revive messages or pin metadata.
         client.post("/chat", json={"session_id": "one", "message": "预算"})
         assert len(client.get("/sessions/one").json()["messages"]) == 2
-        assert "group" not in client.get("/sessions").json()["sessions"][0]
+        assert client.get("/sessions").json()["sessions"][0]["pinned"] is False
 
 
 def test_reference_labels_are_short_and_closing_advice_is_preserved():
@@ -59,9 +64,9 @@ def test_reference_labels_are_short_and_closing_advice_is_preserved():
 def test_delete_rolls_back_if_database_write_fails(tmp_path):
     with open_agent(model=BudgetModel(), database=tmp_path / "rollback.sqlite") as agent:
         chat(agent, "one", "预算")
-        move_sessions(agent, ["one"], "家庭游")
+        pin_sessions(agent, ["one"], True)
         with agent.checkpointer.cursor() as cur:
-            cur.execute("CREATE TRIGGER reject_delete BEFORE DELETE ON session_groups BEGIN SELECT RAISE(ABORT, 'test failure'); END")
+            cur.execute("CREATE TRIGGER reject_delete BEFORE DELETE ON session_pins BEGIN SELECT RAISE(ABORT, 'test failure'); END")
         with pytest.raises(sqlite3.IntegrityError):
             delete_sessions(agent, ["one"])
         assert len(conversation(agent, "one")["messages"]) == 2

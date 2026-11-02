@@ -44,11 +44,11 @@ uv run uvicorn travelmate.api:app --host 127.0.0.1 --port 8000
 - 失败保留输入并提示未完成，不展示未排版的部分回复；刷新后以服务端已保存的消息为准。流式请求不自动重试，以免重复提交；手动重新发送可能在历史中留下重复问题。
 - Enter 发送，Ctrl/Command + Enter 换行；中文输入法选字时不会误发送。蓝灰色页面、左侧历史记录、用户消息靠右与助手回复靠左、底部输入框；手机端可展开对话记录，支持手机布局和可见焦点样式。设计参考 UI UX Pro Max 的通用可读性、可访问性建议：https://github.com/nextlevelbuilder/ui-ux-pro-max-skill 。
 
-左侧历史记录支持单条删除、勾选后批量删除，以及批量移动到分组。输入新名称即可创建分组，也可选择已有分组；名称留空可移出分组。分组保存在同一个 SQLite 数据库中，重启后保留。删除需确认，并清除对应聊天、行程和回答导出记录。
+左侧历史记录上方提供全选和删除所选，每条对话右侧的“…”菜单支持删除、置顶和取消置顶；分享暂未开放。置顶保存在 SQLite 中，重启后保留，置顶对话优先显示。删除需确认，并清除对应聊天、行程和回答导出记录。
 
-进度与参考来源简要显示知识库名称和高德查询，网页来源保留链接；正文末尾的调整建议不会折叠进参考来源。
+执行记录隐藏中间查询失败、合并重复提示，以无编号列表展示，回答完成后自动折叠；展开时随聊天页面滚动。用户消息靠右显示且省略姓名。参考来源保留知识库名称和公开链接。
 
-会话管理接口：`DELETE /sessions/{session_id}` 删除单条；`POST /sessions/delete` 接收 `{"session_ids":["demo"]}` 批量删除；`POST /sessions/group` 接收 `{"session_ids":["demo"],"group":"家庭游"}` 批量分组（空字符串表示移出分组）。`GET /sessions` 的已分组会话附带 `group` 字段。
+会话管理接口：`DELETE /sessions/{session_id}` 删除单条；`POST /sessions/delete` 接收 `{"session_ids":["demo"]}` 批量删除；`POST /sessions/pin` 接收 `{"session_ids":["demo"],"pinned":true}` 置顶，`false` 取消置顶。`GET /sessions` 返回 `pinned` 并优先显示置顶对话。原分组入口和接口已移除。
 
 接口：`POST /chat/stream` 返回 SSE `status`、`token`、`done` 或 `error` 事件；`done` 包含最终回复，只有收到它才表示完整结束。`GET /sessions` 列出本地会话，`GET /sessions/{session_id}` 读取用户及最终助手消息，不返回工具内部消息。原 `POST /chat` 保留。
 
@@ -119,5 +119,3 @@ uv run python -m travelmate.check_amap
 旧的 `/trip`、`/trip/confirm` 和 `/trip/pdf` 接口保留兼容已有调用，网页不再使用它们。旧接口的确认限制不影响按回答导出。
 
 最小版本限制：结构化规划面向单一目的地城市、最多 30 天。城市检查依据结构化字段，不是独立地理认证。地点真实性、开放时间及路线估算仍取决于外部工具和模型正确使用结果；未核实资料会保留到 PDF，出行前需核实。
-
-车次查询支持免费自部署的第三方12306 MCP。快速规划中的出发地和日期可选，新增交通方式及铁路查询按钮；缺少出发条件可按第几天规划目的地攻略。[完整配置与排错教程](docs/12306-mcp-setup.md)。安装可选依赖 `uv sync --extra rail` 并配置 `RAIL_MCP_URL` 后启用。

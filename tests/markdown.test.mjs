@@ -157,6 +157,7 @@ for (const success of [true, false]) {
       assert.equal(elements.input.value, '规划杭州');
     }
     assert.equal(elements.send.disabled, false);
+    assert.equal(nodes(elements.messages).find(node => node.className === 'progress').open, !success);
     assert.ok(elements.messages.textContent.includes(success ? '已完成 · 已用时' : '已中断 · 已用时'));
   });
 }
@@ -223,10 +224,10 @@ test('closing advice and later headings stay outside collapsed references', () =
   }
 });
 
-test('batch move persists selection on failure and deletion clears the current conversation', async () => {
+test('pinning persists selection on failure and deletion clears the current conversation', async () => {
   const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history', 'sidebar']
     .map(id => [id, new Node('div')]));
-  let sessions = [{session_id: 'old-session', title: '重庆'}, {session_id: 'other', title: '杭州', group: '周末'}];
+  let sessions = [{session_id: 'old-session', title: '重庆'}, {session_id: 'other', title: '杭州', pinned: false}];
   const calls = [];
   let fail = false;
   let approve = true;
@@ -238,17 +239,21 @@ test('batch move persists selection on failure and deletion clears the current c
       if (url === '/sessions') return {ok: true, json: async () => ({sessions})};
       const data = JSON.parse(options.body); calls.push({url, data});
       if (fail) return {ok: false};
-      if (url === '/sessions/group') sessions = sessions.map(item => data.session_ids.includes(item.session_id) ? {...item, group: data.group} : item);
+      if (url === '/sessions/pin') sessions = sessions.map(item => data.session_ids.includes(item.session_id) ? {...item, pinned: data.pinned} : item);
       if (url === '/sessions/delete') sessions = sessions.filter(item => !data.session_ids.includes(item.session_id));
       return {ok: true};
     },
   });
   vm.runInContext(appSource, context);
   await vm.runInContext('refreshSessions()', context);
-  await vm.runInContext("selectedSessions.add('old-session'); selectedSessions.add('other'); manageSessions('/sessions/group', [...selectedSessions], '家庭游')", context);
+  await vm.runInContext("selectedSessions.add('old-session'); selectedSessions.add('other'); manageSessions('/sessions/pin', [...selectedSessions], true)", context);
   assert.equal(calls[0].data.session_ids.length, 2);
-  assert.equal(sessions[0].group, '家庭游');
-  assert.ok(elements.history.textContent.includes('家庭游'));
+  assert.equal(sessions[0].pinned, true);
+  assert.ok(elements.history.textContent.includes('取消置顶'));
+  assert.ok(!elements.history.textContent.includes('移动所选'));
+  const actions = nodes(elements.history).find(node => node.className === 'history-actions');
+  assert.equal(actions.children[1].disabled, true);
+  assert.equal(elements.history.children[0].children[0].textContent, '全选 / 取消');
   fail = true;
   await vm.runInContext("selectedSessions.add('old-session'); manageSessions('/sessions/delete', [...selectedSessions])", context);
   assert.equal(vm.runInContext('selectedSessions.size', context), 1);
@@ -262,4 +267,33 @@ test('batch move persists selection on failure and deletion clears the current c
   assert.equal(sessions.length, 1);
   assert.equal(vm.runInContext('session', context), 'new-session');
   assert.equal(elements.messages.children.length, 0);
+});
+
+test('progress hides intermediate errors, deduplicates updates, and has no numbered steps', () => {
+  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history']
+    .map(id => [id, new Node('div')]));
+  const context = vm.createContext({
+    document: {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []},
+    renderMarkdown, setInterval, clearInterval,
+    localStorage: {getItem: () => 'test', setItem() {}},
+  });
+  vm.runInContext(appSource, context);
+  vm.runInContext(`
+    const userBody = appendMessage('你', '旅行需求', true);
+    const replyBody = appendMessage('TravelMate', '');
+    const progress = createProgress(replyBody);
+    progress.add('正在通过高德查询…');
+    progress.add('正在通过高德查询…');
+    progress.add('通过高德查询失败，相关信息尚未核实。');
+    progress.finish(true);
+  `, context);
+  const user = elements.messages.children[0];
+  assert.equal(user.children.length, 1);
+  assert.equal(user.textContent, '旅行需求');
+  assert.equal(user['aria-label'], '你的消息');
+  const progress = nodes(elements.messages).find(node => node.className === 'progress');
+  assert.equal(progress.open, false);
+  assert.equal(nodes(progress).filter(node => node.tagName === 'OL').length, 0);
+  assert.equal(nodes(progress).filter(node => node.tagName === 'LI' && node.textContent === '正在通过高德查询…').length, 1);
+  assert.ok(!progress.textContent.includes('失败'));
 });

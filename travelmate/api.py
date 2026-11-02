@@ -4,15 +4,14 @@ import json
 from pathlib import Path
 from contextlib import asynccontextmanager, contextmanager
 from threading import Lock
-from typing import Annotated, Literal
+from typing import Annotated
 
 from fastapi import FastAPI, HTTPException
 from fastapi import Path as PathParam
 from fastapi.responses import FileResponse, StreamingResponse, Response
 from pydantic import BaseModel, Field, field_validator, StringConstraints
 
-from travelmate.rail import search_train_tickets
-from travelmate.agent import chat, conversation, conversations, open_agent, stream_chat, move_sessions, delete_sessions
+from travelmate.agent import chat, conversation, conversations, open_agent, stream_chat, pin_sessions, delete_sessions
 from travelmate.workflow import Itinerary, get_workflow, save_workflow, validate_plan
 from travelmate.pdf_export import itinerary_pdf, answer_pdf
 
@@ -41,20 +40,8 @@ class SessionSelection(BaseModel):
     session_ids: list[SessionKey] = Field(min_length=1, max_length=500)
 
 
-class SessionGroup(SessionSelection):
-    group: str = Field(max_length=60)
-
-    @field_validator("group")
-    @classmethod
-    def clean_group(cls, value):
-        return value.strip()
-
-
-class RailRequest(BaseModel):
-    origin: str = Field(min_length=1, max_length=80)
-    destination: str = Field(min_length=1, max_length=80)
-    departure_date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
-    transport: Literal["高铁", "动车", "火车"] = "火车"
+class SessionPin(SessionSelection):
+    pinned: bool = Field(strict=True)
 
 
 def create_app(agent_factory=open_agent):
@@ -88,10 +75,6 @@ def create_app(agent_factory=open_agent):
     @app.get("/health")
     def health():
         return {"status": "ok"}
-
-    @app.post("/transport/trains")
-    def train_search(request: RailRequest):
-        return search_train_tickets.invoke(request.model_dump())
 
     @app.get("/sessions")
     def list_sessions():
@@ -128,14 +111,14 @@ def create_app(agent_factory=open_agent):
             delete_sessions(app.state.agent, [session_id])
         return {"deleted": [session_id]}
 
-    @app.post("/sessions/group")
-    def group_selected(request: SessionGroup):
+    @app.post("/sessions/pin")
+    def pin_selected(request: SessionPin):
         with trip_lock():
             existing = {item["session_id"] for item in conversations(app.state.agent)}
             if any(key not in existing for key in request.session_ids):
                 raise HTTPException(404, "所选对话不存在，请刷新列表")
-            move_sessions(app.state.agent, request.session_ids, request.group)
-        return {"group": request.group}
+            pin_sessions(app.state.agent, request.session_ids, request.pinned)
+        return {"pinned": request.pinned}
 
     @app.get("/sessions/{session_id}/trip")
     def trip(session_id: SessionId):
