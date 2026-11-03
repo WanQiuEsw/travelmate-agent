@@ -111,8 +111,12 @@
   @media (max-width: 700px) { .interaction-fields { grid-template-columns: 1fr; } }
   .entry-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
   .entry-tools button { min-height: 36px; padding: 5px 12px; font-size: 13px; color: var(--accent); background: var(--tint); }
-  .quick-fill { margin-bottom: 12px; max-height: 42dvh; overflow-y: auto; }
-  .quick-fill summary { color: var(--accent); font-size: 13px; padding: 8px 0; }
+  .quick-fill { margin-bottom: 12px; color: var(--accent); font-size: 13px; }
+  .quick-plan-dialog { width: min(680px, calc(100% - 32px)); max-height: 85dvh; padding: 20px 24px; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 16px 60px #24324730; }
+  .quick-plan-dialog::backdrop { background: #182b4659; }
+  .quick-plan-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
+  .quick-plan-heading h2 { font-size: 20px; margin: 0; }
+  #trip-submit { background: var(--accent); color: white; border-color: var(--accent); }
   #trip-form { border: 0; border-radius: 0; box-shadow: none; padding: 8px 0; }
   .trip-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
   .trip-grid label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
@@ -171,28 +175,36 @@
   </div></div>
   <div class="composer"><div class="chat-width">
     <details id="interaction" class="interaction-card" hidden open aria-label="待补充的信息"></details>
-    <details class="quick-fill" id="quick-fill">
-      <summary>快速规划 · 填写目的地，选择交通方式</summary>
+    <button class="quick-fill" id="quick-fill-open" type="button" aria-haspopup="dialog" aria-controls="quick-fill">快速规划 ↗</button>
+    <dialog class="quick-plan-dialog" id="quick-fill" aria-labelledby="quick-plan-title" aria-describedby="quick-plan-description">
+      <div class="quick-plan-heading"><h2 id="quick-plan-title">快速规划旅行</h2><button id="quick-fill-close" type="button" aria-label="关闭快速规划">关闭</button></div>
+      <p class="trip-note" id="quick-plan-description">选择或填写旅行条件，点击“生成并发送”后会自动整理为完整需求并直接发送。</p>
       <form id="trip-form">
         <div class="trip-grid">
-          <label>目的地<input name="destination" required maxlength="80" placeholder="想去哪里？例如北京" list="trip-cities"></label>
-          <label>游玩天数<input name="days" type="number" min="1" max="30" step="1" required placeholder="例如 3" inputmode="numeric"></label>
-          <label>出行人数<input name="people" type="number" min="1" max="100" step="1" required placeholder="例如 2" inputmode="numeric"></label>
-          <label>全员总预算 / 元<input name="budget" type="number" min="1" max="10000000" step="1" required placeholder="例如 3000" inputmode="numeric"></label>
-          <label>交通方式<select name="transport"><option>不限</option><option>高铁</option><option>动车</option><option>火车</option><option>飞机</option><option>自驾</option><option>其他</option></select></label>
+          <label>目的地<input name="destination" required maxlength="80" placeholder="选择或填写城市" list="trip-cities" autofocus></label>
+          <label>游玩天数<input name="days" type="number" min="1" max="30" step="1" required placeholder="例如 3" inputmode="numeric" list="trip-days"></label>
+          <label>出行人数<input name="people" type="number" min="1" max="100" step="1" required placeholder="例如 2" inputmode="numeric" list="trip-people"></label>
+          <label>全员总预算 / 人民币元<input name="budget" type="number" min="1" max="10000000" step="1" required placeholder="例如 3000" inputmode="numeric" list="trip-budgets"></label>
+          <label>预算包含范围<select name="budgetIncludes" required aria-label="预算包含范围"><option value="">请选择</option><option>往返交通、住宿、餐饮、门票及市内交通全部费用</option><option>目的地内住宿、餐饮、门票及市内交通，不含往返大交通</option><option>餐饮、门票及市内交通，不含住宿和往返大交通</option></select></label>
+          <label>每天步数 / 行动限制<input name="mobility" required maxlength="1000" placeholder="选择建议或填写，如不爬坡" list="trip-mobility"></label>
+          <label>交通方式<select name="transport" aria-label="交通方式"><option>不限</option><option>高铁</option><option>动车</option><option>火车</option><option>飞机</option><option>自驾</option><option>其他</option></select></label>
           <label>出发日期 <span class="trip-optional">选填，未定可留空</span><input name="date" type="date"></label>
           <label>出发地 <span class="trip-optional">选填，查车次时填写</span><input name="origin" maxlength="80" placeholder="城市或车站，例如厦门北" list="trip-cities"></label>
         </div>
         <datalist id="trip-cities"><option value="福建厦门"><option value="北京"><option value="上海"><option value="杭州"><option value="成都"><option value="广州"><option value="西安"></datalist>
+        <datalist id="trip-days"><option value="1"><option value="2"><option value="3"><option value="5"><option value="7"><option value="10"><option value="14"></datalist>
+        <datalist id="trip-people"><option value="1"><option value="2"><option value="3"><option value="4"><option value="6"></datalist>
+        <datalist id="trip-budgets"><option value="1000"><option value="3000"><option value="5000"><option value="10000"></datalist>
+        <datalist id="trip-mobility"><option value="每天 5000 步以内，尽量不爬坡"><option value="每天 10000 步以内"><option value="每天 15000 步以内"><option value="无特别步数或行动限制"></datalist>
         <p class="trip-note">出发地和日期未定也能规划攻略。查询铁路车次时，请选择高铁、动车或火车，并填写出发地、目的地和日期。</p>
-        <div class="trip-actions"><button type="submit">生成旅行需求</button><button type="button" id="train-search">查询铁路车次</button></div>
+        <div class="trip-actions"><button type="submit" id="trip-submit">生成并发送</button><button type="button" id="train-search">查询铁路车次</button><button type="button" id="quick-fill-cancel">取消</button></div>
         <div id="train-results" class="train-results" role="status" aria-live="polite"></div>
       </form>
-    </details>
+    </dialog>
     <form id="form">
       <div class="entry-tools"><button id="preset" type="button">试试预设示例 ↗</button></div>
       <label class="input-label" for="input">你的旅行想法</label>
-      <textarea id="input" maxlength="8000" required placeholder="自由描述旅行想法，或使用上方的快速填写 / 预设示例…"></textarea>
+      <textarea id="input" maxlength="8000" required placeholder="自由描述旅行想法，或使用上方的快速规划 / 预设示例…"></textarea>
       <div class="actions"><span class="keyboard-hint">Enter 发送 · Ctrl + Enter 换行</span><button id="send" type="submit">发送 ↑</button></div>
     </form>
     <p id="status" role="status" aria-live="polite">准备好了，随时出发</p>
@@ -698,7 +710,7 @@
       status.textContent = '请求失败，请检查后端配置或网络。输入已保留，可重新发送。';
     } finally {
       progress.finish(done);
-      input.placeholder = '自由描述旅行想法，或使用上方的快速填写 / 预设示例…';
+      input.placeholder = '自由描述旅行想法，或使用上方的快速规划 / 预设示例…';
       send.textContent = '发送 ↑';
       busy = false;
       send.disabled = newChat.disabled = historySelect.disabled = input.disabled = false;
@@ -721,12 +733,20 @@
   const tripForm = document.querySelector('#trip-form');
   const tripInput = document.querySelector('#input');
   const tripPanel = document.querySelector('#quick-fill');
+  document.querySelector('#quick-fill-open').addEventListener('click', () => {
+    if (document.querySelector('#send').disabled || tripInput.disabled || tripPanel.open) return;
+    tripPanel.showModal();
+  });
+  for (const id of ['#quick-fill-close', '#quick-fill-cancel']) {
+    document.querySelector(id).addEventListener('click', () => tripPanel.close());
+  }
   function fillTripDraft(text) {
-    if (document.querySelector('#send').disabled || tripInput.disabled) return;
+    if (document.querySelector('#send').disabled || tripInput.disabled) return false;
     tripInput.value = text;
-    tripPanel.open = false;
+    if (tripPanel.open) tripPanel.close();
     tripInput.focus();
     tripInput.dispatchEvent(new Event('input', {bubbles: true}));
+    return true;
   }
   document.querySelector('#preset').addEventListener('click', () => {
     const tomorrow = new Intl.DateTimeFormat('zh-CN', {timeZone: 'Asia/Shanghai', year: 'numeric', month: 'numeric', day: 'numeric'}).format(new Date(Date.now() + 86400000)).split('/');
@@ -734,19 +754,19 @@
   });
   tripForm.addEventListener('submit', event => {
     event.preventDefault();
-    if (!tripForm.reportValidity()) return;
+    if (document.querySelector('#send').disabled || tripInput.disabled) return;
     const fields = tripForm.elements;
-    if (!fields.destination.value.trim()) {
-      document.querySelector('#status').textContent = '请填写目的地，不能只输入空格。';
-      return;
-    }
+    fields.destination.setCustomValidity(fields.destination.value.trim() ? '' : '请选择或填写目的地');
+    fields.mobility.setCustomValidity(fields.mobility.value.trim() ? '' : '请选择或填写步数与行动限制');
+    if (!tripForm.reportValidity()) return;
     const origin = fields.origin.value.trim();
     let departure = '';
     if (fields.date.value) {
       const [year, month, day] = fields.date.value.split('-');
       departure = `准备【${year}年${Number(month)}月${Number(day)}日】`;
     }
-    fillTripDraft(`我们【${fields.people.value}人】${departure}${origin ? `从【${origin}】出发` : ''}到【${fields.destination.value.trim()}】玩【${fields.days.value}天】，总预算【${fields.budget.value}元】，交通方式【${fields.transport.value}】。${!origin ? '出发地待定，' : ''}${!fields.date.value ? '出发日期待定，按第几天规划，' : ''}请帮我们规划行程。`);
+    const text = `我们【${fields.people.value}人】${departure}${origin ? `从【${origin}】出发` : ''}到【${fields.destination.value.trim()}】玩【${fields.days.value}天】，全员总预算【${fields.budget.value}元】人民币（CNY），预算包含【${fields.budgetIncludes.value.trim()}】，交通方式【${fields.transport.value}】，步数与行动限制【${fields.mobility.value.trim()}】。${!origin ? '出发地待定，' : ''}${!fields.date.value ? '出发日期待定，按第几天规划，' : ''}请帮我们规划行程。`;
+    if (fillTripDraft(text)) document.querySelector('#form').requestSubmit();
   });
   const trainSearch = document.querySelector('#train-search');
   const trainResults = document.querySelector('#train-results');
