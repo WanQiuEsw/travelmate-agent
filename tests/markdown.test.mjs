@@ -145,7 +145,7 @@ for (const success of [true, false]) {
     assert.equal(elements.send.disabled, true);
     assert.equal(elements.input.value, '');
     assert.equal(elements.input.disabled, true);
-    assert.ok(elements.status.textContent.includes('请勿关闭'));
+    assert.ok(elements.status.textContent.includes('可刷新页面恢复执行进度'));
     assert.ok(elements.messages.textContent.includes('官方攻略'));
     assert.equal(nodes(elements.messages).filter(node => node.tagName === 'A').length, 1);
     release();
@@ -393,12 +393,14 @@ test('reload polls an active session even before it appears in history', async (
     .map(id => [id, new Node('div')]));
   let poll;
   let generating = true;
+  let ticks = 0;
   const context = vm.createContext({
     document: {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []},
-    renderMarkdown, localStorage: {getItem: () => 'pending', setItem() {}},
+    renderMarkdown, crypto: {randomUUID: () => 'new-session'}, localStorage: {getItem: () => 'pending', setItem() {}},
+    setInterval() { ticks++; return ticks; }, clearInterval() { ticks--; },
     clearTimeout() { poll = undefined; }, setTimeout(callback) { poll = callback; return 1; },
     fetch: async url => ({ok: true, json: async () => url === '/sessions'
-      ? {sessions: []} : {generating, messages: generating ? [] : [{role: 'assistant', content: '旅行方案'}]}}),
+      ? {sessions: []} : {generating, progress: generating ? {message: '去杭州', started_at: Date.now() / 1000 - 10, steps: [{text: '正在查询景点'}]} : null, messages: generating ? [] : [{role: 'assistant', content: '旅行方案'}]}}),
   });
   vm.runInContext(appSource, context);
   await vm.runInContext('initialize()', context);
@@ -406,6 +408,16 @@ test('reload polls an active session even before it appears in history', async (
   assert.equal(elements.new.disabled, false);
   assert.match(elements.status.textContent, /仍在生成/);
   assert.equal(typeof poll, 'function');
+  assert.match(elements.messages.textContent, /去杭州/);
+  assert.match(elements.messages.textContent, /正在查询景点/);
+  assert.match(elements.messages.textContent, /已用时 10 秒/);
+  assert.equal(elements.send.textContent, '正在生成…');
+  assert.equal(ticks, 1);
+  const progress = nodes(elements.messages).find(node => node.className === 'progress');
+  poll();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(nodes(elements.messages).find(node => node.className === 'progress'), progress);
+  assert.equal(ticks, 1);
   elements.input.value = '保留草稿';
   generating = false;
   poll();
@@ -414,4 +426,14 @@ test('reload polls an active session even before it appears in history', async (
   assert.match(elements.messages.textContent, /旅行方案/);
   assert.equal(elements.input.value, '保留草稿');
   assert.equal(poll, undefined);
+  assert.equal(ticks, 0);
+  assert.equal(elements.send.textContent, '发送 ↑');
+  generating = true;
+  await vm.runInContext('loadConversation(session)', context);
+  assert.equal(ticks, 1);
+  elements.new.handlers.click();
+  assert.equal(ticks, 0);
+  assert.equal(poll, undefined);
+  assert.equal(elements.send.disabled, false);
+  assert.equal(elements.messages.children.length, 0);
 });

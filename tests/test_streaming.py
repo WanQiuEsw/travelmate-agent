@@ -126,3 +126,63 @@ def test_refresh_during_generation_does_not_wait_for_model(tmp_path, monkeypatch
         history = client.get("/sessions/refresh").json()
         assert history["generating"] is False
         assert len(history["messages"]) == 2
+
+
+def test_disconnected_stream_keeps_progress_and_completes(tmp_path, monkeypatch):
+    import asyncio
+    from threading import Event
+    import travelmate.api as api
+
+    release, completed = Event(), Event()
+    original = api.stream_chat
+
+    def paused_stream(*args):
+        yield "status", {"text": "正在查询景点", "sources": [{"title": "景区官网", "url": "https://example.com"}]}
+        assert release.wait(10), "test did not release generation"
+        try:
+            yield from original(*args)
+        finally:
+            completed.set()
+
+    monkeypatch.setattr(api, "stream_chat", paused_stream)
+
+    @contextmanager
+    def factory():
+        with open_agent(legacy_tool_loop=True, model=StreamingBudgetModel(), database=tmp_path / "disconnect.sqlite") as agent:
+            yield agent
+
+    app = create_app(factory)
+    endpoint = next(route.endpoint for route in app.routes if route.path == "/chat/stream")
+
+    async def disconnect():
+        sent = asyncio.Event()
+
+        async def send(frame):
+            if frame.get("body", b"").find("正在查询景点".encode()) >= 0:
+                sent.set()
+
+        async def receive():
+            await sent.wait()
+            return {"type": "http.disconnect"}
+
+        response = endpoint(api.ChatRequest(session_id="reload", message="预算"))
+        await response({"type": "http", "asgi": {"spec_version": "2.0"}}, receive, send)
+
+    with TestClient(app) as client:
+        try:
+            asyncio.run(disconnect())
+            history = client.get("/sessions/reload").json()
+            assert history["generating"] is True
+            assert history["progress"]["message"] == "预算"
+            assert history["progress"]["started_at"] > 0
+            assert history["progress"]["steps"][-1]["text"] == "正在查询景点"
+            assert history["progress"]["steps"][-1]["sources"][0]["title"] == "景区官网"
+        finally:
+            release.set()
+        assert completed.wait(10)
+        # Wait for the worker's generation guard to release as well.
+        app.state.executor.shutdown(wait=True)
+        history = client.get("/sessions/reload").json()
+        assert history["generating"] is False
+        assert history["progress"] is None
+        assert history["messages"][-1]["content"] == "预算合计1800元\n供参考"

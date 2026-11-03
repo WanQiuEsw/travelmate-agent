@@ -3,7 +3,10 @@ import logging
 import json
 from pathlib import Path
 from contextlib import asynccontextmanager, contextmanager
-from threading import Lock
+from threading import Lock, Event
+from concurrent.futures import ThreadPoolExecutor
+from queue import Queue, Empty
+from time import time
 from typing import Annotated, Literal
 
 from fastapi import FastAPI, HTTPException
@@ -61,14 +64,15 @@ class RailRequest(BaseModel):
 def create_app(agent_factory=open_agent):
     @asynccontextmanager
     async def lifespan(app):
-        with agent_factory() as agent:
+        with agent_factory() as agent, ThreadPoolExecutor(max_workers=2) as executor:
             app.state.agent = agent
+            app.state.executor = executor
             yield
 
     app = FastAPI(title="TravelMate (local)", lifespan=lifespan)
     # Serialize checkpoint updates, including concurrent requests for the same session.
     lock = Lock()
-    generating = set()
+    generating = {}
 
     @contextmanager
     def trip_lock():
@@ -80,14 +84,14 @@ def create_app(agent_factory=open_agent):
             lock.release()
 
     @contextmanager
-    def generation_lock(session_id):
+    def generation_lock(session_id, message):
         if not lock.acquire(blocking=False):
             raise HTTPException(409, "正在生成回复或处理其他请求，请稍后再试")
-        generating.add(session_id)
+        generating[session_id] = {"message": message, "started_at": time(), "steps": []}
         try:
             yield
         finally:
-            generating.discard(session_id)
+            generating.pop(session_id, None)
             lock.release()
 
     @app.get("/", include_in_schema=False)
@@ -113,14 +117,16 @@ def create_app(agent_factory=open_agent):
     @app.get("/sessions/{session_id}")
     def history(session_id: Annotated[str, PathParam(min_length=1, max_length=100,
                                                    pattern=r"^[a-zA-Z0-9_-]+$")]):
-        was_generating = session_id in generating
-        return {**conversation(app.state.agent, session_id),
-                "generating": was_generating or session_id in generating}
+        run = generating.get(session_id)
+        history = conversation(app.state.agent, session_id)
+        run = generating.get(session_id) or run
+        return {**history, "generating": run is not None,
+                "progress": {**run, "steps": list(run["steps"])} if run else None}
 
     @app.post("/chat", response_model=ChatResponse)
     def respond(request: ChatRequest):
         try:
-            with generation_lock(request.session_id):
+            with generation_lock(request.session_id, request.message):
                 answer = chat(app.state.agent, request.session_id, request.message)
             return ChatResponse(session_id=request.session_id, answer=answer)
         except HTTPException:
@@ -245,15 +251,46 @@ def create_app(agent_factory=open_agent):
 
     @app.post("/chat/stream")
     def respond_stream(request: ChatRequest):
-        def events():
+        # The producer survives a browser reload; the stream only delivers its events.
+        queue = Queue()
+        disconnected = Event()
+
+        def publish(event, data):
+            if event == "status" and request.session_id in generating:
+                steps = generating[request.session_id]["steps"]
+                if data not in steps:
+                    steps.append(data)
+            if not disconnected.is_set():
+                queue.put(f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n")
+
+        def generate():
             try:
-                with generation_lock(request.session_id):
-                    yield 'event: status\ndata: {"text":"正在理解你的旅行需求…"}\n\n'
+                with generation_lock(request.session_id, request.message):
+                    publish("status", {"text": "正在理解你的旅行需求…"})
                     for event, data in stream_chat(app.state.agent, request.session_id, request.message):
-                        yield f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+                        publish(event, data)
             except Exception:
                 logging.getLogger(__name__).warning("Agent stream failed")
-                yield 'event: error\ndata: {"text":"回复中断，请检查配置或网络后重试"}\n\n'
+                publish("error", {"text": "回复中断，请检查配置或网络后重试"})
+            finally:
+                queue.put(None)
+
+        app.state.executor.submit(generate)
+
+        def events():
+            try:
+                while True:
+                    try:
+                        frame = queue.get(timeout=1)
+                    except Empty:
+                        yield ": heartbeat\n\n"
+                        continue
+                    if frame is None:
+                        break
+                    yield frame
+            finally:
+                disconnected.set()
+
         return StreamingResponse(events(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 

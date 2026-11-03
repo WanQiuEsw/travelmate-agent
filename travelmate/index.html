@@ -75,6 +75,9 @@
   .progress ul { list-style: none; padding: 0; margin: 12px 0 0; }
   .progress li { color: var(--muted); margin: 6px 0; }
   .progress summary { color: var(--accent); }
+  .content[aria-busy="true"] .progress summary::after { content: ''; display: inline-block; width: 12px; height: 12px; margin-left: 10px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: progress-spin 1s linear infinite; }
+  @keyframes progress-spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .content[aria-busy="true"] .progress summary::after { animation: none; } }
   .references { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 10px; color: var(--muted); font-size: 13px; }
   summary { cursor: pointer; }
   .guide-link { margin-left: 10px; }
@@ -185,12 +188,6 @@
   try { session = localStorage.getItem('travelmate-session'); } catch {}
   if (!session || !/^[a-zA-Z0-9_-]{1,100}$/.test(session)) session = crypto.randomUUID();
   let busy = false;
-  let answering = false;
-  globalThis.addEventListener?.('beforeunload', event => {
-    if (!answering) return;
-    event.preventDefault();
-    event.returnValue = '';
-  });
   const selectedSessions = new Set();
   let multiSelect = false;
   function actionIcon(name) {
@@ -241,7 +238,7 @@
   }
   function showReply(body, text) { body.classList.remove('plain'); renderMarkdown(body, text); }
 
-  function createProgress(reply) {
+  function createProgress(reply, started = Date.now()) {
     const box = document.createElement('details');
     box.className = 'progress';
     box.open = true;
@@ -252,7 +249,6 @@
     reply.replaceChildren(box);
     const answer = document.createElement('div');
     reply.append(answer);
-    const started = Date.now();
     let phase = '正在处理';
     const tick = () => { summary.textContent = phase + ' · 已用时 ' + Math.floor((Date.now() - started) / 1000) + ' 秒'; };
     tick();
@@ -439,11 +435,18 @@
   }
 
   let recoveryTimer;
+  let recoveryProgress;
+  function stopRecovery() {
+    clearTimeout(recoveryTimer);
+    recoveryProgress?.finish(false);
+    recoveryProgress = null;
+  }
   async function loadConversation(id, recovering = false) {
     if (busy) return;
     busy = true;
     send.disabled = newChat.disabled = historySelect.disabled = true;
     clearTimeout(recoveryTimer);
+    if (!recovering) stopRecovery();
     let generating = false;
     status.textContent = '正在恢复对话…';
     try {
@@ -454,18 +457,33 @@
       session = id;
       rememberSession();
       if (!recovering) input.value = '';
-      messages.replaceChildren();
-      for (const item of data.messages) {
-        const body = appendMessage(item.role === 'user' ? '你' : 'TravelMate', item.content, item.role === 'user');
-        if (item.role === 'assistant') addExport(body, item.message_id, id, item.plan_version);
+      if (!generating || !recovering || !recoveryProgress) {
+        stopRecovery();
+        messages.replaceChildren();
+        for (const item of data.messages) {
+          const body = appendMessage(item.role === 'user' ? '你' : 'TravelMate', item.content, item.role === 'user');
+          if (item.role === 'assistant') addExport(body, item.message_id, id, item.plan_version);
+        }
+        if (generating) {
+          const last = data.messages[data.messages.length - 1];
+          if (data.progress?.message && !(last?.role === 'user' && last.content === data.progress.message)) {
+            appendMessage('你', data.progress.message, true);
+          }
+          const reply = appendMessage('TravelMate', '');
+          reply.setAttribute('aria-busy', 'true');
+          recoveryProgress = createProgress(reply, data.progress?.started_at ? data.progress.started_at * 1000 : Date.now());
+        }
       }
+      for (const step of data.progress?.steps || []) recoveryProgress?.add(step.text, step.sources);
 
       status.textContent = generating ? '回复仍在生成，完成后会自动恢复。' : data.interrupted ? '上次回复未完成，可继续补充需求。' : '对话已恢复，可以继续聊';
     } catch {
-      status.textContent = '历史对话加载失败，请刷新后重试。';
+      stopRecovery();
+      status.textContent = '进度恢复失败，请刷新重试；后台任务不受影响。';
     } finally {
       busy = false;
       send.disabled = generating;
+      send.textContent = generating ? '正在生成…' : '发送 ↑';
       newChat.disabled = historySelect.disabled = false;
       if (generating) recoveryTimer = setTimeout(() => {
         if (session === id) loadConversation(id, true);
@@ -491,8 +509,9 @@
   }
 
   function resetConversation() {
-    clearTimeout(recoveryTimer);
+    stopRecovery();
     send.disabled = false;
+    send.textContent = '发送 ↑';
     session = crypto.randomUUID();
     rememberSession();
     input.value = '';
@@ -525,13 +544,12 @@
     busy = true;
     send.disabled = newChat.disabled = historySelect.disabled = true;
     input.disabled = true;
-    answering = true;
     input.value = '';
     input.placeholder = '答案正在输出，请稍候…';
     send.textContent = '正在输出…';
     appendMessage('你', text, true);
     messages.lastElementChild?.scrollIntoView({block: 'start'});
-    const outputNotice = '答案正在输出，请等待完成后再发送，请勿关闭或刷新页面。';
+    const outputNotice = '答案正在生成，可刷新页面恢复执行进度。';
     status.textContent = outputNotice;
     const reply = appendMessage('TravelMate', '正在整理回复，完成排版后将显示在这里…');
     const progress = createProgress(reply);
@@ -589,7 +607,6 @@
       status.textContent = '请求失败，请检查后端配置或网络。输入已保留，可重新发送。';
     } finally {
       progress.finish(done);
-      answering = false;
       input.placeholder = '自由描述旅行想法，或使用上方的快速填写 / 预设示例…';
       send.textContent = '发送 ↑';
       busy = false;
