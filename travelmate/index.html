@@ -77,6 +77,7 @@
   .progress summary { color: var(--accent); }
   .references { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 10px; color: var(--muted); font-size: 13px; }
   summary { cursor: pointer; }
+  .guide-link { margin-left: 10px; }
   .export-pdf { display: inline-block; margin-top: 18px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
   .table-scroll { overflow-x: auto; margin: 16px 0; }
   table { border-collapse: collapse; width: 100%; font-size: 14px; }
@@ -219,7 +220,7 @@
       menu.querySelector('summary').focus();
     }
   });
-  function addExport(body, messageId, sessionId = session) {
+  function addExport(body, messageId, sessionId = session, planVersion = null) {
     if (!/^[a-f0-9]{32}$/.test(messageId || '')) return;
     const link = document.createElement('a');
     link.className = 'export-pdf';
@@ -228,6 +229,15 @@
     link.target = '_blank';
     link.rel = 'noopener';
     body.append(link);
+    if (Number.isInteger(planVersion) && planVersion > 0) {
+      const guide = document.createElement('a');
+      guide.className = 'export-pdf guide-link';
+      guide.textContent = '查看攻略';
+      guide.href = '/sessions/' + encodeURIComponent(sessionId) + '/plans/' + planVersion;
+      guide.target = '_blank';
+      guide.rel = 'noopener';
+      body.append(guide);
+    }
   }
   function showReply(body, text) { body.classList.remove('plain'); renderMarkdown(body, text); }
 
@@ -443,7 +453,7 @@
       messages.replaceChildren();
       for (const item of data.messages) {
         const body = appendMessage(item.role === 'user' ? '你' : 'TravelMate', item.content, item.role === 'user');
-        if (item.role === 'assistant') addExport(body, item.message_id, id);
+        if (item.role === 'assistant') addExport(body, item.message_id, id, item.plan_version);
       }
 
       status.textContent = data.interrupted ? '上次回复未完成，可继续补充需求。' : '对话已恢复，可以继续聊';
@@ -550,7 +560,7 @@
           }
           if (event === 'done') {
             showReply(progress.answer, data.answer);
-            addExport(progress.answer, data.message_id);
+            addExport(progress.answer, data.message_id, data.session_id || session, data.plan_version);
             reply.setAttribute('aria-busy', 'false');
             done = true;
           }

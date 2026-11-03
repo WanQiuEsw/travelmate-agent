@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from travelmate.workflow import PlanningState, update_trip, Itinerary, validate_plan, PartialRequirements
 from travelmate.evidence import normalize, validate_evidence, context_key
 from travelmate.public import public_data
+from travelmate.guide import version_snapshot
 from travelmate.review import ReviewReport, program_review, blocking_messages, plan_key
 
 
@@ -128,7 +129,7 @@ def build_planner(model, saver, knowledge, tools, prompt):
         w = state["workflow"]
         try:
             evidence = {k: v for k, v in state.get("evidence", {}).items() if v["context"] == context_key(w["requirements"])}
-            candidate = structured(Itinerary, "生成或按issues修订结构化行程。费用为全员人民币估算；未知日期为null。仅使用提供的真实evidence引用。未查询的字段不写已核实。遵守已订安排、返程时限及排除项；activities准确标注climbing等活动。高风险安排填写具体备选，补充有用的行前提醒。", {"requirements": w["requirements"], "areas": state["areas"], "research": state["research_data"], "evidence": evidence, "previous_candidate": state.get("candidate"), "issues": w.get("issues", [])})
+            candidate = structured(Itinerary, "生成或按issues修订结构化行程。费用为全员人民币估算；未知日期为null。每个活动满足上一活动end+本活动travel_minutes<=本活动start；本活动start/end仅为停留时间，不能把交通重复排进停留。仅使用提供的真实evidence引用。未查询的字段不写已核实。遵守已订安排、返程时限及排除项；activities准确标注climbing等活动。高风险安排填写具体备选，补充有用的行前提醒。", {"requirements": w["requirements"], "areas": state["areas"], "research": state["research_data"], "evidence": evidence, "previous_candidate": state.get("candidate"), "issues": w.get("issues", [])})
             return {"workflow": stage(w, "generate", attempts=w.get("attempts", 0) + 1), "candidate": candidate.model_dump(mode="json")}
         except Exception:
             return fail(w, "generate_failed")
@@ -146,10 +147,10 @@ def build_planner(model, saver, knowledge, tools, prompt):
                 {"requirements": w["requirements"], "candidate": state["candidate"],
                  "program_issues": w["program_issues"], "evidence": {k: v for k, v in state.get("evidence", {}).items()
                     if v["context"] == context_key(w["requirements"])}}, role_prompt=role)
-            combined = [*w["program_issues"], *report.model_dump()["issues"]]
+            combined = public_data([*w["program_issues"], *report.model_dump()["issues"]])
             messages = blocking_messages(combined)
             review_data = {"prompt_version": "reviewer-v1", "candidate_hash": plan_key(state["candidate"]),
-                           "attempt": w["attempts"], "issues": combined}
+                           "attempt": w["attempts"], "issues": public_data(combined)}
             return {"workflow": stage(w, "quality_review", review=review_data,
                     review_history=[*w.get("review_history", []), review_data], issues=messages,
                     status="blocked" if messages and w["attempts"] >= 3 else "adjusting" if messages else "validated")}
@@ -166,6 +167,7 @@ def build_planner(model, saver, knowledge, tools, prompt):
                          "total": w["candidate_total"], "saved_at": datetime.now(timezone.utc).isoformat(),
                          "review": w.get("review", {}),
                          "evidence_ids": [k for k, v in state.get("evidence", {}).items() if v["context"] == context_key(w["requirements"])]})
+        versions[-1] = version_snapshot(versions[-1], state.get("evidence", {}))
         return {"workflow": stage(w, "save_version", versions=versions, version=version,
                                   plan=state["candidate"], plan_requirements=w["requirements"], total=w["candidate_total"], status="review")}
 
@@ -195,7 +197,7 @@ def build_planner(model, saver, knowledge, tools, prompt):
         summaries = list(dict.fromkeys(f"{('[' + r['title'] + '](' + r['url'] + ')') if r.get('url') else r['title']}（查询时间{r['queried_at']}）：{ {'success': '查询匹配' if r['verification'] == 'matched' else '文档参考', 'empty': '无结果', 'failed': '查询失败', 'out_of_range': '超查询范围'}[r['query_status']]}" for r in records))
         if summaries:
             text += "\n## 参考来源\n" + "\n".join("- " + item for item in summaries)
-        return {"workflow": stage(w, "present"), "messages": [AIMessage(content=text)]}
+        return {"workflow": stage(w, "present"), "messages": [AIMessage(content=text, additional_kwargs={"plan_version": w["version"]} if w["status"] == "review" else {})]}
 
     graph = StateGraph(PlanningState)
     for name, fn in (("intake", intake), ("research", research), ("organize", organize), ("verify_places", verify_places),

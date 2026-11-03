@@ -361,3 +361,21 @@ test('multi-select is opt-in, has only bottom deletion, and preserves selection 
   assert.equal(vm.runInContext('multiSelect', context), false);
   assert.equal(nodes(elements.history).filter(node => node.className === 'selection-footer').length, 0);
 });
+
+
+test('guide links bind to completed answer version and original session', async () => {
+  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history']
+    .map(id => [id, new Node('div')]));
+  const context = vm.createContext({
+    document: {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []},
+    renderMarkdown, localStorage: {getItem: () => 'session-shanghai', setItem() {}},
+  });
+  vm.runInContext(appSource, context);
+  vm.runInContext(`session = 'trip-old';
+    addExport(appendMessage('TravelMate', '旧攻略'), 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', session, 1);
+    session = 'trip-new';
+    addExport(appendMessage('TravelMate', '新攻略'), 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', session, 2);`, context);
+  const links = nodes(elements.messages).filter(node => node.className === 'export-pdf guide-link');
+  assert.equal(links[0].href, '/sessions/trip-old/plans/1');
+  assert.equal(links[1].href, '/sessions/trip-new/plans/2');
+});

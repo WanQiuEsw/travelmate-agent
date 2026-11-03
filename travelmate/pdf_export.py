@@ -91,3 +91,36 @@ def answer_pdf(text):
     SimpleDocTemplate(output, title="TravelMate 旅行方案", leftMargin=48, rightMargin=48,
                       topMargin=42, bottomMargin=45).build(story, onFirstPage=footer, onLaterPages=footer)
     return output.getvalue()
+
+
+def guide_pdf(guide):
+    """Render the exact frozen public document used by the HTML preview."""
+    from html import escape as html_escape
+    from travelmate.evidence import safe_url
+    pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
+    body = ParagraphStyle("GuideBody", fontName="STSong-Light", fontSize=10.5, leading=17,
+                          wordWrap="CJK", spaceAfter=8, textColor="#243b35", splitLongWords=1)
+    title = ParagraphStyle("GuideTitle", parent=body, fontSize=23, leading=30, spaceAfter=18)
+    heading = ParagraphStyle("GuideHeading", parent=body, fontSize=15, leading=23, spaceBefore=14,
+                             spaceAfter=10, keepWithNext=True)
+    meta = ParagraphStyle("GuideMeta", parent=body, fontSize=9, leading=15, textColor="#53645b")
+    story = [Paragraph(escape(guide["title"]), title),
+             Paragraph(escape(f"版本 {guide['version']} · 保存于 {guide['saved_at']}"), meta),
+             Paragraph(escape(guide["notice"]), meta)]
+    for section in guide["sections"]:
+        story.append(Paragraph(escape(section["title"]), heading))
+        for item in section["items"]:
+            content = escape(item["text"]).replace("\n", "<br/>")
+            story.append(Paragraph(content, body))
+            url = safe_url(item.get("link"))
+            if url:
+                story.append(Paragraph(f'<link href="{html_escape(url, quote=True)}" color="#236d57">{escape(item.get("link_label", "公开来源"))}</link>', meta))
+    def footer(canvas, doc):
+        canvas.setFont("STSong-Light", 9)
+        canvas.setFillColorRGB(.33, .4, .36)
+        canvas.drawString(42, 26, f"TravelMate · 版本 {guide['version']}")
+        canvas.drawRightString(553, 26, str(doc.page))
+    output = BytesIO()
+    SimpleDocTemplate(output, title=guide["title"], leftMargin=42, rightMargin=42, topMargin=40,
+                      bottomMargin=44).build(story, onFirstPage=footer, onLaterPages=footer)
+    return output.getvalue()

@@ -19,8 +19,14 @@ def context_key(requirements):
 
 
 def safe_url(value):
-    if isinstance(value, str) and urlparse(value).scheme in ("http", "https") and not urlparse(value).username:
-        return value
+    if not isinstance(value, str) or any(char.isspace() or ord(char) < 32 for char in value):
+        return None
+    try:
+        parsed = urlparse(value)
+        if parsed.scheme in ("http", "https") and parsed.hostname and not parsed.username and not parsed.password:
+            return value
+    except ValueError:
+        pass
     return None
 
 
@@ -46,6 +52,7 @@ def normalize(name, args, data, call_id, requirements, now=None):
     elif name == "search_places":
         for row in rows:
             add("place", row.get("name"), "高德地图地点搜索")
+            records[next(reversed(records))].update(location=row.get("location"), address=row.get("address"))
     elif name == "search_route":
         for row in rows:
             if row.get("duration") is not None:

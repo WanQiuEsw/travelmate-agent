@@ -19,3 +19,8 @@ def test_amap_reference_keeps_query_failure_status():
     text = "## 参考来源\n- 高德地图地点搜索：查询失败\n- 高德地图地点搜索：查询匹配"
     assert "查询失败" in public_answer(text)
     assert "查询匹配" in public_answer(text)
+
+
+def test_review_evidence_identifiers_hidden_in_prose():
+    from travelmate.public import public_answer
+    assert "a" * 32 not in public_answer("引用" + " " + "a" * 32 + ":0 的地点仍待核实")

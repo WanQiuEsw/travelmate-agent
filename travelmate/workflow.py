@@ -69,7 +69,7 @@ class Stop(BaseModel):
     city: str = Field(min_length=1, max_length=100)
     start: str = Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
     end: str = Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
-    travel_minutes: int = Field(ge=0, le=1440)
+    travel_minutes: int = Field(ge=0, le=1440, description="本活动开始前、从上一活动到达本地点的交通分钟数；上一活动end加此数不得晚于本活动start。交通不属于本活动start/end内的停留时间。")
     cost: float = Field(ge=0, le=1e8, description="全员费用，人民币")
     notes: str = Field(default="", max_length=1000)
     activities: list[Literal["walking", "climbing", "museum", "food", "rest", "other"]] = Field(default_factory=list, max_length=10)
@@ -90,10 +90,19 @@ class RailSegment(BaseModel):
     ticket: dict
 
 
+class Alternative(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    trigger: str = Field(min_length=1, max_length=500)
+    action: str = Field(min_length=1, max_length=1000)
+    extra_cost: float | None = Field(default=None, ge=0, le=1e8)
+
+
 class Itinerary(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     days: list[Day] = Field(min_length=1, max_length=30)
     other_cost: float = Field(ge=0, le=1e8, description="全员住宿、往返交通等未计入活动的费用")
+    alternatives: list[Alternative] = Field(default_factory=list, max_length=30)
+    reminders: list[str] = Field(default_factory=list, max_length=30)
     rail_segments: list[RailSegment] = Field(default_factory=list, max_length=30)
     cost_notes: str = Field(min_length=1, max_length=2000)
 

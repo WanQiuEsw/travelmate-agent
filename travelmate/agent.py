@@ -129,7 +129,8 @@ def stream_chat(agent, session_id: str, message: str):
         return
     last = state.values["messages"][-1]
     yield "done", {"answer": public_answer(last.text, state.values["messages"]), "session_id": session_id,
-                   "message_id": answer_id(last, len(state.values["messages"]) - 1)}
+                   "message_id": answer_id(last, len(state.values["messages"]) - 1),
+                   **({"plan_version": last.additional_kwargs["plan_version"]} if last.additional_kwargs.get("plan_version") else {})}
 
 
 def answer_id(message, index):
@@ -145,7 +146,8 @@ def conversation(agent, session_id: str) -> dict:
             messages.append({"role": "user", "content": message.text})
         elif isinstance(message, AIMessage) and not message.tool_calls and message.text:
             messages.append({"role": "assistant", "content": public_answer(message.text, stored),
-                             "message_id": answer_id(message, index) if index < len(stored) - 1 or not state.next else None})
+                             "message_id": answer_id(message, index) if index < len(stored) - 1 or not state.next else None,
+                             **({"plan_version": message.additional_kwargs["plan_version"]} if message.additional_kwargs.get("plan_version") else {})})
     return {"session_id": session_id, "messages": messages, "interrupted": bool(state.next)}
 
 

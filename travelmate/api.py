@@ -8,14 +8,15 @@ from typing import Annotated, Literal
 
 from fastapi import FastAPI, HTTPException
 from fastapi import Path as PathParam
-from fastapi.responses import FileResponse, StreamingResponse, Response
+from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse, Response
 from pydantic import BaseModel, Field, field_validator, StringConstraints
 
 from travelmate.rail import search_train_tickets
 from travelmate.agent import chat, conversation, conversations, open_agent, stream_chat, pin_sessions, delete_sessions, rename_session
 from travelmate.evidence import validate_evidence
 from travelmate.workflow import Itinerary, get_workflow, save_workflow, validate_plan
-from travelmate.pdf_export import itinerary_pdf, answer_pdf
+from travelmate.pdf_export import itinerary_pdf, answer_pdf, guide_pdf
+from travelmate.guide import get_version, render_guide
 
 
 class ChatRequest(BaseModel):
@@ -173,6 +174,8 @@ def create_app(agent_factory=open_agent):
             issues += validate_evidence(state["requirements"], data, state.get("evidence", {}))
             if issues:
                 state = {**state, "candidate": data, "issues": issues, "status": "blocked"}
+            elif "review" in getattr(app.state.agent, "nodes", {}):
+                state = {**state, "candidate": data, "issues": ["修改尚未经过独立质量审查，请在对话中提交修改要求"], "status": "needs_review"}
             else:
                 versions = list(state.get("versions", []))
                 if not versions:
@@ -197,6 +200,28 @@ def create_app(agent_factory=open_agent):
             state = {**state, "status": "confirmed", "total": total}
             save_workflow(app.state.agent, session_id, state)
             return state
+
+    def load_guide(session_id, version):
+        state = get_workflow(app.state.agent, session_id)
+        guide = get_version(state, version)
+        if guide is None:
+            raise HTTPException(404, "攻略版本不存在或尚未完成")
+        return guide
+
+    @app.get("/sessions/{session_id}/plans/{version}")
+    def preview(session_id: SessionId, version: Annotated[int, PathParam(ge=1)]):
+        with lock:
+            guide = load_guide(session_id, version)
+        return HTMLResponse(render_guide(guide, f"/sessions/{session_id}/plans/{version}/pdf"),
+            headers={"Cache-Control": "no-store", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
+                     "X-Content-Type-Options": "nosniff"})
+
+    @app.get("/sessions/{session_id}/plans/{version}/pdf")
+    def export_guide(session_id: SessionId, version: Annotated[int, PathParam(ge=1)]):
+        with lock:
+            guide = load_guide(session_id, version)
+        return Response(guide_pdf(guide), media_type="application/pdf",
+            headers={"Cache-Control": "no-store", "Content-Disposition": f'attachment; filename="travelmate-v{version}.pdf"'})
 
     @app.get("/sessions/{session_id}/trip/pdf")
     def export_trip(session_id: SessionId):

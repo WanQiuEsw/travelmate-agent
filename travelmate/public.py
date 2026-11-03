@@ -11,6 +11,7 @@ def public_data(value, messages=()):
 
     def clean(item):
         if isinstance(item, str):
+            item = re.sub(r"(?<![\w-])[a-f0-9]{32}:\d+(?!\w)", "查询依据", item)
             for identifier in sorted(hidden - {""}, key=len, reverse=True):
                 item = re.sub(r'(?<![\w-])' + re.escape(identifier) + r'(?![\w-])', '内部资料', item)
             return re.sub(r'(?:知识库|文档|索引|工作空间|document|doc|index|workspace)[_\s]*(?:ID|编号)\s*[:：=]\s*[`\"\']?[\w-]+[`\"\']?', '内部资料', item, flags=re.I)
