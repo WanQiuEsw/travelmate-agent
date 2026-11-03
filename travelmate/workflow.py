@@ -176,7 +176,7 @@ def update_trip(conditions: dict, runtime: ToolRuntime, assumptions: dict | None
         return {"error": str(exc)}
     merged = parsed.model_dump(mode="json", exclude_unset=True)
     missing = [key for key in ("destination", "days", "travelers", "budget",
-               "budget_scope", "budget_currency", "budget_includes") if merged.get(key) in (None, "")]
+               "budget_scope", "budget_currency", "budget_includes", "mobility") if merged.get(key) in (None, "")]
     if any(not 1 <= int(day) <= (merged.get("days") or 30) for day in merged.get("day_exclusions", {})):
         return {"error": "按天排除项必须在行程天数内"}
     if any(b.get("day") and b["day"] > (merged.get("days") or 30) for b in merged.get("bookings", [])):
@@ -184,7 +184,7 @@ def update_trip(conditions: dict, runtime: ToolRuntime, assumptions: dict | None
     changed = [key for key in conditions if merged.get(key) != previous.get(key)]
     provisional = {**old.get("assumptions", {}), **(assumptions or {})}
     provisional = {key: value for key, value in provisional.items() if merged.get(key) in (None, "")}
-    if not changed and provisional == old.get("assumptions", {}) and old.get("schema_version") == 2:
+    if not changed and provisional == old.get("assumptions", {}) and old.get("schema_version") == 2 and old.get("missing", []) == missing:
         return result(runtime, old)
     affected_days = list(range(1, (merged.get("days") or 0) + 1))
     if changed == ["day_exclusions"]:

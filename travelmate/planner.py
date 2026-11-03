@@ -15,6 +15,7 @@ from travelmate.evidence import normalize, validate_evidence, context_key
 from travelmate.public import public_data
 from travelmate.guide import version_snapshot
 from travelmate.review import ReviewReport, program_review, blocking_messages, plan_key
+from travelmate.interaction import Decision, requirements_interaction, decision_interaction
 
 
 class Intake(BaseModel):
@@ -25,6 +26,7 @@ class Intake(BaseModel):
     allow_booking_change: bool = False
     direction: str = Field(default="", max_length=3000)
     questions: list[str] = Field(default_factory=list, max_length=3)
+    confirmation: Decision | None = None
 
 
 class Area(BaseModel):
@@ -62,7 +64,34 @@ def build_planner(model, saver, knowledge, tools, prompt):
         try:
             history = [{"role": m.type, "text": m.text} for m in state["messages"]
                        if isinstance(m, (HumanMessage, AIMessage)) and m.text][-16:]
-            data = structured(Intake, "分类普通问答、初步规划或修改；conditions只含用户本轮明确给出的字段，未知字段省略，绝不能填写待确认等占位符，不能猜测。普通问答不要清除旅行条件。direction给有用答复或暂定方向，questions最多三个且不重复问已知条件。", {"history": history, "requirements": old.get("requirements", {})})
+            response = state["messages"][-1].additional_kwargs.get("interaction_response")
+            answers = {}
+            if response:
+                previous = state["messages"][-2].additional_kwargs.get("interaction", {})
+                if response["id"] != previous.get("id"):
+                    return {"intake_result": {"intent": "clarify"}, "messages": [AIMessage(content="问题已更新，请使用当前表单。", additional_kwargs={"interaction": previous} if previous else {})]}
+                fields = {field["key"]: field for field in previous["fields"]}
+                answers = response["answers"]
+                if set(answers) != set(fields) or any(
+                    field.get("options") and answers[key] not in [option["value"] for option in field["options"]]
+                    for key, field in fields.items()):
+                    return {"intake_result": {"intent": "clarify"}, "messages": [AIMessage(content="选项不匹配，请重新填写当前表单。", additional_kwargs={"interaction": previous})]}
+                if answers.get("decision") == "暂不执行":
+                    return {"workflow": stage(old, "answer"), "intake_result": {"intent": "question"},
+                            "messages": [AIMessage(content="已取消本次操作，原有安排已保留。") ]}
+            if answers and "decision" not in answers:
+                try:
+                    cleaned = {key: value.strip() if isinstance(value, str) else value for key, value in answers.items()}
+                    if any(value == '' for value in cleaned.values()):
+                        raise ValueError("blank answer")
+                    data = Intake(intent="modify" if old.get("plan") else "plan", conditions=PartialRequirements.model_validate(cleaned))
+                except ValueError:
+                    return {"intake_result": {"intent": "clarify"}, "messages": [AIMessage(content="填写内容不符合要求，请检查数值范围和必填项。", additional_kwargs={"interaction": previous})]}
+            else:
+                data = structured(Intake, "分类普通问答、初步规划或修改；conditions只含用户本轮明确给出的字段，未知字段省略，绝不能填写待确认等占位符，不能猜测。普通问答不要清除旅行条件。direction用Markdown给有用答复或暂定方向，不在正文追问缺失字段，系统会显示表单。任务含糊、操作范围不明确或涉及更改已订安排需先确认时，填写confirmation的问题及2至5个具体选项，等待选择后才继续；不能自行代替用户确认，也不能重复确认已选事项。", {"history": history, "requirements": old.get("requirements", {}), "form_answers": answers})
+            if data.confirmation:
+                return {"workflow": stage(old, "clarify", status="collecting"), "intake_result": {"intent": "clarify"},
+                        "messages": [AIMessage(content="请在下方选择确认后继续。", additional_kwargs={"interaction": decision_interaction(data.confirmation)})]}
             if data.intent == "question":
                 return {"workflow": stage(old, "answer", status=old.get("status", "idle")),
                         "intake_result": data.model_dump(), "messages": [AIMessage(content=data.direction or "请告诉我想了解的旅游问题。") ]}
@@ -73,13 +102,12 @@ def build_planner(model, saver, knowledge, tools, prompt):
             if isinstance(result, dict):
                 return {"workflow": stage(old, "clarify", status="collecting"),
                         "intake_result": {"intent": "clarify"},
-                        "messages": [AIMessage(content="旅行条件存在冲突，请确认日期、预算口径或已订安排的修改范围；原有条件与方案已保留。")]}
+                        "messages": [AIMessage(content="旅行条件存在冲突，原有条件与方案已保留。", additional_kwargs={"interaction": decision_interaction(Decision(question=result.get("error", "请确认修改范围"), options=["保留原有安排", "调整条件后重新规划"]))})]}
             workflow = stage(result.update["workflow"], "requirements")
             if workflow.get("missing"):
                 text = (data.direction or "可以先按目的地区域讨论游玩方向，具体行程等待关键条件补齐。").replace("\\n", "\n")
-                questions = data.questions or ["请补充：" + "、".join(workflow["missing"][:3])]
                 return {"workflow": stage(workflow, "clarify"), "intake_result": {"intent": "clarify"},
-                        "messages": [AIMessage(content=text + "\n\n" + "\n".join(questions))]}
+                        "messages": [AIMessage(content=text + "\n\n请在下方填写旅行条件后继续。", additional_kwargs={"interaction": requirements_interaction(workflow["missing"])})]}
             return {"workflow": stage(workflow, "ready", status="researching", issues=[], review_history=[]), "intake_result": data.model_dump(),
                     "candidate": None, "areas": {}, "research_data": []}
         except Exception:
@@ -177,18 +205,36 @@ def build_planner(model, saver, knowledge, tools, prompt):
             text = "本次方案经三次校验仍有冲突，已停止修订并保留上一版可用方案：\n" + "\n".join("- " + x for x in w["issues"])
         else:
             req, plan = w["requirements"], w["plan"]
-            text = f"## {req['destination']} · {req['days']}天行程（版本{w['version']}）\n已列项目全员费用估算：{w['total']}元。\n"
+            def cell(value):
+                return str(value).replace("|", "／").replace("\n", " ").replace("\r", " ")
+            text = f"## {req['destination']} · {req['days']}天旅行攻略\n\n"
+            text += f"**{req['travelers']} 人同行 · 版本 {w['version']} · {req.get('start_date') or '出发日期待定'}**\n\n"
+            text += "### 旅行概览\n\n| 项目 | 安排 |\n| --- | --- |\n"
+            scope = "人均" if req.get("budget_scope") == "per_person" else "全员"
+            for label, value in (("目的地", req['destination']), ("出发地", req.get('origin') or '待定'),
+                                 ("预算", f"{scope} {req['budget']} {req.get('budget_currency') or 'CNY'}"),
+                                 ("预算范围", req.get('budget_includes') or '待确认'),
+                                 ("步行与行动限制", req.get('mobility') or '未说明')):
+                text += f"| {label} | {cell(value)} |\n"
             for i, day in enumerate(plan["days"], 1):
-                text += f"\n### {day.get('date') or f'第{i}天'}\n"
+                text += f"\n### 第{i}天" + (f" · {day['date']}" if day.get('date') else '') + "\n\n"
+                text += "| 时间 | 地点与安排 | 交通预留 | 全员费用（估算） | 核实情况 |\n| --- | --- | --- | --- | --- |\n"
                 for stop in day["stops"]:
                     label = "地点存在已核实；其他字段待核实" if stop.get("fact_refs", {}).get("place") else "待核实"
-                    text += f"- {stop['start']}–{stop['end']} {stop['place']}，费用估算{stop['cost']}元；交通预留{stop['travel_minutes']}分钟。{stop['notes']}（{label}）\n"
+                    text += f"| {stop['start']}–{stop['end']} | **{cell(stop['place'])}** | {stop['travel_minutes']} 分钟 | ¥{stop['cost']:.2f} | {label} |\n"
+                notes = [f"- **{cell(stop['place'])}**：{stop['notes']}" for stop in day['stops'] if stop.get('notes')]
+                if notes:
+                    text += "\n**游玩提示**\n\n" + "\n".join(notes) + "\n"
+            text += "\n### 预算汇总\n\n| 项目 | 全员费用（估算） |\n| --- | ---: |\n"
+            for i, day in enumerate(plan['days'], 1):
+                text += f"| 第{i}天已列活动 | ¥{sum(stop['cost'] for stop in day['stops']):.2f} |\n"
+            text += f"| 其他费用 | ¥{plan['other_cost']:.2f} |\n| **合计** | **¥{w['total']:.2f}** |\n\n{plan['cost_notes']}\n"
+            text += "\n### 交通与行前提醒\n\n"
             for segment in plan.get("rail_segments", []):
                 ticket = segment["ticket"]
                 text += f"\n铁路查询参考：{ticket.get('start_train_code')}，{ticket.get('from_station')} → {ticket.get('to_station')}，{ticket.get('start_date')} {ticket.get('start_time')}出发 / {ticket.get('arrive_time')}到达。第三方MCP查询不保证出票，价格及余票以12306下单页面为准。\n"
             if req.get("bookings"):
                 text += "\n已订安排：" + "；".join(b["description"] + (f"（第{b['day']}天）" if b.get("day") else "") + (f" {b['departure']}出发" if b.get("departure") else "") for b in req["bookings"]) + "。\n"
-            text += f"\n其他费用估算：{plan['other_cost']}元；{plan['cost_notes']}\n"
             if not req.get("origin"):
                 text += "\n出发地未定，往返大交通费用及时间尚未计入可靠校验，当前合计不能视为全旅程预算已满足。\n"
             text += "\n时间、距离及费用未有对应查询依据的部分仍为估算，出发前需核实。\n"

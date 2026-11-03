@@ -55,8 +55,8 @@ def open_agent(*, model=None, database=None, knowledge=None, legacy_tool_loop=Fa
                            checkpointer=saver)
 
 
-def chat(agent, session_id: str, message: str) -> str:
-    result = agent.invoke({"messages": [{"role": "user", "content": message}]},
+def chat(agent, session_id: str, message: str, interaction_response=None) -> str:
+    result = agent.invoke({"messages": [HumanMessage(content=message, additional_kwargs={"interaction_response": interaction_response} if interaction_response else {})]},
                           {"configurable": {"thread_id": session_id}, "recursion_limit": 60})
     return public_answer(result["messages"][-1].text, result["messages"])
 
@@ -99,9 +99,9 @@ def tool_progress(item):
     return public_data({"text": text, "sources": sources}, [item])
 
 
-def stream_chat(agent, session_id: str, message: str):
+def stream_chat(agent, session_id: str, message: str, interaction_response=None):
     config = {"configurable": {"thread_id": session_id}, "recursion_limit": 60}
-    with closing(agent.stream({"messages": [{"role": "user", "content": message}]},
+    with closing(agent.stream({"messages": [HumanMessage(content=message, additional_kwargs={"interaction_response": interaction_response} if interaction_response else {})]},
                               config, stream_mode=["messages", "updates"])) as stream:
         for mode, value in stream:
             if mode == "messages":
@@ -129,6 +129,7 @@ def stream_chat(agent, session_id: str, message: str):
         return
     last = state.values["messages"][-1]
     yield "done", {"answer": public_answer(last.text, state.values["messages"]), "session_id": session_id,
+                   **({"interaction": last.additional_kwargs["interaction"]} if last.additional_kwargs.get("interaction") else {}),
                    "message_id": answer_id(last, len(state.values["messages"]) - 1),
                    **({"plan_version": last.additional_kwargs["plan_version"]} if last.additional_kwargs.get("plan_version") else {})}
 
@@ -146,6 +147,7 @@ def conversation(agent, session_id: str) -> dict:
             messages.append({"role": "user", "content": message.text})
         elif isinstance(message, AIMessage) and not message.tool_calls and message.text:
             messages.append({"role": "assistant", "content": public_answer(message.text, stored),
+                             **({"interaction": message.additional_kwargs["interaction"]} if message.additional_kwargs.get("interaction") else {}),
                              "message_id": answer_id(message, index) if index < len(stored) - 1 or not state.next else None,
                              **({"plan_version": message.additional_kwargs["plan_version"]} if message.additional_kwargs.get("plan_version") else {})})
     return {"session_id": session_id, "messages": messages, "interrupted": bool(state.next)}

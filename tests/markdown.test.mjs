@@ -34,11 +34,21 @@ const source = await readFile(new URL('../travelmate/markdown.js', import.meta.u
 const {renderMarkdown} = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
 function nodes(root) { return [root, ...root.children.flatMap(nodes)]; }
 
+test('tables retain alignment, escaped pipes, line breaks and heading hierarchy', () => {
+  const root = new Node('div');
+  renderMarkdown(root, '## 概览\n### 第一天\n| 安排 | 预算 |\n| --- | ---: |\n| 湖边\\|街区<br>休息 | **100** |\n\n> 费用为估算\n\n---\n*慢行*');
+  const all = nodes(root);
+  for (const tag of ['H2', 'H3', 'THEAD', 'TBODY', 'BR', 'BLOCKQUOTE', 'HR', 'EM']) assert.ok(all.some(node => node.tagName === tag));
+  assert.equal(all.filter(node => node.tagName === 'TD').length, 2);
+  assert.ok(root.textContent.includes('湖边|街区'));
+  assert.equal(all.filter(node => node.tagName === 'TH')[1].style, 'text-align: right');
+});
+
 test('renders travel headings, lists, table, code and safe source links', () => {
   const root = new Node('div');
   renderMarkdown(root, '## 行程\n**西湖** 与 `预算`\n- 休息\n- 慢行\n\n| 日期 | 费用 |\n| --- | --- |\n| 一 | 600元 |\n\n[来源](https://example.com)\n```\n<code>\n```');
   const tags = nodes(root).map(node => node.tagName);
-  for (const tag of ['H3', 'STRONG', 'UL', 'LI', 'TABLE', 'TH', 'TD', 'CODE', 'PRE', 'A']) assert.ok(tags.includes(tag));
+  for (const tag of ['H2', 'STRONG', 'UL', 'LI', 'TABLE', 'TH', 'TD', 'CODE', 'PRE', 'A']) assert.ok(tags.includes(tag));
   assert.equal(nodes(root).find(node => node.tagName === 'A').rel, 'noopener noreferrer');
   assert.ok(root.textContent.includes('<code>'));
 });
@@ -66,6 +76,45 @@ const html = await readFile(new URL('../travelmate/index.html', import.meta.url)
 const appSource = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
   .replace(/import \{renderMarkdown\} from '[^']+';/, '')
   .replace('  initialize();', '');
+
+test('composer question card submits typed answers and clears when starting a new chat', () => {
+  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history', 'sidebar', 'interaction']
+    .map(id => [id, new Node('div')]));
+  let submits = 0;
+  elements.form.requestSubmit = () => submits++;
+  const context = vm.createContext({
+    setTimeout, clearTimeout,
+    document: {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []},
+    renderMarkdown, crypto: {randomUUID: () => 'new'}, localStorage: {getItem: () => 'test', setItem() {}},
+  });
+  vm.runInContext(appSource, context);
+  vm.runInContext(`showInteraction({id: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', title: '补充条件', description: '继续规划', fields: [
+    {key: 'days', label: '游玩天数', type: 'number', min: 1, max: 30},
+    {key: 'mobility', label: '可接受步数', type: 'text', suggestions: ['每天5000步']},
+    {key: 'budget_scope', label: '预算口径', type: 'select', options: [{value: 'total', label: '全员预算'}]}
+  ]})`, context);
+  assert.equal(elements.interaction.hidden, false);
+  assert.equal(elements.interaction.open, true);
+  const all = nodes(elements.interaction);
+  const questionForm = all.find(node => node.tagName === 'FORM');
+  questionForm.reportValidity = () => true;
+  const days = all.find(node => node.name === 'days');
+  assert.equal(days.min, 1); assert.equal(days.max, 30); assert.equal(days.required, true);
+  days.value = '3';
+  all.find(node => node.name === 'mobility').value = '每天8000步';
+  all.find(node => node.name === 'budget_scope').value = 'total';
+  questionForm.handlers.submit({preventDefault() {}});
+  assert.equal(submits, 1);
+  const reply = JSON.parse(vm.runInContext('JSON.stringify(pendingResponse)', context));
+  assert.deepEqual(reply.answers, {days: 3, mobility: '每天8000步', budget_scope: 'total'});
+  assert.ok(elements.input.value.includes('预算口径：全员预算'));
+  vm.runInContext('busy = true', context);
+  questionForm.handlers.submit({preventDefault() {}});
+  assert.equal(submits, 1);
+  vm.runInContext('busy = false; resetConversation()', context);
+  assert.equal(elements.interaction.hidden, true);
+  assert.equal(vm.runInContext('pendingResponse', context), null);
+});
 
 test('Enter sends, Ctrl/Command+Enter inserts a newline, and IME confirmation stays untouched', () => {
   const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history']
@@ -153,7 +202,7 @@ for (const success of [true, false]) {
     assert.ok(!elements.messages.textContent.includes('隐藏的原始标记'));
     if (success) {
       assert.equal(nodes(elements.messages).filter(node => node.className === 'export-pdf').length, 1);
-      assert.ok(nodes(elements.messages).some(node => node.tagName === 'H3' && node.textContent === '完整行程'));
+      assert.ok(nodes(elements.messages).some(node => node.tagName === 'H2' && node.textContent === '完整行程'));
       assert.ok(nodes(elements.messages).some(node => node.tagName === 'STRONG' && node.textContent === '西湖'));
       assert.equal(elements.input.value, '');
     } else {

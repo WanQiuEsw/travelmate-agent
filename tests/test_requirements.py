@@ -22,6 +22,14 @@ def test_sparse_and_invalid_conditions():
     assert "error" in error(state, unknown="ignored?")
 
 
+def test_existing_sessions_collect_newly_required_mobility():
+    state = {"schema_version": 2, "requirements": {k: v for k, v in REQ.items() if k != 'mobility'},
+             "missing": [], "assumptions": {}}
+    updated = call(update_trip, state, conditions={})
+    assert updated['missing'] == ['mobility']
+    assert updated['status'] == 'collecting'
+
+
 def test_budget_scope_and_assumptions():
     state = call(update_trip, {}, conditions={"destination": "杭州", "budget": 3000},
                  assumptions={"days": 3})
@@ -48,7 +56,7 @@ def test_day_change_preserves_conditions_and_other_days():
     assert all(state["requirements"][k] == v for k, v in old.items() if k != "day_exclusions")
     assert state["changes"][-1]["at"]
     assert "error" in error(state, day_exclusions={"4": ["爬山"]})
-    assert state["requirements"]["mobility"] is None
+    assert state["requirements"]["mobility"] == REQ["mobility"]
 
 
 def test_bookings_protected_and_deadline_checked():
@@ -56,7 +64,7 @@ def test_bookings_protected_and_deadline_checked():
     state = call(update_trip, {}, conditions={**REQ, "bookings": [booking]})
     state = call(update_trip, state, conditions={"preferences": "带老人"})
     assert state["requirements"]["bookings"] == [booking]
-    assert state["requirements"]["mobility"] is None
+    assert state["requirements"]["mobility"] == REQ["mobility"]
     assert "error" in error(state, bookings=[])
     assert any("时限" in issue for issue in validate_plan(state["requirements"], PLAN)[0])
     state = call(update_trip, state, conditions={"bookings": []}, allow_booking_change=True)
@@ -81,6 +89,6 @@ def test_old_and_new_checkpoint_restart(tmp_path):
 def test_prompt_contract_and_formatting():
     rendered = PROMPT.format(today="2026-11-03")
     assert PROMPT_VERSION == "advisor-v1/tools-v1"
-    assert "最多三个" in rendered and "普通问答" in rendered
+    assert "系统表单" in rendered and "普通问答" in rendered
     assert "带老人不等于体力差" in rendered
     assert "不生成行程" not in rendered

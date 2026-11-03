@@ -1,6 +1,6 @@
 // Small Markdown subset for travel replies. Raw HTML is always literal text.
 function inline(parent, text) {
-  const pattern = /\*\*([^*]+)\*\*|`([^`]+)`|\[([^\]]+)\]\(([^\s)]+)\)|(https?:\/\/[^\s<>]+)/g;
+  const pattern = /\*\*([^*]+)\*\*|`([^`]+)`|\[([^\]]+)\]\(([^\s)]+)\)|(https?:\/\/[^\s<>]+)|\*([^*\n]+)\*|~~([^~\n]+)~~|<br\s*\/?\s*>/gi;
   let offset = 0;
   for (const match of text.matchAll(pattern)) {
     parent.append(document.createTextNode(text.slice(offset, match.index)));
@@ -9,6 +9,10 @@ function inline(parent, text) {
       element = document.createElement('strong'); element.textContent = match[1];
     } else if (match[2]) {
       element = document.createElement('code'); element.textContent = match[2];
+    } else if (match[6] || match[7]) {
+      element = document.createElement(match[6] ? 'em' : 'del'); element.textContent = match[6] || match[7];
+    } else if (/^<br/i.test(match[0])) {
+      element = document.createElement('br');
     } else {
       const url = match[4] || match[5];
       element = document.createElement('span');
@@ -66,19 +70,30 @@ export function renderMarkdown(target, text) {
       const wrapper = document.createElement('div'); wrapper.className = 'table-scroll';
       wrapper.tabIndex = 0; wrapper.setAttribute('role', 'region'); wrapper.setAttribute('aria-label', '行程或预算表格');
       const table = document.createElement('table');
-      const cells = row => row.trim().replace(/^\|/, '').replace(/\|$/, '').split('|');
-      const addRow = (row, tag) => {
+      const head = document.createElement('thead'), body = document.createElement('tbody');
+      table.append(head, body);
+      const cells = row => row.trim().replace(/^\|/, '').replace(/\|$/, '').split(/(?<!\\)\|/).map(cell => cell.replace(/\\\|/g, '|'));
+      const alignment = cells(lines[i + 1]).map(cell => /:\s*$/.test(cell) ? (/^\s*:/.test(cell) ? 'center' : 'right') : 'left');
+      const addRow = (row, tag, section) => {
         const tr = document.createElement('tr');
-        for (const cell of cells(row)) {
-          const td = document.createElement(tag); inline(td, cell.trim()); tr.append(td);
+        for (const [index, cell] of cells(row).entries()) {
+          const td = document.createElement(tag);
+          if (tag === 'th') td.setAttribute('scope', 'col');
+          td.setAttribute('style', 'text-align: ' + (alignment[index] || 'left'));
+          inline(td, cell.trim()); tr.append(td);
         }
-        table.append(tr);
+        section.append(tr);
       };
-      addRow(line, 'th'); i++;
-      while (i + 1 < lines.length && lines[i + 1].includes('|') && lines[i + 1].trim()) addRow(lines[++i], 'td');
+      addRow(line, 'th', head); i++;
+      while (i + 1 < lines.length && lines[i + 1].includes('|') && lines[i + 1].trim()) addRow(lines[++i], 'td', body);
       wrapper.append(table); fragment.append(wrapper); list = null; continue;
     }
-    const heading = line.match(/^#{1,6}\s+(.+)$/);
+    if (/^\s*(?:---+|\*\*\*+|___+)\s*$/.test(line)) { fragment.append(document.createElement('hr')); list = null; continue; }
+    if (/^>\s?/.test(line)) {
+      const quote = document.createElement('blockquote'); inline(quote, line.replace(/^>\s?/, ''));
+      fragment.append(quote); list = null; continue;
+    }
+    const heading = line.match(/^(#{1,6})\s+(.+)$/);
     const item = line.match(/^\s*(?:([-*])|\d+[.)])\s+(.+)$/);
     if (item) {
       const type = item[1] ? 'ul' : 'ol';
@@ -88,8 +103,8 @@ export function renderMarkdown(target, text) {
       const li = document.createElement('li'); inline(li, item[2]); list.append(li);
     } else {
       list = null;
-      const node = document.createElement(heading ? 'h3' : 'p');
-      inline(node, heading ? heading[1] : line); fragment.append(node);
+      const node = document.createElement(heading ? 'h' + Math.max(2, heading[1].length) : 'p');
+      inline(node, heading ? heading[2] : line); fragment.append(node);
     }
   }
   target.replaceChildren(fragment);

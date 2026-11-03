@@ -15,6 +15,7 @@ from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse, Res
 from pydantic import BaseModel, Field, field_validator, StringConstraints
 
 from travelmate.rail import search_train_tickets
+from travelmate.interaction import InteractionResponse
 from travelmate.agent import chat, conversation, conversations, open_agent, stream_chat, pin_sessions, delete_sessions, rename_session
 from travelmate.evidence import validate_evidence
 from travelmate.workflow import Itinerary, get_workflow, save_workflow, validate_plan
@@ -23,6 +24,7 @@ from travelmate.guide import get_version, render_guide
 
 
 class ChatRequest(BaseModel):
+    interaction_response: InteractionResponse | None = None
     session_id: str = Field(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_-]+$")
     message: str = Field(min_length=1, max_length=8000)
 
@@ -127,7 +129,8 @@ def create_app(agent_factory=open_agent):
     def respond(request: ChatRequest):
         try:
             with generation_lock(request.session_id, request.message):
-                answer = chat(app.state.agent, request.session_id, request.message)
+                answer = chat(app.state.agent, request.session_id, request.message,
+                              **({"interaction_response": request.interaction_response.model_dump()} if request.interaction_response else {}))
             return ChatResponse(session_id=request.session_id, answer=answer)
         except HTTPException:
             raise
@@ -267,7 +270,8 @@ def create_app(agent_factory=open_agent):
             try:
                 with generation_lock(request.session_id, request.message):
                     publish("status", {"text": "正在理解你的旅行需求…"})
-                    for event, data in stream_chat(app.state.agent, request.session_id, request.message):
+                    for event, data in stream_chat(app.state.agent, request.session_id, request.message,
+                                                  **({"interaction_response": request.interaction_response.model_dump()} if request.interaction_response else {})):
                         publish(event, data)
             except Exception:
                 logging.getLogger(__name__).warning("Agent stream failed")

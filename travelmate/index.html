@@ -62,7 +62,11 @@
   .content { min-width: 0; }
   .content.plain { white-space: pre-wrap; }
   .content p { margin: 0 0 10px; }
+  .content h2 { font-size: 23px; margin: 28px 0 14px; text-align: left; }
   .content h3 { font-size: 18px; margin: 24px 0 10px; }
+  .content h4 { font-size: 16px; margin: 20px 0 8px; }
+  .content blockquote { margin: 16px 0; padding: 8px 16px; border-left: 3px solid var(--accent); background: var(--tint); }
+  .content hr { border: 0; border-top: 1px solid var(--line); margin: 24px 0; }
   .content > :first-child { margin-top: 0; }
   .content > :last-child { margin-bottom: 0; }
   .content li { margin: 6px 0; }
@@ -86,6 +90,25 @@
   table { border-collapse: collapse; width: 100%; font-size: 14px; }
   th, td { border: 1px solid var(--line); padding: 10px 12px; text-align: left; min-width: 80px; }
   th { background: var(--tint); }
+  tbody tr:nth-child(even) { background: #f8fafc; }
+  .table-scroll { border: 1px solid var(--line); border-radius: 10px; }
+  .table-scroll table { margin: 0; border-style: hidden; line-height: 1.65; }
+  .table-scroll th { white-space: nowrap; }
+  .table-scroll td { vertical-align: top; }
+  .table-scroll td:first-child { white-space: nowrap; }
+  .interaction-card { max-height: 42dvh; overflow-y: auto; margin-bottom: 12px; border: 1px solid #b5c9e2; border-radius: 14px; background: #f7faff; padding: 12px 16px; }
+  .interaction-card > summary { font-weight: 600; color: var(--accent); }
+  .interaction-card > summary { position: sticky; top: -12px; background: #f7faff; padding: 8px 0; z-index: 1; }
+  .composer:has(#interaction:not([hidden])) .quick-fill,
+  .composer:has(#interaction:not([hidden])) .entry-tools { display: none; }
+  .composer:has(#interaction:not([hidden])) #form { padding: 8px 12px; }
+  .composer:has(#interaction:not([hidden])) textarea { height: 44px; min-height: 44px; resize: none; }
+  .interaction-card p { font-size: 13px; color: var(--muted); margin: 8px 0; }
+  .interaction-card form { padding: 0; border: 0; box-shadow: none; }
+  .interaction-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
+  .interaction-fields label { display: grid; gap: 4px; font-size: 13px; }
+  .interaction-fields input, .interaction-fields select { width: 100%; min-width: 0; min-height: 44px; font: inherit; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: white; color: var(--text); }
+  @media (max-width: 700px) { .interaction-fields { grid-template-columns: 1fr; } }
   .entry-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
   .entry-tools button { min-height: 36px; padding: 5px 12px; font-size: 13px; color: var(--accent); background: var(--tint); }
   .quick-fill { margin-bottom: 12px; max-height: 42dvh; overflow-y: auto; }
@@ -147,6 +170,7 @@
     <section id="messages" aria-label="对话内容" role="log" aria-live="off"></section>
   </div></div>
   <div class="composer"><div class="chat-width">
+    <details id="interaction" class="interaction-card" hidden open aria-label="待补充的信息"></details>
     <details class="quick-fill" id="quick-fill">
       <summary>快速规划 · 填写目的地，选择交通方式</summary>
       <form id="trip-form">
@@ -188,6 +212,62 @@
   try { session = localStorage.getItem('travelmate-session'); } catch {}
   if (!session || !/^[a-zA-Z0-9_-]{1,100}$/.test(session)) session = crypto.randomUUID();
   let busy = false;
+  let activeInteraction = null;
+  let pendingResponse = null;
+  function showInteraction(interaction, answers = {}) {
+    activeInteraction = interaction || null;
+    const panel = document.querySelector('#interaction');
+    if (!panel) return;
+    panel.replaceChildren();
+    panel.hidden = !interaction;
+    if (!interaction) return;
+    panel.open = true;
+    const title = document.createElement('summary'); title.textContent = interaction.title;
+    const description = document.createElement('p'); description.textContent = interaction.description;
+    const questionForm = document.createElement('form');
+    const grid = document.createElement('div'); grid.className = 'interaction-fields';
+    const controls = [];
+    for (const field of interaction.fields) {
+      const label = document.createElement('label'); label.textContent = field.label;
+      const control = document.createElement(field.type === 'select' ? 'select' : 'input');
+      control.name = field.key; control.required = true;
+      control.setAttribute('aria-label', field.label);
+      if (field.type === 'select') {
+        const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = '请选择';
+        control.append(placeholder);
+        for (const choice of field.options) {
+          const option = document.createElement('option'); option.value = choice.value; option.textContent = choice.label;
+          control.append(option);
+        }
+      } else {
+        control.type = field.type;
+        for (const key of ['min', 'max', 'maxLength', 'step', 'placeholder']) if (field[key] !== undefined) control[key] = field[key];
+        if (field.suggestions) {
+          const list = document.createElement('datalist'); list.id = 'choices-' + field.key;
+          for (const value of field.suggestions) { const option = document.createElement('option'); option.value = value; list.append(option); }
+          control.setAttribute('list', list.id); label.append(list);
+        }
+      }
+      if (answers[field.key] !== undefined) control.value = String(answers[field.key]);
+      label.append(control); grid.append(label); controls.push({field, control});
+    }
+    const submit = document.createElement('button'); submit.type = 'submit'; submit.textContent = '提交并继续';
+    questionForm.append(grid, submit);
+    questionForm.addEventListener('submit', event => {
+      event.preventDefault();
+      if (busy || send.disabled || !questionForm.reportValidity()) return;
+      const answers = {};
+      for (const {field, control} of controls) {
+        if (!control.value.trim()) { control.focus(); return; }
+        answers[field.key] = field.type === 'number' ? Number(control.value) : control.value.trim();
+      }
+      pendingResponse = {id: interaction.id, answers};
+      input.value = controls.map(({field, control}) => field.label + '：' +
+        (field.options?.find(option => option.value === control.value)?.label || control.value.trim())).join('\n');
+      form.requestSubmit();
+    });
+    panel.append(title, description, questionForm);
+  }
   const selectedSessions = new Set();
   let multiSelect = false;
   function actionIcon(name) {
@@ -454,6 +534,8 @@
       if (!response.ok) throw new Error('history unavailable');
       const data = await response.json();
       generating = data.generating === true;
+      if (!generating) showInteraction(data.messages[data.messages.length - 1]?.interaction);
+      else showInteraction(null);
       session = id;
       rememberSession();
       if (!recovering) input.value = '';
@@ -509,6 +591,8 @@
   }
 
   function resetConversation() {
+    showInteraction(null);
+    pendingResponse = null;
     stopRecovery();
     send.disabled = false;
     send.textContent = '发送 ↑';
@@ -541,6 +625,10 @@
     event.preventDefault();
     const text = input.value.trim();
     if (!text || busy || send.disabled) return;
+    const interactionResponse = pendingResponse;
+    pendingResponse = null;
+    const submittedInteraction = activeInteraction;
+    showInteraction(null);
     busy = true;
     send.disabled = newChat.disabled = historySelect.disabled = true;
     input.disabled = true;
@@ -559,7 +647,7 @@
     try {
       const response = await fetch('/chat/stream', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({session_id: session, message: text})
+        body: JSON.stringify({session_id: session, message: text, ...(interactionResponse ? {interaction_response: interactionResponse} : {})})
       });
       if (!response.ok) throw new Error('request failed');
       const reader = response.body.getReader();
@@ -587,7 +675,9 @@
             status.textContent = outputNotice;
           }
           if (event === 'done') {
+            showInteraction(data.interaction, data.interaction?.id === interactionResponse?.id ? interactionResponse?.answers : {});
             showReply(progress.answer, data.answer);
+            reply.scrollIntoView?.({block: 'start'});
             addExport(progress.answer, data.message_id, data.session_id || session, data.plan_version);
             reply.setAttribute('aria-busy', 'false');
             done = true;
@@ -600,6 +690,7 @@
       status.textContent = '可以继续补充你的想法';
       refreshSessions().catch(() => { status.textContent = '回复已保存，历史列表暂时无法更新。'; });
     } catch {
+      if (interactionResponse) showInteraction(submittedInteraction, interactionResponse.answers);
       input.value = text;
       progress.add('请求中断，已保留本次执行记录。');
       showReply(progress.answer, '本次回复未完成，请稍后重试。');
