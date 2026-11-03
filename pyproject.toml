@@ -32,7 +32,7 @@ travelmate = "travelmate.cli:main"
 include = ["travelmate*"]
 
 [tool.setuptools.package-data]
-travelmate = ["index.html", "*.js", "prompts/*.txt"]
+travelmate = ["*.html", "*.js", "prompts/*.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -38,6 +38,8 @@ uv run uvicorn travelmate.api:app --host 127.0.0.1 --port 8000
 
 打开 http://127.0.0.1:8000 使用聊天页面。前端为原生 HTML/CSS/JavaScript，由 FastAPI 同时提供，无需 Node.js、npm 或额外运行依赖。
 
+网页现已开启邀请制登录，账号、会话归属和每日额度复用现有 SQLite。首次使用在 `.env` 设置 `AUTH_COOKIE_SECURE=false`（仅本地 HTTP），执行 `uv run python -m travelmate.accounts invite` 生成邀请码，再在 `/login` 注册。服务器 HTTPS 必须设回 `true`。默认每人每天 20 次、全站 100 次生成，按北京时间刷新。[邀请、账号管理与部署说明](docs/invitation-access.md)。
+
 - SSE 在需求整理、资料检索、地点核对、生成和审查开始时立即报告处理进度，地点查询显示完成数量，修订显示轮次；不展示模型内部推理。最终回答完成校验后，发送非空正文分段，网页逐步渲染 Markdown。
 - 当前会话 ID 保存在浏览器 localStorage，刷新后从 SQLite 恢复消息；历史列表展示最近 50 个已有消息的会话，可切换或新建。浏览器禁用存储时仍可从历史列表选择。切换会话会清空未发送的输入。
 - 回复支持简单 Markdown 子集：标题、粗体、行内代码、代码块、单层列表、表格和 HTTP(S) 链接；不解析原始 HTML、图片或任意脚本。不支持完整 CommonMark 和复杂嵌套。
@@ -52,15 +54,15 @@ uv run uvicorn travelmate.api:app --host 127.0.0.1 --port 8000
 
 接口：`POST /chat/stream` 返回 SSE `status`、`token`、`done` 或 `error` 事件；`done` 包含最终回复，只有收到它才表示完整结束。`GET /sessions` 列出本地会话，`GET /sessions/{session_id}` 读取用户及最终助手消息，不返回工具内部消息。原 `POST /chat` 保留。
 
-这是单用户学习版：历史接口没有身份认证，流式请求仍串行执行；不要直接暴露公网。网页断开连接不保证立即中止已发出的模型/工具请求。部署反向代理时需关闭 SSE 缓冲，并配置合适的读取超时。
+所有业务接口要求登录，并校验会话归属；流式请求仍串行执行，首版面向小范围邀请体验，使用单进程部署。网页断开连接不保证立即中止已发出的模型/工具请求。部署反向代理时需关闭 SSE 缓冲，并配置合适的读取超时。
 
-也可打开 http://127.0.0.1:8000/docs，通过 POST /chat 发送：
+`/docs` 默认关闭。程序化调用先登录并保存 Cookie，写操作携带 `X-TravelMate-Request: 1`，例如向 POST /chat 发送：
 
 ```json
 {"session_id":"demo","message":"两个人去杭州三天，帮我规划"}
 ```
 
-GET /health 为进程健康检查，不验证外部模型是否可用。API 为本地单用户版，无认证，不要直接暴露公网；会话以明文存入 data/checkpoints.sqlite。删除此数据库及关联的 WAL/SHM 文件前应先停止服务，并确认不再需要历史记录。
+GET /health 为公开的进程健康检查，不验证外部模型是否可用。公网通过 HTTPS 反向代理访问，应用仅监听内网或回环地址；会话以明文存入 data/checkpoints.sqlite，该文件也保存账号、邀请码摘要和用量。删除此数据库及关联的 WAL/SHM 文件前应先停止服务，并确认不再需要历史和账号记录。
 
 ## 验证
 

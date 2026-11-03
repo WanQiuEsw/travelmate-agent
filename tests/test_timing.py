@@ -127,7 +127,7 @@ def test_period_plan_can_be_edited_confirmed_and_exported_through_existing_api(t
         with open_agent(legacy_tool_loop=True, model=BudgetModel(), database=tmp_path / 'period.sqlite', knowledge=tmp_path) as agent:
             yield agent
 
-    with TestClient(create_app(factory)) as client:
+    with TestClient(create_app(factory, auth_enabled=False)) as client:
         state = call(update_trip, {}, conditions=REQ)
         state = call(submit_itinerary, state, plan=Itinerary.model_validate(coarse))
         save_workflow(client.app.state.agent, 'period', state)
@@ -135,6 +135,6 @@ def test_period_plan_can_be_edited_confirmed_and_exported_through_existing_api(t
         assert edited.status_code == 200 and edited.json()['status'] == 'review'
         assert client.post('/sessions/period/trip/confirm', json=coarse).status_code == 200
         assert client.get('/sessions/period/trip/pdf').content.startswith(b'%PDF-')
-    with TestClient(create_app(factory)) as client:
+    with TestClient(create_app(factory, auth_enabled=False)) as client:
         state = client.get('/sessions/period/trip').json()
         assert state['status'] == 'confirmed' and state['plan']['time_granularity'] == 'period'

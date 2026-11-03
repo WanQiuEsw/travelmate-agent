@@ -159,7 +159,7 @@ def conversation(agent, session_id: str) -> dict:
     return {"session_id": session_id, "messages": messages, "interrupted": bool(state.next)}
 
 
-def conversations(agent) -> list:
+def conversations(agent, allowed_session_ids=None) -> list:
     # shortcut: scan local checkpoints; add a session index when history grows large.
     pins = session_pins(agent)
     titles = session_titles(agent)
@@ -167,6 +167,8 @@ def conversations(agent) -> list:
     with closing(agent.checkpointer.list(None)) as checkpoints:
         for checkpoint in checkpoints:
             session_id = checkpoint.config["configurable"]["thread_id"]
+            if allowed_session_ids is not None and session_id not in allowed_session_ids:
+                continue
             if session_id in seen:
                 continue
             seen.add(session_id)

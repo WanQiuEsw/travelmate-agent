@@ -179,6 +179,7 @@ test('rail search skips non-rail modes and missing conditions', async () => {
 test('rail search sends the chosen route, date and mode and safely displays seats', async () => {
   const e = setup(async (url, options) => {
     assert.equal(url, '/transport/trains');
+    assert.equal(options.headers['X-TravelMate-Request'], '1');
     assert.deepEqual(JSON.parse(options.body), {origin: '福建厦门', destination: '北京', departure_date: '2026-12-10', transport: '高铁'});
     return {ok: true, json: async () => ({results: [{start_train_code: 'G123', from_station: '厦门北', to_station: '北京南', start_time: '08:00', arrive_time: '18:00', lishi: '10:00', prices: [{seat_name: '二等座', price: 600, num: '有'}]}], notice: '以12306为准'})};
   });

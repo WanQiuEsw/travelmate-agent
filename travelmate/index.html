@@ -21,6 +21,9 @@
   h1 { font-size: 20px; margin: 0; letter-spacing: -.5px; }
   .brand small { display: block; color: var(--muted); font-size: 12px; font-weight: 400; }
   #new { width: 100%; text-align: left; color: var(--accent); }
+  .account { margin-top: 16px; font-size: 13px; }
+  .account small { display: block; color: var(--muted); }
+  .account button { margin-top: 8px; padding: 4px 10px; min-height: 36px; }
   .history-label { color: var(--muted); font-size: 12px; margin: 28px 12px 10px; }
   #history { border: 0; padding: 0; margin: 0; min-width: 0; }
   #history button { display: block; width: 100%; margin: 4px 0; border: 0; background: transparent; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -171,6 +174,7 @@
   <summary>☰ 对话记录</summary>
   <div class="brand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m16 8-2.5 5.5L8 16l2.5-5.5Z"/></svg><h1>TravelMate<small>智能旅游助手</small></h1></div>
   <button id="new" type="button">＋ 开启新对话</button>
+  <div class="account"><span id="account-name"></span><small id="account-quota" title="每次提交聊天扣 1 次，北京时间每天零点恢复；查看历史与导出不扣额度"></small><button id="logout" type="button">退出登录</button></div>
   <p class="history-label">最近对话</p>
   <fieldset id="history" aria-label="历史对话"><p class="history-empty">暂无历史对话</p></fieldset>
 </details>
@@ -249,6 +253,7 @@
 </main>
 <script type="module">
   import {renderMarkdown} from '/assets/markdown.js';
+  import {apiFetch as fetch, refreshAccount, logout} from '/assets/auth.js';
   const form = document.querySelector('#form');
   const input = document.querySelector('#input');
   const messages = document.querySelector('#messages');
@@ -256,8 +261,14 @@
   const send = document.querySelector('#send');
   const newChat = document.querySelector('#new');
   const historySelect = document.querySelector('#history');
+  send.disabled = newChat.disabled = historySelect.disabled = true;
+  document.querySelector('#logout')?.addEventListener('click', async () => {
+    if (busy) { status.textContent = '请等待本次生成完成后退出'; return; }
+    try { await logout(); } catch (error) { status.textContent = error.message; }
+  });
+  let sessionStorageKey = 'travelmate-session-pending';
   let session;
-  try { session = localStorage.getItem('travelmate-session'); } catch {}
+  try { session = localStorage.getItem(sessionStorageKey); } catch {}
   if (!session || !/^[a-zA-Z0-9_-]{1,100}$/.test(session)) session = crypto.randomUUID();
   let busy = false;
   let activeInteraction = null;
@@ -437,7 +448,7 @@
   }
 
   function rememberSession() {
-    try { localStorage.setItem('travelmate-session', session); } catch {}
+    try { localStorage.setItem(sessionStorageKey, session); } catch {}
   }
 
   async function refreshSessions() {
@@ -602,6 +613,7 @@
     status.textContent = '正在恢复对话…';
     try {
       const response = await fetch('/sessions/' + encodeURIComponent(id));
+      if (response.status === 404) { resetConversation(); return; }
       if (!response.ok) throw new Error('history unavailable');
       const data = await response.json();
       generating = data.generating === true;
@@ -721,7 +733,10 @@
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({session_id: session, message: text, ...(interactionResponse ? {interaction_response: interactionResponse} : {})})
       });
-      if (!response.ok) throw new Error('request failed');
+      if (!response.ok) {
+        const failure = await response.json();
+        throw new Error(typeof failure.detail === 'string' ? failure.detail : '请求参数无效');
+      }
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
@@ -762,14 +777,14 @@
       input.value = '';
       status.textContent = '可以继续补充你的想法';
       refreshSessions().catch(() => { status.textContent = '回复已保存，历史列表暂时无法更新。'; });
-    } catch {
+    } catch (error) {
       writer.cancel();
       if (interactionResponse) showInteraction(submittedInteraction, interactionResponse.answers);
       input.value = text;
       progress.add('请求中断，已保留本次执行记录。');
-      showReply(progress.answer, '本次回复未完成，请稍后重试。');
+      showReply(progress.answer, '本次回复未完成：' + (error.message || '请稍后重试。'));
       reply.setAttribute('aria-busy', 'false');
-      status.textContent = '请求失败，请检查后端配置或网络。输入已保留，可重新发送。';
+      status.textContent = (error.message || '请求失败，请稍后重试') + '。输入已保留。';
     } finally {
       progress.finish(done);
       input.placeholder = '自由描述旅行想法，或使用上方的快速规划 / 预设示例…';
@@ -777,12 +792,18 @@
       busy = false;
       send.disabled = newChat.disabled = historySelect.disabled = input.disabled = false;
       input.focus();
+      refreshAccount().catch(() => {});
     }
   });
-  rememberSession();
   async function initialize() {
     busy = true;
     send.disabled = newChat.disabled = historySelect.disabled = true;
+    try {
+      const account = await refreshAccount();
+      sessionStorageKey = 'travelmate-session-' + account.user.id;
+      try { session = localStorage.getItem(sessionStorageKey) || crypto.randomUUID(); } catch { session = crypto.randomUUID(); }
+      if (!/^[a-zA-Z0-9_-]{1,100}$/.test(session)) session = crypto.randomUUID();
+    } catch (error) { status.textContent = error.message; return; }
     try { await refreshSessions(); }
     catch { status.textContent = '历史列表加载失败，仍可尝试恢复当前对话。'; }
     busy = false;
@@ -888,7 +909,7 @@
       departure_date: fields.date.value, transport: fields.transport.value};
     try {
       const response = await fetch('/transport/trains', {
-        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(query)
+        method: 'POST', headers: {'Content-Type': 'application/json', 'X-TravelMate-Request': '1'}, body: JSON.stringify(query)
       });
       if (!response.ok) throw new Error('query failed');
       const data = await response.json();

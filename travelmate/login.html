@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>登录 · TravelMate</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100dvh; display: grid; place-items: center; padding: 24px; background: #f6f8fb; color: #243247; font: 15px/1.7 system-ui, "Microsoft YaHei", sans-serif; }
+  main { width: 100%; max-width: 420px; padding: 32px; border: 1px solid #e5eaf0; border-radius: 18px; background: white; }
+  h1 { margin: 0; font-size: 25px; }
+  p { color: #69778b; }
+  label { display: grid; gap: 5px; margin: 16px 0; }
+  input, button { width: 100%; min-height: 44px; border: 1px solid #d4dce6; border-radius: 8px; padding: 10px; font: inherit; }
+  button { cursor: pointer; background: #3568a8; color: white; }
+  button:disabled { opacity: .6; cursor: wait; }
+  #toggle { margin-top: 12px; background: white; color: #3568a8; }
+  :focus-visible { outline: 2px solid #3568a8; outline-offset: 3px; }
+  #error { color: #a32d2d; overflow-wrap: anywhere; }
+  [hidden] { display: none; }
+</style>
+<main>
+  <h1>TravelMate</h1>
+  <p id="description">登录后，继续规划你的旅行。</p>
+  <form id="account-form">
+    <label>用户名<input name="username" required minlength="3" maxlength="32" pattern="[a-zA-Z0-9_]+" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="3–32 位字母、数字或下划线"></label>
+    <label>密码<input name="password" type="password" required minlength="12" maxlength="128" autocomplete="current-password" placeholder="12–128 个字符"></label>
+    <label class="registration" hidden>昵称<input name="display_name" maxlength="40" autocomplete="nickname" placeholder="希望我们怎么称呼你"></label>
+    <label class="registration" hidden>邀请码<input name="invite_code" maxlength="128" autocomplete="off" spellcheck="false" placeholder="向邀请你的朋友获取"></label>
+    <p id="error" role="alert"></p>
+    <button id="submit" type="submit">登录</button>
+  </form>
+  <button id="toggle" type="button">有邀请码？注册账号</button>
+</main>
+<script type="module">
+  const form = document.querySelector('#account-form');
+  const submit = document.querySelector('#submit');
+  const toggle = document.querySelector('#toggle');
+  const error = document.querySelector('#error');
+  let registering = false;
+  toggle.addEventListener('click', () => {
+    registering = !registering;
+    document.querySelectorAll('.registration').forEach(label => { label.hidden = !registering; });
+    form.elements.invite_code.required = registering;
+    form.elements.password.autocomplete = registering ? 'new-password' : 'current-password';
+    submit.textContent = registering ? '使用邀请码注册' : '登录';
+    toggle.textContent = registering ? '已有账号？返回登录' : '有邀请码？注册账号';
+    document.querySelector('#description').textContent = registering ? '当前为邀请体验，请使用邀请码创建账号。' : '登录后，继续规划你的旅行。';
+    error.textContent = '';
+  });
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    submit.disabled = toggle.disabled = true;
+    error.textContent = '';
+    const data = {username: form.elements.username.value.trim(), password: form.elements.password.value};
+    if (registering) Object.assign(data, {display_name: form.elements.display_name.value.trim(), invite_code: form.elements.invite_code.value.trim()});
+    try {
+      const response = await fetch(registering ? '/auth/register' : '/auth/login', {
+        method: 'POST', credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json', 'X-TravelMate-Request': '1'},
+        body: JSON.stringify(data)
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error(typeof result?.detail === 'string' ? result.detail : `登录服务暂时不可用（HTTP ${response.status}），请稍后重试`);
+      }
+      const session = await fetch('/auth/me', {credentials: 'same-origin', cache: 'no-store'});
+      if (!session.ok) throw new Error('登录状态未保存，请确认浏览器允许本站 Cookie；如果刚完成注册，请返回登录重试');
+      window.location.replace('/');
+    } catch (failure) {
+      error.textContent = failure instanceof TypeError
+        ? '无法连接登录服务，请确认后端已启动并刷新页面重试；如果刚完成注册，可返回登录重试'
+        : failure.message || '请求失败，请稍后重试';
+    } finally {
+      submit.disabled = toggle.disabled = false;
+    }
+  });
+</script>
+</html>

@@ -230,7 +230,7 @@ def test_default_graph_api_history_pdf_and_failed_edit(tmp_path):
     def factory():
         with open_test(tmp_path, Model()) as agent:
             yield agent
-    with TestClient(create_app(factory)) as client:
+    with TestClient(create_app(factory, auth_enabled=False)) as client:
         response = client.post("/chat/stream", json={"session_id": "new", "message": "规划杭州"})
         assert "event: done" in response.text and "event: error" not in response.text
         messages = client.get("/sessions/new").json()["messages"]

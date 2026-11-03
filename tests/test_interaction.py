@@ -86,7 +86,7 @@ def test_api_stream_transports_form_answers(tmp_path):
     def factory():
         with open_test(tmp_path, model) as agent:
             yield agent
-    with TestClient(create_app(factory)) as client:
+    with TestClient(create_app(factory, auth_enabled=False)) as client:
         response = client.post('/chat/stream', json={"session_id": "api-form", "message": "杭州"})
         done = [json.loads(frame.split('data: ', 1)[1]) for frame in response.text.split('\n\n') if frame.startswith('event: done')][0]
         interaction = done['interaction']

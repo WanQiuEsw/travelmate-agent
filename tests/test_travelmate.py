@@ -85,7 +85,7 @@ def test_api(tmp_path):
         with open_agent(legacy_tool_loop=True, model=BudgetModel(), database=tmp_path / "api.sqlite") as agent:
             yield agent
 
-    with TestClient(create_app(factory)) as client:
+    with TestClient(create_app(factory, auth_enabled=False)) as client:
         page = client.get("/")
         assert page.status_code == 200
         assert "text/html" in page.headers["content-type"]
@@ -110,7 +110,7 @@ def test_api_failure():
     def factory():
         yield BrokenAgent()
 
-    with TestClient(create_app(factory)) as client:
+    with TestClient(create_app(factory, auth_enabled=False)) as client:
         response = client.post("/chat", json={"session_id": "demo", "message": "hi"})
         assert response.status_code == 502
         assert "secret-token" not in response.text
@@ -135,7 +135,7 @@ def test_trip_save_busy_returns_prompt_error(monkeypatch):
     def factory():
         yield object()
 
-    with TestClient(create_app(factory)) as client, ThreadPoolExecutor() as pool:
+    with TestClient(create_app(factory, auth_enabled=False)) as client, ThreadPoolExecutor() as pool:
         pending = pool.submit(client.post, '/chat', json={'session_id': 'demo', 'message': '规划'})
         try:
             assert started.wait(2)

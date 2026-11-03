@@ -64,7 +64,7 @@ def test_api_links_immutable_version_pdf_and_unknown(tmp_path):
     def factory():
         with open_test(tmp_path, Model()) as agent:
             yield agent
-    with TestClient(create_app(factory)) as client:
+    with TestClient(create_app(factory, auth_enabled=False)) as client:
         response = client.post("/chat/stream", json={"session_id": "trip", "message": "规划"})
         assert '"plan_version": 1' in response.text
         messages = client.get("/sessions/trip").json()["messages"]

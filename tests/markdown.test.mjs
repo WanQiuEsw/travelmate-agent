@@ -75,6 +75,8 @@ test('sources are collapsed with safe readable links', () => {
 const html = await readFile(new URL('../travelmate/index.html', import.meta.url), 'utf8');
 const appSource = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
   .replace(/import \{renderMarkdown\} from '[^']+';/, '')
+  .replace(/import \{apiFetch[^;]+;/, 'const refreshAccount = async () => ({user: {id: "test"}});')
+  .replace('  send.disabled = newChat.disabled = historySelect.disabled = true;', '')
   .replace('  initialize();', '');
 
 test('typewriter paints safe Markdown before completion, drains buffered frames, and cancels', async () => {

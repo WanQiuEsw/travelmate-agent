@@ -27,7 +27,7 @@ def test_sse_real_tool_loop(tmp_path):
         with open_agent(legacy_tool_loop=True, model=StreamingBudgetModel(), database=tmp_path / "sse.sqlite") as agent:
             yield agent
 
-    with TestClient(create_app(factory)) as client:
+    with TestClient(create_app(factory, auth_enabled=False)) as client:
         with client.stream("POST", "/chat/stream", json={"session_id": "sse", "message": "预算"}) as response:
             assert response.headers["content-type"].startswith("text/event-stream")
             frames = [line for line in response.iter_lines() if line]
@@ -49,7 +49,7 @@ def test_sse_real_tool_loop(tmp_path):
         assert client.get("/sessions/bad.id").status_code == 422
         assert client.post("/chat/stream", json={"session_id": "sse", "message": " "}).status_code == 422
 
-    with TestClient(create_app(factory)) as client:
+    with TestClient(create_app(factory, auth_enabled=False)) as client:
         assert len(client.get("/sessions/sse").json()["messages"]) == 2
         client.post("/chat/stream", json={"session_id": "sse", "message": "继续调整"})
         assert len(client.get("/sessions/sse").json()["messages"]) == 4
@@ -64,7 +64,7 @@ def test_sse_failure_is_sanitized():
     def factory():
         yield Broken()
 
-    with TestClient(create_app(factory)) as client:
+    with TestClient(create_app(factory, auth_enabled=False)) as client:
         response = client.post("/chat/stream", json={"session_id": "bad", "message": "hi"})
         assert "event: error" in response.text
         assert "private-api-key" not in response.text
@@ -115,7 +115,7 @@ def test_stage_progress_is_available_while_model_is_still_working(tmp_path):
         with open_test(tmp_path, PausedModel()) as agent:
             yield agent
 
-    with TestClient(create_app(factory)) as client, ThreadPoolExecutor(max_workers=2) as pool:
+    with TestClient(create_app(factory, auth_enabled=False)) as client, ThreadPoolExecutor(max_workers=2) as pool:
         running = pool.submit(client.post, '/chat/stream', json={'session_id': 'live-stage', 'message': '规划杭州'})
         try:
             assert started.wait(5)
@@ -150,7 +150,7 @@ def test_refresh_during_generation_does_not_wait_for_model(tmp_path, monkeypatch
         with open_agent(legacy_tool_loop=True, model=StreamingBudgetModel(), database=tmp_path / "refresh.sqlite") as agent:
             yield agent
 
-    with TestClient(create_app(factory)) as client, ThreadPoolExecutor(max_workers=3) as pool:
+    with TestClient(create_app(factory, auth_enabled=False)) as client, ThreadPoolExecutor(max_workers=3) as pool:
         running = pool.submit(client.post, "/chat/stream", json={"session_id": "refresh", "message": "预算"})
         try:
             assert started.wait(5)
@@ -192,7 +192,7 @@ def test_disconnected_stream_keeps_progress_and_completes(tmp_path, monkeypatch)
         with open_agent(legacy_tool_loop=True, model=StreamingBudgetModel(), database=tmp_path / "disconnect.sqlite") as agent:
             yield agent
 
-    app = create_app(factory)
+    app = create_app(factory, auth_enabled=False)
     endpoint = next(route.endpoint for route in app.routes if route.path == "/chat/stream")
 
     async def disconnect():
@@ -206,7 +206,8 @@ def test_disconnected_stream_keeps_progress_and_completes(tmp_path, monkeypatch)
             await sent.wait()
             return {"type": "http.disconnect"}
 
-        response = endpoint(api.ChatRequest(session_id="reload", message="预算"))
+        from types import SimpleNamespace
+        response = endpoint(api.ChatRequest(session_id="reload", message="预算"), SimpleNamespace(state=SimpleNamespace(user=None)))
         await response({"type": "http", "asgi": {"spec_version": "2.0"}}, receive, send)
 
     with TestClient(app) as client:

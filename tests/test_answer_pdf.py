@@ -32,7 +32,7 @@ def test_export_selected_answer_across_turns_sessions_and_restart(tmp_path, monk
         with open_agent(legacy_tool_loop=True, model=TravelAnswerModel(), database=tmp_path / "answers.sqlite", knowledge=tmp_path) as agent:
             yield agent
 
-    with TestClient(create_app(factory)) as client:
+    with TestClient(create_app(factory, auth_enabled=False)) as client:
         client.post('/chat', json={'session_id': 'same', 'message': '2026-12-01 上海两日游'})
         first = client.get('/sessions/same').json()['messages'][-1]
         client.post('/chat', json={'session_id': 'same', 'message': '2026-12-05 重庆三日游'})
@@ -47,7 +47,7 @@ def test_export_selected_answer_across_turns_sessions_and_restart(tmp_path, monk
         assert client.get(f"/sessions/other/answers/{first['message_id']}/pdf").status_code == 404
         assert client.get('/sessions/same/answers/' + '0' * 32 + '/pdf').status_code == 404
         assert client.get('/sessions/same/answers/bad/pdf').status_code == 422
-    with TestClient(create_app(factory)) as client:
+    with TestClient(create_app(factory, auth_enabled=False)) as client:
         assert client.get('/sessions/same').json()['messages'][1]['message_id'] == first['message_id']
         assert client.get(f"/sessions/same/answers/{first['message_id']}/pdf").status_code == 200
         assert '上海' in exported[-1] and '重庆' not in exported[-1]

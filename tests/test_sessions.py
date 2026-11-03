@@ -17,7 +17,7 @@ def test_session_pins_and_deletion_persist(tmp_path):
         with open_agent(legacy_tool_loop=True, model=BudgetModel(), database=tmp_path / "sessions.sqlite") as agent:
             yield agent
 
-    with TestClient(create_app(factory)) as client:
+    with TestClient(create_app(factory, auth_enabled=False)) as client:
         for key in ("one", "two", "three"):
             assert client.post("/chat", json={"session_id": key, "message": "预算"}).status_code == 200
         answer_id = client.get("/sessions/one").json()["messages"][-1]["message_id"]
@@ -32,7 +32,7 @@ def test_session_pins_and_deletion_persist(tmp_path):
         assert all(row["pinned"] for row in sessions[:2])
         assert client.post("/sessions/group", json={"session_ids": ["one"], "group": "旧分组"}).status_code == 405
 
-    with TestClient(create_app(factory)) as client:
+    with TestClient(create_app(factory, auth_enabled=False)) as client:
         assert sum(row.get("pinned") is True for row in client.get("/sessions").json()["sessions"]) == 2
         assert client.post("/sessions/pin", json={"session_ids": ["two"], "pinned": False}).status_code == 200
         rows = client.get("/sessions").json()["sessions"]
@@ -45,7 +45,7 @@ def test_session_pins_and_deletion_persist(tmp_path):
         assert client.get(f"/sessions/one/answers/{answer_id}/pdf").status_code == 404
         assert client.get("/sessions/one/trip").json().get("plan") is None
 
-    with TestClient(create_app(factory)) as client:
+    with TestClient(create_app(factory, auth_enabled=False)) as client:
         assert client.get("/sessions").json()["sessions"] == []
         # Reusing an old key must not revive messages or pin metadata.
         client.post("/chat", json={"session_id": "one", "message": "预算"})
@@ -59,7 +59,7 @@ def test_session_rename_validation_persistence_and_cleanup(tmp_path):
         with open_agent(legacy_tool_loop=True, model=BudgetModel(), database=tmp_path / "rename.sqlite") as agent:
             yield agent
 
-    with TestClient(create_app(factory)) as client:
+    with TestClient(create_app(factory, auth_enabled=False)) as client:
         client.post("/chat", json={"session_id": "one", "message": "预算"})
         for title in ("", "   ", "名" * 81):
             assert client.patch("/sessions/one/title", json={"title": title}).status_code == 422
@@ -67,7 +67,7 @@ def test_session_rename_validation_persistence_and_cleanup(tmp_path):
         assert client.patch("/sessions/one/title", json={"title": "  北京之旅  "}).json() == {"title": "北京之旅"}
         assert client.get("/sessions/one").json()["messages"][0]["content"] == "预算"
 
-    with TestClient(create_app(factory)) as client:
+    with TestClient(create_app(factory, auth_enabled=False)) as client:
         assert client.get("/sessions").json()["sessions"][0]["title"] == "北京之旅"
         client.delete("/sessions/one")
         client.post("/chat", json={"session_id": "one", "message": "预算"})

@@ -1,4 +1,4 @@
-"""Local single-user HTTP service. Bind to loopback only."""
+"""Invitation-only HTTP service with account-owned conversations."""
 import logging
 import json
 from pathlib import Path
@@ -9,7 +9,7 @@ from queue import Queue, Empty
 from time import time
 from typing import Annotated, Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi import Path as PathParam
 from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse, Response
 from pydantic import BaseModel, Field, field_validator, StringConstraints
@@ -21,6 +21,8 @@ from travelmate.evidence import validate_evidence
 from travelmate.workflow import Itinerary, get_workflow, save_workflow, validate_plan
 from travelmate.pdf_export import itinerary_pdf, answer_pdf, guide_pdf
 from travelmate.guide import get_version, render_guide
+from travelmate.accounts import Accounts
+from travelmate.auth import install_auth, require_access
 
 
 class ChatRequest(BaseModel):
@@ -63,15 +65,23 @@ class RailRequest(BaseModel):
     transport: Literal["高铁", "动车", "火车"] = "火车"
 
 
-def create_app(agent_factory=open_agent):
+def create_app(agent_factory=open_agent, *, auth_enabled=True):
     @asynccontextmanager
     async def lifespan(app):
         with agent_factory() as agent, ThreadPoolExecutor(max_workers=2) as executor:
             app.state.agent = agent
             app.state.executor = executor
+            app.state.auth_enabled = auth_enabled
+            if auth_enabled:
+                database = agent.checkpointer.conn.execute('PRAGMA database_list').fetchone()[2]
+                if not database:
+                    raise ValueError('邀请登录需要持久化 SQLite 数据库')
+                app.state.accounts = Accounts(database)
             yield
 
-    app = FastAPI(title="TravelMate (local)", lifespan=lifespan)
+    app = FastAPI(title="TravelMate", lifespan=lifespan, dependencies=[Depends(require_access)],
+                  docs_url=None, redoc_url=None, openapi_url=None)
+    install_auth(app)
     # Serialize checkpoint updates, including concurrent requests for the same session.
     lock = Lock()
     generating = {}
@@ -85,16 +95,28 @@ def create_app(agent_factory=open_agent):
         finally:
             lock.release()
 
-    @contextmanager
-    def generation_lock(session_id, message):
+    def start_generation(session_id, message, user):
         if not lock.acquire(blocking=False):
             raise HTTPException(409, "正在生成回复或处理其他请求，请稍后再试")
-        generating[session_id] = {"message": message, "started_at": time(), "steps": []}
+        try:
+            if auth_enabled:
+                app.state.accounts.start_generation(user['id'], session_id)
+            generating[session_id] = {"message": message, "started_at": time(), "steps": []}
+        except BaseException:
+            lock.release()
+            raise
+
+    def finish_generation(session_id):
+        generating.pop(session_id, None)
+        lock.release()
+
+    @contextmanager
+    def generation_lock(session_id, message, user):
+        start_generation(session_id, message, user)
         try:
             yield
         finally:
-            generating.pop(session_id, None)
-            lock.release()
+            finish_generation(session_id)
 
     @app.get("/", include_in_schema=False)
     def index():
@@ -109,12 +131,17 @@ def create_app(agent_factory=open_agent):
         return {"status": "ok"}
 
     @app.post("/transport/trains")
-    def train_search(request: RailRequest):
+    def train_search(request: RailRequest, http_request: Request):
+        if auth_enabled:
+            user_id = http_request.state.user['id']
+            app.state.accounts.throttle('trains:' + user_id, 10, 60)
+            app.state.accounts.throttle('trains-day:' + user_id, 100, 86400)
         return search_train_tickets.invoke(request.model_dump())
 
     @app.get("/sessions")
-    def list_sessions():
-        return {"sessions": conversations(app.state.agent)}
+    def list_sessions(http_request: Request):
+        allowed = app.state.accounts.session_ids(http_request.state.user['id']) if auth_enabled else None
+        return {"sessions": conversations(app.state.agent, allowed)}
 
     @app.get("/sessions/{session_id}")
     def history(session_id: Annotated[str, PathParam(min_length=1, max_length=100,
@@ -126,9 +153,9 @@ def create_app(agent_factory=open_agent):
                 "progress": {**run, "steps": list(run["steps"])} if run else None}
 
     @app.post("/chat", response_model=ChatResponse)
-    def respond(request: ChatRequest):
+    def respond(request: ChatRequest, http_request: Request):
         try:
-            with generation_lock(request.session_id, request.message):
+            with generation_lock(request.session_id, request.message, http_request.state.user):
                 answer = chat(app.state.agent, request.session_id, request.message,
                               **({"interaction_response": request.interaction_response.model_dump()} if request.interaction_response else {}))
             return ChatResponse(session_id=request.session_id, answer=answer)
@@ -141,7 +168,9 @@ def create_app(agent_factory=open_agent):
     SessionId = Annotated[str, PathParam(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_-]+$")]
 
     @app.post("/sessions/delete")
-    def remove_selected(request: SessionSelection):
+    def remove_selected(request: SessionSelection, http_request: Request):
+        if auth_enabled:
+            app.state.accounts.check_sessions(http_request.state.user['id'], request.session_ids)
         with trip_lock():
             delete_sessions(app.state.agent, request.session_ids)
         return {"deleted": list(dict.fromkeys(request.session_ids))}
@@ -161,7 +190,9 @@ def create_app(agent_factory=open_agent):
         return {"title": request.title}
 
     @app.post("/sessions/pin")
-    def pin_selected(request: SessionPin):
+    def pin_selected(request: SessionPin, http_request: Request):
+        if auth_enabled:
+            app.state.accounts.check_sessions(http_request.state.user['id'], request.session_ids)
         with trip_lock():
             existing = {item["session_id"] for item in conversations(app.state.agent)}
             if any(key not in existing for key in request.session_ids):
@@ -253,7 +284,9 @@ def create_app(agent_factory=open_agent):
                         headers={"Content-Disposition": 'attachment; filename="travelmate.pdf"'})
 
     @app.post("/chat/stream")
-    def respond_stream(request: ChatRequest):
+    def respond_stream(request: ChatRequest, http_request: Request):
+        # Reserve quota and capacity before sending SSE headers or queueing a task.
+        start_generation(request.session_id, request.message, http_request.state.user)
         # The producer survives a browser reload; the stream only delivers its events.
         queue = Queue()
         disconnected = Event()
@@ -268,18 +301,22 @@ def create_app(agent_factory=open_agent):
 
         def generate():
             try:
-                with generation_lock(request.session_id, request.message):
-                    publish("status", {"text": "正在理解你的旅行需求…"})
-                    for event, data in stream_chat(app.state.agent, request.session_id, request.message,
-                                                  **({"interaction_response": request.interaction_response.model_dump()} if request.interaction_response else {})):
-                        publish(event, data)
+                publish("status", {"text": "正在理解你的旅行需求…"})
+                for event, data in stream_chat(app.state.agent, request.session_id, request.message,
+                                              **({"interaction_response": request.interaction_response.model_dump()} if request.interaction_response else {})):
+                    publish(event, data)
             except Exception:
                 logging.getLogger(__name__).warning("Agent stream failed")
                 publish("error", {"text": "回复中断，请检查配置或网络后重试"})
             finally:
+                finish_generation(request.session_id)
                 queue.put(None)
 
-        app.state.executor.submit(generate)
+        try:
+            app.state.executor.submit(generate)
+        except BaseException:
+            finish_generation(request.session_id)
+            raise
 
         def events():
             try:

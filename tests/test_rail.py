@@ -70,7 +70,7 @@ def test_rail_api_and_failure_are_sanitized(monkeypatch):
     monkeypatch.setattr(rail, "query_mcp", query)
     @contextmanager
     def factory(): yield object()
-    with TestClient(create_app(factory)) as client:
+    with TestClient(create_app(factory, auth_enabled=False)) as client:
         body = dict(origin="上海", destination="北京", departure_date=rail.china_today().isoformat(), transport="动车")
         assert client.post("/transport/trains", json=body).json()["results"] == []
         assert requests[-1][-1] == "动车"

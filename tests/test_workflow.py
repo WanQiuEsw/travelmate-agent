@@ -59,7 +59,7 @@ def test_review_confirmation_pdf_and_restart(tmp_path):
     def factory():
         with open_agent(legacy_tool_loop=True, model=BudgetModel(), database=database, knowledge=tmp_path) as agent:
             yield agent
-    with TestClient(create_app(factory)) as client:
+    with TestClient(create_app(factory, auth_enabled=False)) as client:
         state = call(update_trip, {}, conditions=REQ)
         state = call(submit_itinerary, state, plan=Itinerary.model_validate(PLAN))
         save_workflow(client.app.state.agent, 'alice', state)
@@ -71,7 +71,7 @@ def test_review_confirmation_pdf_and_restart(tmp_path):
         assert response.status_code == 200 and response.content.startswith(b'%PDF-')
         assert client.put('/sessions/alice/trip', json=PLAN).json()['status'] == 'review'
         assert client.get('/sessions/alice/trip/pdf').status_code == 409
-    with TestClient(create_app(factory)) as client:
+    with TestClient(create_app(factory, auth_enabled=False)) as client:
         assert client.get('/sessions/alice/trip').json()['status'] == 'review'
 
 
