@@ -82,7 +82,7 @@ def test_no_source_train_stays_blocked_even_with_model_pass(tmp_path):
         assert any("G9999" in message for message in state["issues"])
 
 
-def test_blocked_review_explains_problem_and_preserves_previous_itinerary(tmp_path):
+def test_estimated_timing_warning_does_not_regenerate_or_discard_plan(tmp_path):
     issue = {**PROBLEM, 'dimension': 'space_time',
              'location': '第1天/洪崖洞(106.579027,29.562204)',
              'basis': '行程给travel_minutes 30分钟且标注transit，交通时间不足',
@@ -91,21 +91,24 @@ def test_blocked_review_explains_problem_and_preserves_previous_itinerary(tmp_pa
         chat(agent, 'trip', '规划')
     with open_test(tmp_path, ReviewedModel([[issue]])) as agent:
         text = chat(agent, 'trip', '修改')
-        assert '部分活动时间或交通衔接仍有冲突' in text
+        assert '按大致时段安排' in text and '上午' in text
         assert '| 位置 | 待解决问题 | 调整建议 |' not in text
         assert '| 时间 | 地点与安排 |' in text
-        assert '上一版可用行程' in text
+        assert '09:00' not in text and '11:00' not in text
         assert '106.579027' not in text and 'travel_minutes' not in text
         state = get_workflow(agent, 'trip')
-        assert state['status'] == 'blocked' and len(state['versions']) == 1
+        assert state['status'] == 'review' and len(state['versions']) == 2
+        assert state['attempts'] == 1
+        assert state['review']['issues'][0]['severity'] == 'warning'
+        assert state['review']['issues'][0]['blocking'] is False
         assert '106.579027' in state['review']['issues'][0]['location']
 
 
 def test_first_blocked_plan_does_not_publish_an_unvalidated_itinerary(tmp_path):
     with open_test(tmp_path, ReviewedModel([[PROBLEM]])) as agent:
         text = chat(agent, 'new', '规划')
-        assert '部分安排仍不符合你的游玩偏好或行动限制' in text
+        assert '用户不爬山，方案安排登高' in text and '改为平地游览' in text
         assert 'PROGRAM-' not in text and '按程序提示' not in text
-        assert '尚无通过检查的行程' in text
+        assert '需要先调整条件' in text
         assert '| 时间 | 地点与安排 |' not in text
         assert 'plan' not in get_workflow(agent, 'new')

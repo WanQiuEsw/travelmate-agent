@@ -20,20 +20,26 @@ def itinerary_pdf(state):
     def add(text, title=False):
         story.append(Paragraph(escape(str(text)), heading if title else style))
 
-    from travelmate.workflow import budget_total
+    from travelmate.workflow import budget_total, time_label, travel_label, cost_label, total_cost_label, TIME_NOTICE
     req, plan = state["requirements"], state["plan"]
     add(f'TravelMate · {req["destination"]}旅行行程', True)
     add(f'{req.get("origin") or "出发地待定"} / {req.get("start_date") or "日期待定"} / {req["days"]}天 / {req["travelers"]}人')
-    add(f'全员预算：{budget_total(req)}元；估算总费用：{state["total"]}元')
+    add(f'全员预算：{budget_total(req)}元；总费用：{total_cost_label([s for d in plan["days"] for s in d["stops"]], req, state.get("evidence", {}), plan["other_cost"])}')
     add(req.get("preferences", ""))
+    if plan.get("time_granularity") == "period":
+        add(TIME_NOTICE)
+    for booking in req.get("bookings", []):
+        add("已订安排：" + booking["description"] + (f"，第{booking['day']}天" if booking.get("day") else "") +
+            (f"，{booking['departure']}出发" if booking.get("departure") else ""))
+    if req.get("return_deadline"):
+        add(f"最后一天返程时限：{req['return_deadline']}，需提前结束活动并预留交通时间。")
     for index, day in enumerate(plan["days"], 1):
         story.append(Spacer(1, 10))
         add(day.get("date") or f"第{index}天", True)
         for stop in day["stops"]:
-            add(f'{stop["start"]}-{stop["end"]} {stop["city"]} · {stop["place"]}')
-            add(f'交通预留 {stop["travel_minutes"]} 分钟；全员费用 {stop["cost"]} 元。{stop["notes"]}')
-            add('来源：' + stop["source"])
-    add(f'其他费用：{plan["other_cost"]} 元。{plan["cost_notes"]}')
+            add(f'{time_label(plan, stop)} {stop["city"]} · {stop["place"]}')
+            add(f'交通衔接：{travel_label(stop)}；全员费用：{cost_label(stop, req, state.get("evidence", {}))}。{stop["notes"]}')
+    add('其他费用：无法查询。无法查询不代表免费。')
     add("费用均为估算；地点、交通、开放时间及票价请出行前核实。")
     SimpleDocTemplate(output, title="TravelMate 行程", leftMargin=48, rightMargin=48,
                       topMargin=48, bottomMargin=48).build(story)

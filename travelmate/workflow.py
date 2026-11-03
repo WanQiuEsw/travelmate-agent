@@ -9,9 +9,12 @@ from langchain.tools import ToolRuntime, tool
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 from langchain_core.messages import HumanMessage, AIMessage
-from pydantic import BaseModel, ConfigDict, Field, create_model
+from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
 from travelmate.public import public_data
-from travelmate.evidence import merge_evidence, validate_evidence
+from travelmate.evidence import merge_evidence, validate_evidence, check_reference
+
+TIME_NOTICE = "以下按大致时段安排，游玩与交通时间均为估算。可按实际到达时间、预约和体力调整顺序、删减景点或进一步细化；已订安排与返程时限优先。"
+PERIOD_START = {"清晨": 0, "上午": 6 * 60, "中午": 11 * 60, "下午": 14 * 60, "晚上": 18 * 60, "全天": 0, "机动安排": 0}
 
 
 class Requirements(BaseModel):
@@ -62,21 +65,27 @@ def budget_total(requirements):
         if requirements.get("budget_scope") == "per_person" else 1)
 
 
+def amount(value):
+    return f"{value:.2f}".rstrip("0").rstrip(".")
+
+
 
 class Stop(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     place: str = Field(min_length=1, max_length=200)
     city: str = Field(min_length=1, max_length=100)
-    start: str = Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
-    end: str = Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
-    travel_minutes: int = Field(ge=0, le=1440, description="本活动开始前、从上一活动到达本地点的交通分钟数；上一活动end加此数不得晚于本活动start。交通不属于本活动start/end内的停留时间。")
+    start: str | None = Field(default=None, pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    end: str | None = Field(default=None, pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    period: Literal["清晨", "上午", "中午", "下午", "晚上", "全天", "机动安排"] | None = None
+    travel_minutes: int | None = Field(default=None, ge=0, le=1440, description="活动开始前的交通分钟数；未知时留空，不编造精确值。分时段安排仅作估算，不用于硬时间校验。")
+    travel_estimate: str | None = Field(default=None, max_length=200, description="交通耗时估算范围或待确认说明，例如约30至60分钟，含候车缓冲。")
     cost: float = Field(ge=0, le=1e8, description="全员费用，人民币")
     notes: str = Field(default="", max_length=1000)
     activities: list[Literal["walking", "climbing", "museum", "food", "rest", "other"]] = Field(default_factory=list, max_length=10)
     fact_refs: dict[Literal["place", "cost", "opening_hours", "travel_minutes"], str] = Field(default_factory=dict)
     opening_hours: str | None = None
-    transport_mode: Literal["unknown", "driving", "walking", "transit", "rail"] = "unknown"
-    source: str = Field(default="未核实", max_length=1000)
+    transport_mode: Literal["unknown", "driving", "walking", "transit", "rail", "flight", "ferry"] = "unknown"
+    source: str = Field(default="未核实", max_length=1000, description="仅说明资料来源，不包含已核实字样；字段核实由fact_refs和程序判定，票价等无依据部分标待核实。")
 
 
 class Day(BaseModel):
@@ -99,12 +108,71 @@ class Alternative(BaseModel):
 
 class Itinerary(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    time_granularity: Literal["precise", "period"] = Field(default="precise", description="交通或到离时刻不确定时用period，按上午/中午/下午等安排；precise兼容已有精确行程。")
     days: list[Day] = Field(min_length=1, max_length=30)
-    other_cost: float = Field(ge=0, le=1e8, description="全员住宿、往返交通等未计入活动的费用")
+    other_cost: float = Field(ge=0, le=1e8, description="仅用户预算包含范围内、尚未计入活动的全员费用；明确排除的住宿或往返交通不计入，没有额外项目时为0。cost_notes说明构成及合计算式。")
     alternatives: list[Alternative] = Field(default_factory=list, max_length=30)
     reminders: list[str] = Field(default_factory=list, max_length=30)
     rail_segments: list[RailSegment] = Field(default_factory=list, max_length=30)
     cost_notes: str = Field(min_length=1, max_length=2000)
+
+    @model_validator(mode="after")
+    def consistent_timing(self):
+        for day in self.days:
+            for stop in day.stops:
+                if self.time_granularity == "precise" and (stop.start is None or stop.end is None):
+                    raise ValueError("精确行程需同时提供start和end；时间不确定请使用period行程")
+                if self.time_granularity == "period" and (stop.period is None or stop.start is not None or stop.end is not None):
+                    raise ValueError("分时段行程需填写period，start和end必须留空")
+        return self
+
+
+def period_plan(plan):
+    data = deepcopy(plan)
+    data["time_granularity"] = "period"
+    for day in data["days"]:
+        for stop in day["stops"]:
+            if not stop.get("period"):
+                hour = int(stop["start"][:2]) if stop.get("start") else None
+                stop["period"] = ("机动安排" if hour is None else "清晨" if hour < 6 else "上午" if hour < 11
+                                  else "中午" if hour < 14 else "下午" if hour < 18 else "晚上")
+            stop["start"] = stop["end"] = None
+    return data
+
+
+def adapt_timing(requirements, plan, evidence):
+    if plan.get("time_granularity") == "period":
+        return plan
+    problems, _ = validate_plan(requirements, plan)
+    # Never erase a known conflict with the user's booked departure or deadline.
+    if any("时限" in problem for problem in problems):
+        return plan
+    uncertain = any(stop.get("transport_mode") != "driving" or
+                    check_reference(evidence, stop.get("fact_refs", {}).get("travel_minutes"),
+                                    "driving_minutes", stop.get("travel_minutes"), requirements)
+                    for day in plan["days"] for stop in day["stops"])
+    return period_plan(plan) if uncertain or any("时间" in problem for problem in problems) else plan
+
+
+def time_label(plan, stop):
+    return (stop.get('period') or '机动安排') if plan.get("time_granularity") == "period" else f"{stop['start']}–{stop['end']}"
+
+
+def cost_label(stop, requirements, evidence, now=None):
+    ref = stop.get('fact_refs', {}).get('cost')
+    if check_reference(evidence, ref, 'price', stop.get('cost'), requirements, now):
+        return '无法查询'
+    return f"¥{stop['cost']:.2f}"
+
+
+def total_cost_label(stops, requirements, evidence, other_cost=0, now=None):
+    if other_cost or any(cost_label(stop, requirements, evidence, now) == '无法查询' for stop in stops):
+        return '无法查询'
+    return f"¥{sum(stop['cost'] for stop in stops):.2f}"
+
+
+def travel_label(stop):
+    return stop.get("travel_estimate") or (f"约{stop['travel_minutes']}分钟（估算）" if stop.get("travel_minutes") is not None else "耗时待确认，预留弹性")
 
 
 class PlanningState(AgentState):
@@ -128,22 +196,28 @@ def validate_plan(requirements, plan):
     if req.budget_currency not in (None, "CNY"):
         issues.append("当前校验仅支持 CNY，请确认人民币预算，不自动换汇")
     if total > limit:
-        issues.append(f"全员总费用 {total} 元超过预算 {limit} 元")
+        issues.append(f"全员总费用 {amount(total)} 元超过预算 {amount(limit)} 元，"
+                      f"超出 {amount(total - limit)} 元")
     for day in plan.days:
         previous = 0
         for stop in day.stops:
-            start, end = [int(t[:2]) * 60 + int(t[3:]) for t in (stop.start, stop.end)]
-            if end <= start or start < previous + stop.travel_minutes:
-                issues.append(f"{day.date} {stop.place} 时间重叠或交通时间不足")
+            if plan.time_granularity == "precise":
+                start, end = [int(t[:2]) * 60 + int(t[3:]) for t in (stop.start, stop.end)]
+                if stop.travel_minutes is None:
+                    issues.append(f"{day.date} {stop.place} 交通时间待确认，请改用分时段估算")
+                elif end <= start or start < previous + stop.travel_minutes:
+                    issues.append(f"{day.date} {stop.place} 时间重叠或交通时间不足")
+                previous = end
             if stop.city != req.destination:
                 issues.append(f"{stop.place} 所在城市与目的地不一致，请调整目的地或地点")
-            previous = end
     for index, day in enumerate(plan.days, 1):
         deadlines = [b.departure for b in req.bookings if b.day == index and b.departure]
         if index == req.days and req.return_deadline:
             deadlines.append(req.return_deadline)
         for deadline in deadlines:
-            if any(stop.end > deadline for stop in day.stops):
+            cutoff = int(deadline[:2]) * 60 + int(deadline[3:])
+            if any((stop.end > deadline if plan.time_granularity == "precise" else
+                    PERIOD_START[stop.period] >= cutoff) for stop in day.stops):
                 issues.append(f"第{index}天活动超过已订出发或返程时限 {deadline}，请调整并预留交通时间")
     return issues, total
 

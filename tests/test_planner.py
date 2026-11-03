@@ -7,6 +7,7 @@ from test_workflow import REQ, PLAN
 import json
 from threading import Barrier
 from langchain.tools import tool
+import pytest
 
 
 class Model:
@@ -33,6 +34,49 @@ class Model:
 
 def open_test(tmp_path, model):
     return open_agent(model=model, database=tmp_path / "graph.sqlite", knowledge=tmp_path)
+
+
+@pytest.mark.parametrize('mode', ['flight', 'ferry'])
+def test_flight_and_ferry_plans_can_be_validated_saved_and_presented(tmp_path, monkeypatch, mode):
+    from travelmate.guide import get_version, render_guide
+    monkeypatch.delenv('AMAP_API_KEY', raising=False)
+    plan = deepcopy(PLAN)
+    plan['days'][0]['stops'][0]['transport_mode'] = mode
+    with open_test(tmp_path, Model(plans=[plan])) as agent:
+        events = list(stream_chat(agent, 'transport', '规划'))
+        state = get_workflow(agent, 'transport')
+        assert state['status'] == 'review'
+        guide = get_version(state, 1)
+        assert ('飞机' if mode == 'flight' else '轮渡') in render_guide(guide, '/guide.pdf')
+        assert events[-1][0] == 'done' and '第1天' in events[-1][1]['answer']
+
+
+@pytest.mark.parametrize('always_invalid', [False, True])
+def test_schema_format_repair_is_bounded_and_streams_progress(tmp_path, monkeypatch, always_invalid):
+    monkeypatch.delenv('AMAP_API_KEY', raising=False)
+
+    class InvalidFormatModel(Model):
+        def with_structured_output(self, schema, **kwargs):
+            if schema.__name__ != 'Itinerary':
+                return super().with_structured_output(schema, **kwargs)
+            def run(messages):
+                self.calls.append('Itinerary')
+                plan = deepcopy(PLAN)
+                if self.calls.count('Itinerary') == 1 or always_invalid:
+                    plan['days'][0]['stops'][0]['transport_mode'] = 'unsupported-mode'
+                else:
+                    assert 'transport_mode' in messages[-1].content
+                return schema.model_validate(plan)
+            return RunnableLambda(run)
+
+    model = InvalidFormatModel()
+    with open_test(tmp_path, model) as agent:
+        events = list(stream_chat(agent, 'format', '规划'))
+        assert model.calls.count('Itinerary') == 2
+        assert sum(event == 'status' and '正在修正回答的数据格式' in data['text'] for event, data in events) == 1
+        assert get_workflow(agent, 'format')['status'] == ('failed' if always_invalid else 'review')
+        assert events[-1][0] == 'done'
+        assert 'unsupported-mode' not in events[-1][1]['answer']
 
 
 def test_real_evidence_ids_reach_model_and_places_query_concurrently(tmp_path, monkeypatch):
@@ -73,7 +117,7 @@ def test_real_evidence_ids_reach_model_and_places_query_concurrently(tmp_path, m
         assert state['status'] == 'review' and state['attempts'] == 1
         ref = state['plan']['days'][0]['stops'][0]['fact_refs']['place']
         assert ref in state['evidence']
-        assert '地点存在已核实' in answer and ref not in answer
+        assert '核实情况' not in answer and ref not in answer
         assert model.calls.count('Itinerary') == model.calls.count('ReviewReport') == 1
 
 
@@ -85,7 +129,7 @@ def test_required_order_versions_and_restart(tmp_path, monkeypatch):
         assert state["status"] == "review" and state["version"] == 1
         assert [row["node"] for row in state["trace"]] == ["requirements", "ready", "research", "organize_places", "verify_places", "generate", "check", "quality_review", "save_version", "present"]
         assert state["versions"][0]["plan"] == state["plan"]
-        assert "估算" in text and "待核实" in text
+        assert "估算" in text and "无法查询" in text
     with open_test(tmp_path, Model(intake={"intent": "modify", "conditions": {"budget": 2000}})) as agent:
         chat(agent, "trip", "预算改成2000")
         state = get_workflow(agent, "trip")

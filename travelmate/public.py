@@ -32,7 +32,7 @@ def public_answer(text, messages=()):
     # Map coordinates belong in navigation links, not in travel prose.
     text = re.sub(r"[（(]\s*-?\d{1,3}\.\d+\s*[,，]\s*-?\d{1,2}\.\d+\s*[)）]", "", text)
     labels = {"travel_minutes": "交通预留时间", "transport_mode": "交通方式",
-              "transit": "公交/地铁", "walking": "步行", "driving": "驾车"}
+              "transit": "公交/地铁", "walking": "步行", "driving": "驾车", "flight": "飞机", "ferry": "轮渡"}
     for field, label in labels.items():
         text = re.sub(r"(?<![A-Za-z0-9_/=:])`?" + field + r"`?(?![A-Za-z0-9_])", label, text)
     lines = text.splitlines()

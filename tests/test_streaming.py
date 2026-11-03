@@ -91,6 +91,45 @@ def test_map_and_knowledge_progress_are_concise():
     assert knowledge == {"text": "已使用重庆知识库。"}
 
 
+def test_stage_progress_is_available_while_model_is_still_working(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    from langchain_core.runnables import RunnableLambda
+    from test_planner import Model, open_test
+
+    started, release = Event(), Event()
+
+    class PausedModel(Model):
+        def with_structured_output(self, schema, **kwargs):
+            runnable = super().with_structured_output(schema, **kwargs)
+            if schema.__name__ != 'Intake':
+                return runnable
+            def run(messages):
+                started.set()
+                assert release.wait(10), 'test did not release model'
+                return runnable.invoke(messages)
+            return RunnableLambda(run)
+
+    @contextmanager
+    def factory():
+        with open_test(tmp_path, PausedModel()) as agent:
+            yield agent
+
+    with TestClient(create_app(factory)) as client, ThreadPoolExecutor(max_workers=2) as pool:
+        running = pool.submit(client.post, '/chat/stream', json={'session_id': 'live-stage', 'message': '规划杭州'})
+        try:
+            assert started.wait(5)
+            history = client.get('/sessions/live-stage').json()
+            assert history['generating'] is True
+            assert any('正在整理人数、日期、预算范围与行动限制' in step['text'] for step in history['progress']['steps'])
+            assert not any(step['text'] == '整理旅行条件' for step in history['progress']['steps'])
+        finally:
+            release.set()
+        frames = running.result(timeout=10).text
+        assert 'event: token' in frames and 'event: done' in frames
+        assert '正在根据检查结果调整' not in frames
+
+
 def test_refresh_during_generation_does_not_wait_for_model(tmp_path, monkeypatch):
     from concurrent.futures import ThreadPoolExecutor
     from threading import Event

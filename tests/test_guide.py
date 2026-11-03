@@ -27,9 +27,9 @@ def test_shared_document_costs_statuses_and_navigation():
     guide = make_guide(v, evidence)
     assert guide["total"] == 600
     text = str(guide)
-    assert "第1天" in text and "人均300.00" in text
-    assert "地点存在：查询时已核实" in text and "开放时间：待核实" in text
-    assert "交通耗时：待核实" in text and "uri.amap.com/marker" in text
+    assert "第1天" in text and "无法查询" in text
+    assert "地点存在：查询时已核实" not in text and "全员费用：无法查询" in text
+    assert "交通耗时：待核实" not in text and "uri.amap.com/marker" in text
     assert guide_pdf(guide).startswith(b"%PDF-")
     for section in guide["sections"]:
         assert section["title"] in render_guide(guide, "/download")
@@ -71,7 +71,7 @@ def test_api_links_immutable_version_pdf_and_unknown(tmp_path):
         assert messages[-1]["plan_version"] == 1
         old = client.get("/sessions/trip/plans/1")
         assert old.status_code == 200 and "default-src 'none'" in old.headers["content-security-policy"]
-        assert "600.00" in old.text
+        assert "无法查询" in old.text and "600.00" not in old.text
         pdf = client.get("/sessions/trip/plans/1/pdf")
         assert pdf.content.startswith(b"%PDF-")
         assert client.get("/sessions/other/plans/1").status_code == 404

@@ -49,6 +49,10 @@ def normalize(name, args, data, call_id, requirements, now=None):
                         "expires_at": (now + ttl).isoformat()}
     if status != "success":
         add("query", None, name)
+    elif name == "search_weather":
+        for row in rows:
+            add("weather_forecast", row, "高德天气预报（非天气保证）", data.get("url"), reference=True)
+            records[next(reversed(records))]["applicable_date"] = row.get("date")
     elif name == "search_places":
         for row in rows:
             add("place", row.get("name"), "高德地图地点搜索")
@@ -116,7 +120,7 @@ def validate_evidence(requirements, plan, evidence):
 def capture_evidence(request, handler):
     output = handler(request)
     name = request.tool_call["name"]
-    if name not in {"search_places", "search_route", "search_train_tickets", "search_knowledge", "search_web"} or not isinstance(output, ToolMessage):
+    if name not in {"search_places", "search_route", "search_train_tickets", "search_knowledge", "search_web", "search_weather"} or not isinstance(output, ToolMessage):
         return output
     data = {}
     try:

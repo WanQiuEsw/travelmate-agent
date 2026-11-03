@@ -15,6 +15,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 
 from travelmate.evidence import capture_evidence
 from travelmate.rail import search_train_tickets, china_today
+from travelmate.weather import search_weather
 from travelmate.tools import estimate_budget, search_web, search_places, search_route
 from travelmate.knowledge import create_knowledge_tool
 from travelmate.workflow import PlanningState, update_trip, submit_itinerary
@@ -45,11 +46,11 @@ def open_agent(*, model=None, database=None, knowledge=None, legacy_tool_loop=Fa
         if not legacy_tool_loop:
             from travelmate.planner import build_planner
             yield build_planner(model, saver, knowledge_tool,
-                                {t.name: t for t in (search_train_tickets, search_places, search_route, search_web)},
+                                {t.name: t for t in (search_train_tickets, search_places, search_route, search_web, search_weather)},
                                 PROMPT.format(today=china_today().isoformat()))
             return
         yield create_agent(model=model, state_schema=PlanningState, middleware=[capture_evidence],
-                           tools=[search_train_tickets, estimate_budget, search_web, search_places, search_route, update_trip, submit_itinerary,
+                           tools=[search_weather, search_train_tickets, estimate_budget, search_web, search_places, search_route, update_trip, submit_itinerary,
                            knowledge_tool],
                            system_prompt=PROMPT.format(today=china_today().isoformat()),
                            checkpointer=saver)
@@ -62,6 +63,7 @@ def chat(agent, session_id: str, message: str, interaction_response=None) -> str
 
 
 TOOL_LABELS = {
+    "search_weather": "查询目的地天气",
     "search_train_tickets": "通过12306查询车次",
     "search_knowledge": "检索旅游知识资料", "search_web": "搜索网页参考来源",
     "search_places": "通过高德查询", "search_route": "通过高德查询",
@@ -102,12 +104,14 @@ def tool_progress(item):
 def stream_chat(agent, session_id: str, message: str, interaction_response=None):
     config = {"configurable": {"thread_id": session_id}, "recursion_limit": 60}
     with closing(agent.stream({"messages": [HumanMessage(content=message, additional_kwargs={"interaction_response": interaction_response} if interaction_response else {})]},
-                              config, stream_mode=["messages", "updates"])) as stream:
+                              config, stream_mode=["messages", "custom", "updates"])) as stream:
         for mode, value in stream:
             if mode == "messages":
                 # Structured candidates and tool-loop drafts are not public answers.
                 # Emit only the sanitized final answer below, after validation.
                 continue
+            elif mode == "custom":
+                yield "status", public_data(value)
             elif mode == "updates":
                 for node, update in value.items():
                     if node in ("intake", "research", "organize", "verify_places", "generate", "check", "review", "save", "present"):

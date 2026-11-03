@@ -7,7 +7,7 @@ from urllib.parse import urlencode
 
 from travelmate.evidence import safe_url, check_reference, context_key
 from travelmate.public import public_data
-from travelmate.workflow import budget_total
+from travelmate.workflow import budget_total, time_label, travel_label, cost_label, total_cost_label, TIME_NOTICE
 
 
 def map_link(record, name):
@@ -40,34 +40,30 @@ def make_guide(version, evidence):
         items = [{"text": text} if isinstance(text, str) else text for text in texts]
         sections.append({"title": title, "kind": kind, "items": items})
     total = round(plan["other_cost"] + sum(s["cost"] for d in plan["days"] for s in d["stops"]), 2)
+    displayed_total = total_cost_label([s for d in plan['days'] for s in d['stops']], req, evidence, plan['other_cost'], asof)
     scope = "人均" if req.get("budget_scope") == "per_person" else "全员"
     section("旅行概览", [f"{req['days']}天 · {req['travelers']}人 · {req.get('start_date') or '日期未定，按第几天展示'}",
         f"出发地：{req.get('origin') or '待定'}；目的地：{req['destination']}",
         f"用户预算：{scope}{req['budget']:.2f} {req.get('budget_currency') or 'CNY'}；全员预算{budget_total(req):.2f}",
         f"预算包含：{req.get('budget_includes') or '旧方案未记录，请确认'}",
-        f"已列项目全员费用估算：{total:.2f}元；人均{total / req['travelers']:.2f}元",
+        f"已列项目全员费用：{displayed_total}",
         f"偏好：{req.get('preferences') or '未记录'}"], "overview")
+    if plan.get("time_granularity") == "period":
+        section("时间安排说明", [TIME_NOTICE])
     costs = []
     for i, day in enumerate(plan["days"], 1):
         items = []
         for stop in day["stops"]:
-            labels = []
             link = None
-            for field, kind, title in (("place", "place", "地点存在"), ("cost", "price", "费用"),
-                                       ("opening_hours", "opening_hours", "开放时间"), ("travel_minutes", "driving_minutes", "交通耗时")):
-                ref = stop.get("fact_refs", {}).get(field)
-                problem = check_reference(evidence, ref, kind, stop.get(field), req, asof) if ref else "未查询"
-                if field == "travel_minutes" and stop.get("transport_mode") != "driving":
-                    problem = "未按此交通方式核实"
-                labels.append(title + ("：查询时已核实" if not problem else "：估算" if field == "cost" else "：待核实"))
-                if field == "place" and not problem:
-                    link = map_link(evidence[ref], stop["place"])
-            mode = {"unknown": "方式待定", "walking": "步行", "driving": "驾车", "transit": "公交/地铁", "rail": "铁路"}[stop.get("transport_mode", "unknown")]
-            text = f"{stop['start']}-{stop['end']} {stop['place']}（{stop['city']}）\n交通衔接：{mode}，预留{stop['travel_minutes']}分钟；全员费用估算{stop['cost']:.2f}元。\n{stop.get('notes', '')}\n" + "；".join(labels)
+            ref = stop.get("fact_refs", {}).get("place")
+            if ref and not check_reference(evidence, ref, "place", stop["place"], req, asof):
+                link = map_link(evidence[ref], stop["place"])
+            mode = {"unknown": "方式待定", "walking": "步行", "driving": "驾车", "transit": "公交/地铁", "rail": "铁路", "flight": "飞机", "ferry": "轮渡"}[stop.get("transport_mode", "unknown")]
+            text = f"{time_label(plan, stop)} {stop['place']}（{stop['city']}）\n交通衔接：{mode}，{travel_label(stop)}；全员费用：{cost_label(stop, req, evidence, asof)}。\n{stop.get('notes', '')}\n"
             if stop.get("opening_hours"):
                 text += "\n开放时间参考：" + stop["opening_hours"]
             items.append({"text": text, "link": link, "link_label": "查看地图位置（非路线校验）"})
-            costs.append(f"第{i}天 · {stop['place']}：{stop['cost']:.2f}元（全员估算）")
+            costs.append(f"第{i}天 · {stop['place']}：{cost_label(stop, req, evidence, asof)}")
         section(day.get("date") or f"第{i}天", items, "day")
     traffic = []
     for segment in plan.get("rail_segments", []):
@@ -80,9 +76,15 @@ def make_guide(version, evidence):
     if not req.get("origin"):
         traffic.append("出发地未定，往返大交通费用与时间未完成校验，当前合计不能视为全旅程预算已满足。")
     section("交通与已订安排", traffic or ["未记录额外交通安排；市内衔接见每日时间线。"])
-    section("预算分项", [*costs, f"其他费用：{plan['other_cost']:.2f}元。{plan['cost_notes']}",
-        f"已列项目合计：{total:.2f}元；人均{total / req['travelers']:.2f}元。费用为估算，未自动按预算包含范围拆账。"], "budget")
-    section("备选安排", [a["trigger"] + " → " + a["action"] + (f"；额外费用估算{a['extra_cost']:.2f}元" if a.get("extra_cost") is not None else "；额外费用待核实") for a in plan.get("alternatives", [])] or ["本版未记录具体备选；高风险安排需在出发前进一步确认。"])
+    section("预算分项", [*costs, "其他费用：无法查询。", f"已列项目合计：{displayed_total}。无法查询不代表免费。"], "budget")
+    section("备选安排", [a["trigger"] + " → " + a["action"] + "；额外费用：无法查询" for a in plan.get("alternatives", [])] or ["本版未记录具体备选；高风险安排需在出发前进一步确认。"])
+    weather_items = []
+    for record in evidence.values():
+        if record.get("kind") == "weather_forecast" and record.get("context") == context_key(req):
+            row = record["value"]
+            weather_items.append(f"{row.get('date')}：白天{row.get('dayweather') or '未提供'}，夜间{row.get('nightweather') or '未提供'}；温度{row.get('nighttemp') or '未知'}至{row.get('daytemp') or '未知'}℃。预报发布时间：{row.get('reporttime') or '未提供'}；预报不代表保证。")
+    if weather_items:
+        section("天气预报", weather_items + ["未列日期未获得预报；出发前重新查询，遇雨按备选调整。"])
     section("行前提醒", plan.get("reminders", []) or ["开放时间、预约、天气与票价请在出发前重新核实。"])
     report = version.get("review", {})
     section("检查与仍待确认事项", [x["location"] + "：" + x["basis"] + "；" + x["suggestion"] for x in report.get("issues", [])] or ["保存时未记录阻塞问题；这不代表未查询事实已被核实。"])

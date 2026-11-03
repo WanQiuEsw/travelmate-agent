@@ -386,6 +386,7 @@ test('progress hides intermediate errors, deduplicates updates, and has no numbe
     progress.add('正在通过高德查询…');
     progress.add('正在通过高德查询…');
     progress.add('通过高德查询失败，相关信息尚未核实。');
+    if (!replyBody.textContent.includes('正在通过高德查询… · 已用时')) throw new Error('current stage is missing');
     progress.finish(true);
   `, context);
   const user = elements.messages.children[0];

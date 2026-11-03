@@ -408,6 +408,8 @@
       const key = text + JSON.stringify(sources);
       if (recorded.has(key)) return;
       recorded.add(key);
+      phase = text;
+      tick();
       const row = document.createElement('li');
       row.textContent = text;
       for (const source of sources) {

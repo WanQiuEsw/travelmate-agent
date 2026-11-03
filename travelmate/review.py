@@ -17,6 +17,7 @@ class ReviewIssue(BaseModel):
     basis: str = Field(min_length=1, max_length=1000)
     suggestion: str = Field(min_length=1, max_length=1000)
     blocking: bool
+    time_basis: Literal["estimate", "booking", "return_deadline"] = "estimate"
 
 
 class ReviewReport(BaseModel):
@@ -32,8 +33,8 @@ def program_review(requirements, plan, evidence):
     problems, total = validate_plan(requirements, plan)
     problems += validate_evidence(requirements, plan, evidence)
     issues = [ReviewIssue(rule_id=f"PROGRAM-{i+1}", dimension="budget" if "预算" in text or "费用" in text else "facts" if any(x in text for x in ("引用", "车次", "依据")) else "space_time",
-                         severity="error", location=text.split(":")[0][:200], basis=text,
-                         suggestion="按程序提示修改后重新校验", blocking=True).model_dump()
+                         severity="error", location=re.split(r"[:：]", text)[0][:200], basis=text,
+                         suggestion="调整对应费用或安排后重新规划", blocking=True).model_dump()
               for i, text in enumerate(problems)]
     for day, data in enumerate(plan["days"], 1):
         exclusions = requirements.get("exclusions", []) + requirements.get("day_exclusions", {}).get(str(day), [])
@@ -50,4 +51,17 @@ def program_review(requirements, plan, evidence):
 
 
 def blocking_messages(issues):
-    return [f"{x['location']}：{x['basis']}；建议：{x['suggestion']}" for x in issues if x["blocking"] or x["severity"] == "error"]
+    return [f"{x['location']}：{x['basis']}；建议：{x['suggestion']}" for x in issues if x["blocking"]]
+
+
+def timing_warnings(issues, requirements, plan):
+    """Estimated timing guides refinement; only actual user time anchors can block it."""
+    result = []
+    for issue in issues:
+        anchored = (issue.get("time_basis") == "return_deadline" and requirements.get("return_deadline") or
+                    issue.get("time_basis") == "booking" and any(b.get("departure") for b in requirements.get("bookings", [])))
+        if (plan.get("time_granularity") == "period" and issue["dimension"] in ("space_time", "navigation")
+                and not issue["rule_id"].startswith("PROGRAM-") and not anchored):
+            issue = {**issue, "severity": "warning", "blocking": False}
+        result.append(issue)
+    return result
