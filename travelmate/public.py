@@ -28,6 +28,12 @@ def public_data(value, messages=()):
 def public_answer(text, messages=()):
     """Keep reference labels short without changing the travel advice."""
     text = public_data(text, messages)
+    # Map coordinates belong in navigation links, not in travel prose.
+    text = re.sub(r"[（(]\s*-?\d{1,3}\.\d+\s*[,，]\s*-?\d{1,2}\.\d+\s*[)）]", "", text)
+    labels = {"travel_minutes": "交通预留时间", "transport_mode": "交通方式",
+              "transit": "公交/地铁", "walking": "步行", "driving": "驾车"}
+    for field, label in labels.items():
+        text = re.sub(r"(?<![A-Za-z0-9_/=:])`?" + field + r"`?(?![A-Za-z0-9_])", label, text)
     lines = text.splitlines()
     in_sources = False
     seen = set()

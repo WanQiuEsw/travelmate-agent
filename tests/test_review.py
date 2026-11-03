@@ -80,3 +80,31 @@ def test_no_source_train_stays_blocked_even_with_model_pass(tmp_path):
         state = get_workflow(agent, "trip")
         assert state["status"] == "blocked" and "plan" not in state
         assert any("G9999" in message for message in state["issues"])
+
+
+def test_blocked_review_is_a_public_table_and_preserves_previous_itinerary(tmp_path):
+    issue = {**PROBLEM, 'dimension': 'space_time',
+             'location': '第1天/洪崖洞(106.579027,29.562204)',
+             'basis': '行程给travel_minutes 30分钟且标注transit，交通时间不足',
+             'suggestion': '将travel_minutes调整为45分钟，预留换乘时间'}
+    with open_test(tmp_path, Model()) as agent:
+        chat(agent, 'trip', '规划')
+    with open_test(tmp_path, ReviewedModel([[issue]])) as agent:
+        text = chat(agent, 'trip', '修改')
+        assert '| 位置 | 待解决问题 | 调整建议 |' in text
+        assert '| 时间 | 地点与安排 |' in text
+        assert '上一版可用行程' in text
+        assert '106.579027' not in text and 'travel_minutes' not in text
+        assert '交通预留时间' in text
+        state = get_workflow(agent, 'trip')
+        assert state['status'] == 'blocked' and len(state['versions']) == 1
+        assert '106.579027' in state['review']['issues'][0]['location']
+
+
+def test_first_blocked_plan_does_not_publish_an_unvalidated_itinerary(tmp_path):
+    with open_test(tmp_path, ReviewedModel([[PROBLEM]])) as agent:
+        text = chat(agent, 'new', '规划')
+        assert '| 位置 | 待解决问题 | 调整建议 |' in text
+        assert '尚无通过检查的行程' in text
+        assert '| 时间 | 地点与安排 |' not in text
+        assert 'plan' not in get_workflow(agent, 'new')

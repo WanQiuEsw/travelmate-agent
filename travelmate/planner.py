@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from travelmate.workflow import PlanningState, update_trip, Itinerary, validate_plan, PartialRequirements
 from travelmate.evidence import normalize, validate_evidence, context_key
-from travelmate.public import public_data
+from travelmate.public import public_data, public_answer
 from travelmate.guide import version_snapshot
 from travelmate.review import ReviewReport, program_review, blocking_messages, plan_key
 from travelmate.interaction import Decision, requirements_interaction, decision_interaction
@@ -201,13 +201,23 @@ def build_planner(model, saver, knowledge, tools, prompt):
 
     def present(state):
         w = state["workflow"]
+        def cell(value):
+            return public_answer(str(value)).replace("|", "／").replace("\n", " ").replace("\r", " ")
+
+        text = ""
         if w["status"] == "blocked":
-            text = "本次方案经三次校验仍有冲突，已停止修订并保留上一版可用方案：\n" + "\n".join("- " + x for x in w["issues"])
-        else:
-            req, plan = w["requirements"], w["plan"]
-            def cell(value):
-                return str(value).replace("|", "／").replace("\n", " ").replace("\r", " ")
-            text = f"## {req['destination']} · {req['days']}天旅行攻略\n\n"
+            text = "## 本次行程调整未通过检查\n\n已尝试修订三次并停止自动修订，以下问题仍需解决；本次草案尚不可作为可用行程。\n\n"
+            text += "| 位置 | 待解决问题 | 调整建议 |\n| --- | --- | --- |\n"
+            for issue in w.get("review", {}).get("issues", []):
+                if issue["blocking"] or issue["severity"] == "error":
+                    text += f"| {cell(issue['location'])} | {cell(issue['basis'])} | {cell(issue['suggestion'])} |\n"
+            if w.get("plan"):
+                text += "\n以下保留上一版可用行程，本次修改尚未应用。\n\n"
+            else:
+                text += "\n尚无通过检查的行程，请调整上述条件后重新生成。\n"
+        if w.get("plan"):
+            req, plan = w.get("plan_requirements", w["requirements"]), w["plan"]
+            text += f"## {req['destination']} · {req['days']}天旅行攻略\n\n"
             text += f"**{req['travelers']} 人同行 · 版本 {w['version']} · {req.get('start_date') or '出发日期待定'}**\n\n"
             text += "### 旅行概览\n\n| 项目 | 安排 |\n| --- | --- |\n"
             scope = "人均" if req.get("budget_scope") == "per_person" else "全员"

@@ -24,3 +24,21 @@ def test_amap_reference_keeps_query_failure_status():
 def test_review_evidence_identifiers_hidden_in_prose():
     from travelmate.public import public_answer
     assert "a" * 32 not in public_answer("引用" + " " + "a" * 32 + ":0 的地点仍待核实")
+
+
+def test_travel_prose_hides_coordinates_and_translates_internal_fields():
+    from travelmate.public import public_answer
+    text = '洪崖洞(106.579027,29.562204)到北仓文创街区（106.538685，29.578539）；行程给travel_minutes 30分钟且标注transit；`transport_mode`为`walking`。'
+    result = public_answer(text)
+    assert '106.' not in result and '29.562204' not in result
+    assert 'travel_minutes' not in result and 'transport_mode' not in result
+    assert '交通预留时间 30分钟' in result and '公交/地铁' in result and '步行' in result
+    assert '洪崖洞到北仓文创街区' in result
+
+
+def test_output_cleaning_preserves_evidence_and_navigation_links():
+    from travelmate.public import public_answer
+    url = 'https://uri.amap.com/marker?position=106.579027,29.562204&name=transit'
+    assert public_answer('[查看地图](' + url + ')') == '[查看地图](' + url + ')'
+    evidence = {'location': '106.579027,29.562204', 'transport_mode': 'walking'}
+    assert public_data(evidence) == evidence
