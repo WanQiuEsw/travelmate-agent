@@ -438,30 +438,38 @@
     }
   }
 
-  async function loadConversation(id) {
+  let recoveryTimer;
+  async function loadConversation(id, recovering = false) {
     if (busy) return;
     busy = true;
     send.disabled = newChat.disabled = historySelect.disabled = true;
+    clearTimeout(recoveryTimer);
+    let generating = false;
     status.textContent = '正在恢复对话…';
     try {
       const response = await fetch('/sessions/' + encodeURIComponent(id));
       if (!response.ok) throw new Error('history unavailable');
       const data = await response.json();
+      generating = data.generating === true;
       session = id;
       rememberSession();
-      input.value = '';
+      if (!recovering) input.value = '';
       messages.replaceChildren();
       for (const item of data.messages) {
         const body = appendMessage(item.role === 'user' ? '你' : 'TravelMate', item.content, item.role === 'user');
         if (item.role === 'assistant') addExport(body, item.message_id, id, item.plan_version);
       }
 
-      status.textContent = data.interrupted ? '上次回复未完成，可继续补充需求。' : '对话已恢复，可以继续聊';
+      status.textContent = generating ? '回复仍在生成，完成后会自动恢复。' : data.interrupted ? '上次回复未完成，可继续补充需求。' : '对话已恢复，可以继续聊';
     } catch {
       status.textContent = '历史对话加载失败，请刷新后重试。';
     } finally {
       busy = false;
-      send.disabled = newChat.disabled = historySelect.disabled = false;
+      send.disabled = generating;
+      newChat.disabled = historySelect.disabled = false;
+      if (generating) recoveryTimer = setTimeout(() => {
+        if (session === id) loadConversation(id, true);
+      }, 1500);
     }
   }
 
@@ -483,6 +491,8 @@
   }
 
   function resetConversation() {
+    clearTimeout(recoveryTimer);
+    send.disabled = false;
     session = crypto.randomUUID();
     rememberSession();
     input.value = '';
@@ -511,7 +521,7 @@
   form.addEventListener('submit', async event => {
     event.preventDefault();
     const text = input.value.trim();
-    if (!text || busy) return;
+    if (!text || busy || send.disabled) return;
     busy = true;
     send.disabled = newChat.disabled = historySelect.disabled = true;
     input.disabled = true;
@@ -595,7 +605,7 @@
     catch { status.textContent = '历史列表加载失败，仍可尝试恢复当前对话。'; }
     busy = false;
     send.disabled = newChat.disabled = historySelect.disabled = false;
-    if (historySelect.querySelector('[aria-current="true"]')) await loadConversation(session);
+    await loadConversation(session);
   }
   initialize();
 </script>

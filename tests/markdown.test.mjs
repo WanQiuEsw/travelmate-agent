@@ -79,6 +79,7 @@ test('Enter sends, Ctrl/Command+Enter inserts a newline, and IME confirmation st
   };
   input.dispatchEvent = () => {};
   vm.runInNewContext(appSource, {
+    setTimeout, clearTimeout,
     document: {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []},
     renderMarkdown, Event, localStorage: {getItem: () => 'test', setItem() {}},
   });
@@ -129,6 +130,7 @@ for (const success of [true, false]) {
     }};
     const pageDocument = {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []};
     vm.runInNewContext(appSource, {
+    setTimeout, clearTimeout,
       document: pageDocument, renderMarkdown, TextDecoder, setInterval, clearInterval,
       localStorage: {getItem: () => 'test', setItem() {}},
       Option: class {},
@@ -169,6 +171,7 @@ test('each export link keeps its answer and session, without review controls', (
   const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history']
     .map(id => [id, new Node('div')]));
   const context = vm.createContext({
+    setTimeout, clearTimeout,
     document: {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []},
     renderMarkdown, localStorage: {getItem: () => 'session-shanghai', setItem() {}},
   });
@@ -191,6 +194,7 @@ test('sidebar loads a conversation and new chat clears messages and selection', 
   const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history', 'sidebar']
     .map(id => [id, new Node('div')]));
   const context = vm.createContext({
+    setTimeout, clearTimeout,
     document: {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []},
     renderMarkdown, crypto: {randomUUID: () => 'new-session'},
     localStorage: {getItem: () => 'old-session', setItem() {}},
@@ -235,6 +239,7 @@ test('pinning persists selection on failure and deletion clears the current conv
   let fail = false;
   let approve = true;
   const context = vm.createContext({
+    setTimeout, clearTimeout,
     document: {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []},
     renderMarkdown, crypto: {randomUUID: () => 'new-session'}, confirm: () => approve,
     localStorage: {getItem: () => 'old-session', setItem() {}},
@@ -279,6 +284,7 @@ test('progress hides intermediate errors, deduplicates updates, and has no numbe
   const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history']
     .map(id => [id, new Node('div')]));
   const context = vm.createContext({
+    setTimeout, clearTimeout,
     document: {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []},
     renderMarkdown, setInterval, clearInterval,
     localStorage: {getItem: () => 'test', setItem() {}},
@@ -311,6 +317,7 @@ test('multi-select is opt-in, has only bottom deletion, and preserves selection 
   let fail = true;
   const calls = [];
   const context = vm.createContext({
+    setTimeout, clearTimeout,
     document: {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []},
     renderMarkdown, Event, crypto: {randomUUID: () => 'new'}, confirm: () => true,
     localStorage: {getItem: () => 'one', setItem() {}},
@@ -367,6 +374,7 @@ test('guide links bind to completed answer version and original session', async 
   const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history']
     .map(id => [id, new Node('div')]));
   const context = vm.createContext({
+    setTimeout, clearTimeout,
     document: {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []},
     renderMarkdown, localStorage: {getItem: () => 'session-shanghai', setItem() {}},
   });
@@ -378,4 +386,32 @@ test('guide links bind to completed answer version and original session', async 
   const links = nodes(elements.messages).filter(node => node.className === 'export-pdf guide-link');
   assert.equal(links[0].href, '/sessions/trip-old/plans/1');
   assert.equal(links[1].href, '/sessions/trip-new/plans/2');
+});
+
+test('reload polls an active session even before it appears in history', async () => {
+  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history', 'sidebar']
+    .map(id => [id, new Node('div')]));
+  let poll;
+  let generating = true;
+  const context = vm.createContext({
+    document: {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []},
+    renderMarkdown, localStorage: {getItem: () => 'pending', setItem() {}},
+    clearTimeout() { poll = undefined; }, setTimeout(callback) { poll = callback; return 1; },
+    fetch: async url => ({ok: true, json: async () => url === '/sessions'
+      ? {sessions: []} : {generating, messages: generating ? [] : [{role: 'assistant', content: '旅行方案'}]}}),
+  });
+  vm.runInContext(appSource, context);
+  await vm.runInContext('initialize()', context);
+  assert.equal(elements.send.disabled, true);
+  assert.equal(elements.new.disabled, false);
+  assert.match(elements.status.textContent, /仍在生成/);
+  assert.equal(typeof poll, 'function');
+  elements.input.value = '保留草稿';
+  generating = false;
+  poll();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(elements.send.disabled, false);
+  assert.match(elements.messages.textContent, /旅行方案/);
+  assert.equal(elements.input.value, '保留草稿');
+  assert.equal(poll, undefined);
 });

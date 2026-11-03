@@ -87,3 +87,42 @@ def test_map_and_knowledge_progress_are_concise():
     assert mapped == {"text": "已通过高德查询。"}
     knowledge = tool_progress(ToolMessage(name="search_knowledge", tool_call_id="kb", content=json.dumps({"results": [{"source": "重庆知识库（城市概况）", "content": "长篇资料"}]})))
     assert knowledge == {"text": "已使用重庆知识库。"}
+
+
+def test_refresh_during_generation_does_not_wait_for_model(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    import travelmate.api as api
+
+    started, release = Event(), Event()
+    original = api.stream_chat
+
+    def paused_stream(*args):
+        started.set()
+        assert release.wait(10), "test did not release generation"
+        yield from original(*args)
+
+    monkeypatch.setattr(api, "stream_chat", paused_stream)
+
+    @contextmanager
+    def factory():
+        with open_agent(legacy_tool_loop=True, model=StreamingBudgetModel(), database=tmp_path / "refresh.sqlite") as agent:
+            yield agent
+
+    with TestClient(create_app(factory)) as client, ThreadPoolExecutor(max_workers=3) as pool:
+        running = pool.submit(client.post, "/chat/stream", json={"session_id": "refresh", "message": "预算"})
+        try:
+            assert started.wait(5)
+            # Simulate reload before the first checkpoint exists.
+            listing = pool.submit(client.get, "/sessions").result(timeout=2)
+            history = pool.submit(client.get, "/sessions/refresh").result(timeout=2)
+            assert listing.status_code == history.status_code == 200
+            assert history.json()["generating"] is True
+            duplicate = pool.submit(client.post, "/chat", json={"session_id": "refresh", "message": "继续"}).result(timeout=2)
+            assert duplicate.status_code == 409
+        finally:
+            release.set()
+        assert "event: done" in running.result(timeout=10).text
+        history = client.get("/sessions/refresh").json()
+        assert history["generating"] is False
+        assert len(history["messages"]) == 2

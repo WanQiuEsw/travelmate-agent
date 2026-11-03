@@ -68,6 +68,7 @@ def create_app(agent_factory=open_agent):
     app = FastAPI(title="TravelMate (local)", lifespan=lifespan)
     # Serialize checkpoint updates, including concurrent requests for the same session.
     lock = Lock()
+    generating = set()
 
     @contextmanager
     def trip_lock():
@@ -76,6 +77,17 @@ def create_app(agent_factory=open_agent):
         try:
             yield
         finally:
+            lock.release()
+
+    @contextmanager
+    def generation_lock(session_id):
+        if not lock.acquire(blocking=False):
+            raise HTTPException(409, "正在生成回复或处理其他请求，请稍后再试")
+        generating.add(session_id)
+        try:
+            yield
+        finally:
+            generating.discard(session_id)
             lock.release()
 
     @app.get("/", include_in_schema=False)
@@ -96,21 +108,23 @@ def create_app(agent_factory=open_agent):
 
     @app.get("/sessions")
     def list_sessions():
-        with lock:
-            return {"sessions": conversations(app.state.agent)}
+        return {"sessions": conversations(app.state.agent)}
 
     @app.get("/sessions/{session_id}")
     def history(session_id: Annotated[str, PathParam(min_length=1, max_length=100,
                                                    pattern=r"^[a-zA-Z0-9_-]+$")]):
-        with lock:
-            return conversation(app.state.agent, session_id)
+        was_generating = session_id in generating
+        return {**conversation(app.state.agent, session_id),
+                "generating": was_generating or session_id in generating}
 
     @app.post("/chat", response_model=ChatResponse)
     def respond(request: ChatRequest):
         try:
-            with lock:
+            with generation_lock(request.session_id):
                 answer = chat(app.state.agent, request.session_id, request.message)
             return ChatResponse(session_id=request.session_id, answer=answer)
+        except HTTPException:
+            raise
         except Exception:
             logging.getLogger(__name__).warning("Agent request failed")
             raise HTTPException(502, "智能体请求失败，请检查服务配置或稍后重试") from None
@@ -148,8 +162,7 @@ def create_app(agent_factory=open_agent):
 
     @app.get("/sessions/{session_id}/trip")
     def trip(session_id: SessionId):
-        with lock:
-            return get_workflow(app.state.agent, session_id)
+        return get_workflow(app.state.agent, session_id)
 
     @app.get("/sessions/{session_id}/answers/{message_id}/pdf")
     def export_answer(session_id: SessionId,
@@ -210,40 +223,37 @@ def create_app(agent_factory=open_agent):
 
     @app.get("/sessions/{session_id}/plans/{version}")
     def preview(session_id: SessionId, version: Annotated[int, PathParam(ge=1)]):
-        with lock:
-            guide = load_guide(session_id, version)
+        guide = load_guide(session_id, version)
         return HTMLResponse(render_guide(guide, f"/sessions/{session_id}/plans/{version}/pdf"),
             headers={"Cache-Control": "no-store", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
                      "X-Content-Type-Options": "nosniff"})
 
     @app.get("/sessions/{session_id}/plans/{version}/pdf")
     def export_guide(session_id: SessionId, version: Annotated[int, PathParam(ge=1)]):
-        with lock:
-            guide = load_guide(session_id, version)
+        guide = load_guide(session_id, version)
         return Response(guide_pdf(guide), media_type="application/pdf",
             headers={"Cache-Control": "no-store", "Content-Disposition": f'attachment; filename="travelmate-v{version}.pdf"'})
 
     @app.get("/sessions/{session_id}/trip/pdf")
     def export_trip(session_id: SessionId):
-        with lock:
-            state = get_workflow(app.state.agent, session_id)
-            if state.get("status") != "confirmed":
-                raise HTTPException(409, "请先确认有效行程")
-            content = itinerary_pdf(state)
+        state = get_workflow(app.state.agent, session_id)
+        if state.get("status") != "confirmed":
+            raise HTTPException(409, "请先确认有效行程")
+        content = itinerary_pdf(state)
         return Response(content, media_type="application/pdf",
                         headers={"Content-Disposition": 'attachment; filename="travelmate.pdf"'})
 
     @app.post("/chat/stream")
     def respond_stream(request: ChatRequest):
         def events():
-            with lock:
-                try:
+            try:
+                with generation_lock(request.session_id):
                     yield 'event: status\ndata: {"text":"正在理解你的旅行需求…"}\n\n'
                     for event, data in stream_chat(app.state.agent, request.session_id, request.message):
                         yield f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
-                except Exception:
-                    logging.getLogger(__name__).warning("Agent stream failed")
-                    yield 'event: error\ndata: {"text":"回复中断，请检查配置或网络后重试"}\n\n'
+            except Exception:
+                logging.getLogger(__name__).warning("Agent stream failed")
+                yield 'event: error\ndata: {"text":"回复中断，请检查配置或网络后重试"}\n\n'
         return StreamingResponse(events(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
