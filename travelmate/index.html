@@ -365,6 +365,27 @@
     }
   }
   function showReply(body, text) { body.classList.remove('plain'); renderMarkdown(body, text); }
+  function createTypewriter(body) {
+    let text = '', visible = 0, timer = null, finished = null;
+    function paint() {
+      timer = null;
+      visible = Math.min(visible + 48, text.length);
+      // Render through the same safe Markdown path as completed messages.
+      showReply(body, text.slice(0, visible));
+      if (visible < text.length) timer = setTimeout(paint, 32);
+      else if (finished) { finished(); finished = null; }
+    }
+    function schedule() { if (timer === null) timer = setTimeout(paint, 0); }
+    return {
+      append(chunk) { text += chunk; schedule(); },
+      finish(answer) {
+        if (!answer.startsWith(text.slice(0, visible))) visible = 0;
+        text = answer;
+        return new Promise(resolve => { finished = resolve; schedule(); });
+      },
+      cancel() { clearTimeout(timer); timer = null; }
+    };
+  }
 
   function createProgress(reply, started = Date.now()) {
     const box = document.createElement('details');
@@ -687,8 +708,9 @@
     messages.lastElementChild?.scrollIntoView({block: 'start'});
     const outputNotice = '答案正在生成，可刷新页面恢复执行进度。';
     status.textContent = outputNotice;
-    const reply = appendMessage('TravelMate', '正在整理回复，完成排版后将显示在这里…');
+    const reply = appendMessage('TravelMate', '正在查询和校验旅行信息…');
     const progress = createProgress(reply);
+    const writer = createTypewriter(progress.answer);
     reply.setAttribute('aria-busy', 'true');
     let generating = false;
     let done = false;
@@ -718,13 +740,14 @@
             progress.add(data.text, data.sources);
           }
           if (event === 'token') {
-            if (!generating) progress.add('正在结合查询结果组织回答与参考来源，完成排版后展示。');
+            if (!generating) progress.add('信息整理完成，正在逐步输出回答。');
             generating = true;
             status.textContent = outputNotice;
+            writer.append(data.text || '');
           }
           if (event === 'done') {
             showInteraction(data.interaction, data.interaction?.id === interactionResponse?.id ? interactionResponse?.answers : {});
-            showReply(progress.answer, data.answer);
+            await writer.finish(data.answer);
             reply.scrollIntoView?.({block: 'start'});
             addExport(progress.answer, data.message_id, data.session_id || session, data.plan_version);
             reply.setAttribute('aria-busy', 'false');
@@ -738,6 +761,7 @@
       status.textContent = '可以继续补充你的想法';
       refreshSessions().catch(() => { status.textContent = '回复已保存，历史列表暂时无法更新。'; });
     } catch {
+      writer.cancel();
       if (interactionResponse) showInteraction(submittedInteraction, interactionResponse.answers);
       input.value = text;
       progress.add('请求中断，已保留本次执行记录。');

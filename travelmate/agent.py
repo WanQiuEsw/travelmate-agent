@@ -105,10 +105,9 @@ def stream_chat(agent, session_id: str, message: str, interaction_response=None)
                               config, stream_mode=["messages", "updates"])) as stream:
         for mode, value in stream:
             if mode == "messages":
-                chunk, metadata = value
-                if isinstance(chunk, AIMessage) and metadata.get("langgraph_node") == "model" and chunk.text:
-                    # Partial tokens can split internal IDs; expose only the sanitized complete answer.
-                    yield "token", {"text": "", "id": chunk.id}
+                # Structured candidates and tool-loop drafts are not public answers.
+                # Emit only the sanitized final answer below, after validation.
+                continue
             elif mode == "updates":
                 for node, update in value.items():
                     if node in ("intake", "research", "organize", "verify_places", "generate", "check", "review", "save", "present"):
@@ -128,7 +127,10 @@ def stream_chat(agent, session_id: str, message: str, interaction_response=None)
         yield "error", {"text": "运行尚未完成，可继续对话恢复；此前方案已保留。"}
         return
     last = state.values["messages"][-1]
-    yield "done", {"answer": public_answer(last.text, state.values["messages"]), "session_id": session_id,
+    answer = public_answer(last.text, state.values["messages"])
+    for offset in range(0, len(answer), 48):
+        yield "token", {"text": answer[offset:offset + 48]}
+    yield "done", {"answer": answer, "session_id": session_id,
                    **({"interaction": last.additional_kwargs["interaction"]} if last.additional_kwargs.get("interaction") else {}),
                    "message_id": answer_id(last, len(state.values["messages"]) - 1),
                    **({"plan_version": last.additional_kwargs["plan_version"]} if last.additional_kwargs.get("plan_version") else {})}

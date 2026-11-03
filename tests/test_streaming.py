@@ -31,11 +31,13 @@ def test_sse_real_tool_loop(tmp_path):
         with client.stream("POST", "/chat/stream", json={"session_id": "sse", "message": "预算"}) as response:
             assert response.headers["content-type"].startswith("text/event-stream")
             frames = [line for line in response.iter_lines() if line]
-        assert frames.count("event: token") == 3
+        assert frames.count("event: token") >= 1
         assert "event: status" in frames and "event: done" in frames
         assert "event: error" not in frames
         data = [json.loads(line[6:]) for line in frames if line.startswith("data: ")]
         assert data[-1]["answer"] == "预算合计1800元\n供参考"
+        events = [(frames[i][7:], json.loads(frames[i + 1][6:])) for i in range(0, len(frames), 2)]
+        assert ''.join(payload['text'] for event, payload in events if event == 'token') == data[-1]['answer']
         history = client.get("/sessions/sse").json()
         assert [m["role"] for m in history["messages"]] == ["user", "assistant"]
         assert history["messages"][-1]["content"] == data[-1]["answer"]

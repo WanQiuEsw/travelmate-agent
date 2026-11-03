@@ -4,6 +4,9 @@ from langchain_core.messages import HumanMessage
 from travelmate.agent import open_agent, chat, stream_chat, conversation
 from travelmate.workflow import get_workflow
 from test_workflow import REQ, PLAN
+import json
+from threading import Barrier
+from langchain.tools import tool
 
 
 class Model:
@@ -30,6 +33,48 @@ class Model:
 
 def open_test(tmp_path, model):
     return open_agent(model=model, database=tmp_path / "graph.sqlite", knowledge=tmp_path)
+
+
+def test_real_evidence_ids_reach_model_and_places_query_concurrently(tmp_path, monkeypatch):
+    import travelmate.agent as agent_module
+    barrier = Barrier(4)
+
+    @tool
+    def search_places(keyword: str, city: str) -> dict:
+        """Return a matched place without network access."""
+        barrier.wait(timeout=5)
+        return {'results': [{'name': keyword, 'location': '120.1,30.2'}]}
+
+    monkeypatch.setattr(agent_module, 'search_places', search_places)
+
+    class EvidenceModel(Model):
+        def with_structured_output(self, schema, **kwargs):
+            if schema.__name__ not in ('Areas', 'Itinerary'):
+                return super().with_structured_output(schema, **kwargs)
+
+            def run(messages):
+                self.calls.append(schema.__name__)
+                if schema.__name__ == 'Areas':
+                    return schema.model_validate({'areas': [{'name': '杭州', 'places': ['西湖', '灵隐寺', '断桥', '雷峰塔']}]})
+                data = json.loads(messages[-1].content)
+                evidence = data['evidence']
+                assert len(evidence) >= 4
+                ref = next(key for key, record in evidence.items() if record['value'] == '西湖')
+                assert evidence[ref]['id'] == ref and len(ref.split(':')[0]) == 32
+                plan = deepcopy(PLAN)
+                plan['days'][0]['stops'][0]['fact_refs'] = {'place': ref}
+                return schema.model_validate(plan)
+            return RunnableLambda(run)
+
+    model = EvidenceModel()
+    with open_test(tmp_path, model) as agent:
+        answer = chat(agent, 'evidence', '规划杭州')
+        state = get_workflow(agent, 'evidence')
+        assert state['status'] == 'review' and state['attempts'] == 1
+        ref = state['plan']['days'][0]['stops'][0]['fact_refs']['place']
+        assert ref in state['evidence']
+        assert '地点存在已核实' in answer and ref not in answer
+        assert model.calls.count('Itinerary') == model.calls.count('ReviewReport') == 1
 
 
 def test_required_order_versions_and_restart(tmp_path, monkeypatch):
@@ -112,6 +157,9 @@ def test_interrupt_checkpoint_resume_and_stream_status(tmp_path):
         events = list(stream_chat(agent, "stream", "规划"))
         assert events[-1][0] == "done"
         assert any(event == "status" for event, _ in events)
+        tokens = [data['text'] for event, data in events if event == 'token']
+        assert len(tokens) > 1 and all(tokens)
+        assert ''.join(tokens) == events[-1][1]['answer']
 
 
 def test_revision_can_recover_and_context_changes(tmp_path):

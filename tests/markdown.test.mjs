@@ -77,6 +77,46 @@ const appSource = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
   .replace(/import \{renderMarkdown\} from '[^']+';/, '')
   .replace('  initialize();', '');
 
+test('typewriter paints safe Markdown before completion, drains buffered frames, and cancels', async () => {
+  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history']
+    .map(id => [id, new Node('div')]));
+  const timers = new Map();
+  let id = 0;
+  const context = vm.createContext({
+    setTimeout(fn) { timers.set(++id, fn); return id; }, clearTimeout(id) { timers.delete(id); },
+    document: {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []},
+    renderMarkdown, localStorage: {getItem: () => 'test', setItem() {}},
+  });
+  vm.runInContext(appSource, context);
+  const body = new Node('div');
+  context.body = body;
+  const writer = vm.runInContext('createTypewriter(body)', context);
+  function tick() {
+    const [key, fn] = timers.entries().next().value;
+    timers.delete(key); fn();
+  }
+  const answer = '## 行程\n\n' + '西湖慢行，费用为估算。'.repeat(20) + '\n<script>alert(1)</script>';
+  // All SSE frames may arrive in one network read; painting must still be gradual.
+  writer.append(answer.slice(0, 80));
+  writer.append(answer.slice(80));
+  tick();
+  assert.ok(body.textContent.includes('西湖'));
+  const partial = body.textContent;
+  let complete = false;
+  const completion = writer.finish(answer).then(() => { complete = true; });
+  await Promise.resolve();
+  assert.equal(complete, false);
+  tick();
+  assert.ok(body.textContent.length > partial.length);
+  while (timers.size) tick();
+  await completion;
+  assert.ok(body.textContent.includes('alert(1)'));
+  assert.ok(!nodes(body).some(node => node.tagName === 'SCRIPT'));
+  writer.append('不应显示');
+  writer.cancel();
+  assert.equal(timers.size, 0);
+});
+
 test('composer question card submits typed answers and clears when starting a new chat', () => {
   const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history', 'sidebar', 'interaction']
     .map(id => [id, new Node('div')]));
@@ -155,7 +195,7 @@ test('Enter sends, Ctrl/Command+Enter inserts a newline, and IME confirmation st
 });
 
 for (const success of [true, false]) {
-  test(`hides raw streamed Markdown until completion (${success ? 'success' : 'failure'})`, async () => {
+  test(`renders SSE text before done and handles ${success ? 'success' : 'failure'}`, async () => {
     const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history',
       'trip-panel', 'trip-data', 'trip-status', 'trip-confirm', 'trip-save', 'trip-pdf', 'trip-preview']
       .map(id => [id, new Node('div')]));
@@ -168,7 +208,7 @@ for (const success of [true, false]) {
     let reads = 0;
     const reader = {async read() {
       reads++;
-      if (reads === 1) return {value: encoder.encode('event: status\ndata: {"text":"找到参考资料","sources":[{"title":"官方攻略","url":"https://example.com/guide"},{"title":"危险链接","url":"javascript:alert(1)"}]}\n\nevent: token\ndata: {"text":"## 隐藏的原始标记 **","id":"one"}\n\n'), done: false};
+      if (reads === 1) return {value: encoder.encode('event: status\ndata: {"text":"找到参考资料","sources":[{"title":"官方攻略","url":"https://example.com/guide"},{"title":"危险链接","url":"javascript:alert(1)"}]}\n\nevent: token\ndata: {"text":"## 完整行程\\n**西湖**"}\n\n'), done: false};
       if (reads === 2) {
         await gate;
         const frame = success ? 'event: done\ndata: {"answer":"## 完整行程\\n**西湖**","message_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}\n\n'
@@ -187,10 +227,11 @@ for (const success of [true, false]) {
         : {ok: true, json: async () => ({sessions: []})},
     });
     const completion = elements.form.handlers.submit({preventDefault() {}});
-    await new Promise(resolve => setImmediate(resolve));
+    await new Promise(resolve => setTimeout(resolve, 40));
     assert.ok(elements.messages.textContent.includes('已用时 0 秒'));
     assert.ok(nodes(elements.messages).find(node => node.className === 'progress').open);
-    assert.ok(!elements.messages.textContent.includes('隐藏的原始标记'));
+    assert.ok(nodes(elements.messages).some(node => node.tagName === 'H2' && node.textContent === '完整行程'));
+    assert.ok(nodes(elements.messages).some(node => node.tagName === 'STRONG' && node.textContent === '西湖'));
     assert.equal(elements.send.disabled, true);
     assert.equal(elements.input.value, '');
     assert.equal(elements.input.disabled, true);
@@ -199,7 +240,6 @@ for (const success of [true, false]) {
     assert.equal(nodes(elements.messages).filter(node => node.tagName === 'A').length, 1);
     release();
     await completion;
-    assert.ok(!elements.messages.textContent.includes('隐藏的原始标记'));
     if (success) {
       assert.equal(nodes(elements.messages).filter(node => node.className === 'export-pdf').length, 1);
       assert.ok(nodes(elements.messages).some(node => node.tagName === 'H2' && node.textContent === '完整行程'));

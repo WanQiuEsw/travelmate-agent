@@ -11,7 +11,6 @@ def public_data(value, messages=()):
 
     def clean(item):
         if isinstance(item, str):
-            item = re.sub(r"(?<![\w-])[a-f0-9]{32}:\d+(?!\w)", "查询依据", item)
             for identifier in sorted(hidden - {""}, key=len, reverse=True):
                 item = re.sub(r'(?<![\w-])' + re.escape(identifier) + r'(?![\w-])', '内部资料', item)
             return re.sub(r'(?:知识库|文档|索引|工作空间|document|doc|index|workspace)[_\s]*(?:ID|编号)\s*[:：=]\s*[`\"\']?[\w-]+[`\"\']?', '内部资料', item, flags=re.I)
@@ -28,6 +27,8 @@ def public_data(value, messages=()):
 def public_answer(text, messages=()):
     """Keep reference labels short without changing the travel advice."""
     text = public_data(text, messages)
+    # Evidence IDs must survive machine-readable state and model input.
+    text = re.sub(r"(?<![\w-])[a-f0-9]{32}:\d+(?!\w)", "查询依据", text)
     # Map coordinates belong in navigation links, not in travel prose.
     text = re.sub(r"[（(]\s*-?\d{1,3}\.\d+\s*[,，]\s*-?\d{1,2}\.\d+\s*[)）]", "", text)
     labels = {"travel_minutes": "交通预留时间", "transport_mode": "交通方式",
