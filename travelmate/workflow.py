@@ -72,6 +72,7 @@ class Stop(BaseModel):
     travel_minutes: int = Field(ge=0, le=1440)
     cost: float = Field(ge=0, le=1e8, description="全员费用，人民币")
     notes: str = Field(default="", max_length=1000)
+    activities: list[Literal["walking", "climbing", "museum", "food", "rest", "other"]] = Field(default_factory=list, max_length=10)
     fact_refs: dict[Literal["place", "cost", "opening_hours", "travel_minutes"], str] = Field(default_factory=dict)
     opening_hours: str | None = None
     transport_mode: Literal["unknown", "driving", "walking", "transit", "rail"] = "unknown"

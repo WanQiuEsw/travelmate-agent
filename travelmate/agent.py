@@ -111,8 +111,8 @@ def stream_chat(agent, session_id: str, message: str):
                     yield "token", {"text": "", "id": chunk.id}
             elif mode == "updates":
                 for node, update in value.items():
-                    if node in ("intake", "research", "organize", "verify_places", "generate", "check", "save", "present"):
-                        yield "status", {"text": {"intake": "整理旅行条件", "research": "检索旅行依据", "organize": "组织地点片区", "verify_places": "核实候选地点", "generate": "生成行程方案", "check": "检查行程约束", "save": "保存方案版本", "present": "整理攻略完成"}[node]}
+                    if node in ("intake", "research", "organize", "verify_places", "generate", "check", "review", "save", "present"):
+                        yield "status", {"text": {"intake": "整理旅行条件", "research": "检索旅行依据", "organize": "组织地点片区", "verify_places": "核实候选地点", "generate": "生成行程方案", "check": "检查行程约束", "review": "独立审查方案质量", "save": "保存方案版本", "present": "整理攻略完成"}[node]}
                     for item in (update or {}).get("messages", []):
                         if isinstance(item, AIMessage) and item.tool_calls:
                             for call in item.tool_calls:

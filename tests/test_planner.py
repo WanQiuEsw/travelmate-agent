@@ -20,6 +20,8 @@ class Model:
                 return schema.model_validate(self.intake)
             if schema.__name__ == "Areas":
                 return schema.model_validate({"areas": [{"name": "西湖片区", "places": ["西湖"]}]})
+            if schema.__name__ == "ReviewReport":
+                return schema.model_validate({"issues": []})
             if self.fail:
                 raise RuntimeError("private-key")
             return schema.model_validate(self.plans.pop(0) if len(self.plans) > 1 else self.plans[0])
@@ -36,7 +38,7 @@ def test_required_order_versions_and_restart(tmp_path, monkeypatch):
         text = chat(agent, "trip", "安排杭州一日游")
         state = get_workflow(agent, "trip")
         assert state["status"] == "review" and state["version"] == 1
-        assert [row["node"] for row in state["trace"]] == ["requirements", "ready", "research", "organize_places", "verify_places", "generate", "check", "save_version", "present"]
+        assert [row["node"] for row in state["trace"]] == ["requirements", "ready", "research", "organize_places", "verify_places", "generate", "check", "quality_review", "save_version", "present"]
         assert state["versions"][0]["plan"] == state["plan"]
         assert "估算" in text and "待核实" in text
     with open_test(tmp_path, Model(intake={"intent": "modify", "conditions": {"budget": 2000}})) as agent:
