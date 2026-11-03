@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, StreamingResponse, Response
 from pydantic import BaseModel, Field, field_validator, StringConstraints
 
 from travelmate.rail import search_train_tickets
-from travelmate.agent import chat, conversation, conversations, open_agent, stream_chat, pin_sessions, delete_sessions
+from travelmate.agent import chat, conversation, conversations, open_agent, stream_chat, pin_sessions, delete_sessions, rename_session
 from travelmate.evidence import validate_evidence
 from travelmate.workflow import Itinerary, get_workflow, save_workflow, validate_plan
 from travelmate.pdf_export import itinerary_pdf, answer_pdf
@@ -44,6 +44,10 @@ class SessionSelection(BaseModel):
 
 class SessionPin(SessionSelection):
     pinned: bool = Field(strict=True)
+
+
+class SessionRename(BaseModel):
+    title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
 
 
 class RailRequest(BaseModel):
@@ -123,6 +127,14 @@ def create_app(agent_factory=open_agent):
         with trip_lock():
             delete_sessions(app.state.agent, [session_id])
         return {"deleted": [session_id]}
+
+    @app.patch("/sessions/{session_id}/title")
+    def rename(session_id: SessionId, request: SessionRename):
+        with trip_lock():
+            if not any(item["session_id"] == session_id for item in conversations(app.state.agent)):
+                raise HTTPException(404, "对话不存在，请刷新列表")
+            rename_session(app.state.agent, session_id, request.title)
+        return {"title": request.title}
 
     @app.post("/sessions/pin")
     def pin_selected(request: SessionPin):

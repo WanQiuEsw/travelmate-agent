@@ -53,6 +53,27 @@ def test_session_pins_and_deletion_persist(tmp_path):
         assert client.get("/sessions").json()["sessions"][0]["pinned"] is False
 
 
+def test_session_rename_validation_persistence_and_cleanup(tmp_path):
+    @contextmanager
+    def factory():
+        with open_agent(legacy_tool_loop=True, model=BudgetModel(), database=tmp_path / "rename.sqlite") as agent:
+            yield agent
+
+    with TestClient(create_app(factory)) as client:
+        client.post("/chat", json={"session_id": "one", "message": "预算"})
+        for title in ("", "   ", "名" * 81):
+            assert client.patch("/sessions/one/title", json={"title": title}).status_code == 422
+        assert client.patch("/sessions/missing/title", json={"title": "旅行"}).status_code == 404
+        assert client.patch("/sessions/one/title", json={"title": "  北京之旅  "}).json() == {"title": "北京之旅"}
+        assert client.get("/sessions/one").json()["messages"][0]["content"] == "预算"
+
+    with TestClient(create_app(factory)) as client:
+        assert client.get("/sessions").json()["sessions"][0]["title"] == "北京之旅"
+        client.delete("/sessions/one")
+        client.post("/chat", json={"session_id": "one", "message": "预算"})
+        assert client.get("/sessions").json()["sessions"][0]["title"] == "预算"
+
+
 def test_reference_labels_are_short_and_closing_advice_is_preserved():
     answer = public_answer("正文\n## 参考来源\n重庆旅行攻略知识库（城市、景点、交通）\n高德地图地点搜索：机场、景区\n高德地图驾车路线（机场至景区）\n\n如需调整交通，告诉我即可。")
     assert "使用了重庆旅行攻略知识库" in answer

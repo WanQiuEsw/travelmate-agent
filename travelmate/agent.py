@@ -152,6 +152,7 @@ def conversation(agent, session_id: str) -> dict:
 def conversations(agent) -> list:
     # shortcut: scan local checkpoints; add a session index when history grows large.
     pins = session_pins(agent)
+    titles = session_titles(agent)
     seen, sessions = set(), []
     with closing(agent.checkpointer.list(None)) as checkpoints:
         for checkpoint in checkpoints:
@@ -162,9 +163,21 @@ def conversations(agent) -> list:
             values = checkpoint.checkpoint.get("channel_values", {})
             first = next((m for m in values.get("messages", []) if isinstance(m, HumanMessage)), None)
             if first:
-                sessions.append({"session_id": session_id, "title": first.text[:36],
+                sessions.append({"session_id": session_id, "title": titles.get(session_id, first.text[:36]),
                                  "pinned": session_id in pins})
     return sorted(sessions, key=lambda item: not item["pinned"])
+
+
+def session_titles(agent):
+    with agent.checkpointer.cursor() as cur:
+        cur.execute("CREATE TABLE IF NOT EXISTS session_titles (session_id TEXT PRIMARY KEY, title TEXT NOT NULL)")
+        return dict(cur.execute("SELECT session_id, title FROM session_titles").fetchall())
+
+
+def rename_session(agent, session_id, title):
+    session_titles(agent)
+    with agent.checkpointer.cursor() as cur, agent.checkpointer.conn:
+        cur.execute("INSERT OR REPLACE INTO session_titles VALUES (?, ?)", (session_id, title))
 
 
 def session_pins(agent):
@@ -185,9 +198,11 @@ def pin_sessions(agent, session_ids, pinned):
 
 def delete_sessions(agent, session_ids):
     session_pins(agent)
+    session_titles(agent)
     # Use one transaction so a batch cannot be partially deleted.
     with agent.checkpointer.cursor() as cur, agent.checkpointer.conn:
         for session_id in set(session_ids):
             cur.execute("DELETE FROM checkpoints WHERE thread_id = ?", (session_id,))
             cur.execute("DELETE FROM writes WHERE thread_id = ?", (session_id,))
             cur.execute("DELETE FROM session_pins WHERE session_id = ?", (session_id,))
+            cur.execute("DELETE FROM session_titles WHERE session_id = ?", (session_id,))

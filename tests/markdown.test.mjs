@@ -141,6 +141,9 @@ for (const success of [true, false]) {
     assert.ok(nodes(elements.messages).find(node => node.className === 'progress').open);
     assert.ok(!elements.messages.textContent.includes('隐藏的原始标记'));
     assert.equal(elements.send.disabled, true);
+    assert.equal(elements.input.value, '');
+    assert.equal(elements.input.disabled, true);
+    assert.ok(elements.status.textContent.includes('请勿关闭'));
     assert.ok(elements.messages.textContent.includes('官方攻略'));
     assert.equal(nodes(elements.messages).filter(node => node.tagName === 'A').length, 1);
     release();
@@ -252,7 +255,8 @@ test('pinning persists selection on failure and deletion clears the current conv
   assert.ok(elements.history.textContent.includes('取消置顶'));
   assert.ok(!elements.history.textContent.includes('移动所选'));
   const actions = nodes(elements.history).find(node => node.className === 'history-actions');
-  assert.equal(actions.children[1].disabled, true);
+  assert.ok(actions.children[1].textContent.includes('重命名'));
+  assert.ok(!actions.textContent.includes('分享'));
   assert.ok(!elements.history.textContent.includes('全选'));
   assert.ok(actions.textContent.includes('多选'));
   assert.ok(actions.children.every(button => button.children[0].className === 'action-icon'));
