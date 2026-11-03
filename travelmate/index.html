@@ -118,6 +118,14 @@
   .quick-plan-heading h2 { font-size: 20px; margin: 0; }
   #trip-submit { background: var(--accent); color: white; border-color: var(--accent); }
   #trip-form { border: 0; border-radius: 0; box-shadow: none; padding: 8px 0; }
+  .trip-step { border: 0; padding: 0; margin: 18px 0; min-width: 0; }
+  .trip-step[hidden] { display: none; }
+  .trip-step legend { font-size: 18px; font-weight: 600; padding: 0 0 12px; }
+  #trip-progress { display: block; width: 100%; height: 6px; accent-color: var(--accent); }
+  #trip-step-label { color: var(--muted); font-size: 13px; margin: 12px 0 6px; }
+  .trip-step .trip-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .trip-step .trip-grid:has(> label:only-child) { grid-template-columns: 1fr; }
+  .trip-review { white-space: pre-wrap; padding: 14px; background: var(--tint); border-radius: 10px; line-height: 1.9; }
   .trip-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
   .trip-grid label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
   .trip-grid input, .trip-grid select { min-width: 0; width: 100%; min-height: 44px; border: 1px solid var(--line); border-radius: 8px; padding: 8px; font: inherit; color: var(--text); background: var(--surface); }
@@ -178,27 +186,55 @@
     <button class="quick-fill" id="quick-fill-open" type="button" aria-haspopup="dialog" aria-controls="quick-fill">快速规划 ↗</button>
     <dialog class="quick-plan-dialog" id="quick-fill" aria-labelledby="quick-plan-title" aria-describedby="quick-plan-description">
       <div class="quick-plan-heading"><h2 id="quick-plan-title">快速规划旅行</h2><button id="quick-fill-close" type="button" aria-label="关闭快速规划">关闭</button></div>
-      <p class="trip-note" id="quick-plan-description">选择或填写旅行条件，点击“生成并发送”后会自动整理为完整需求并直接发送。</p>
-      <form id="trip-form">
+      <p class="trip-note" id="quick-plan-description">一步步选择旅行条件，选填项可以跳过。最后确认后自动整理需求并发送。</p>
+      <p id="trip-step-label" role="status" aria-live="polite"></p>
+      <progress id="trip-progress" max="8" value="1" aria-label="快速规划进度"></progress>
+      <form id="trip-form" novalidate>
+        <fieldset class="trip-step" data-title="目的地">
+          <legend>这次想去哪里？</legend>
         <div class="trip-grid">
           <label>目的地<input name="destination" required maxlength="80" placeholder="选择或填写城市" list="trip-cities" autofocus></label>
+        </div></fieldset>
+        <fieldset class="trip-step" data-title="出发日期" data-optional="true" hidden disabled>
+          <legend>准备什么时候出发？</legend>
+          <p class="trip-note">日期还没确定，可以点击“暂不确定，跳过”，按第几天规划。</p>
+          <div class="trip-grid"><label>出发日期<input name="date" type="date"></label></div>
+        </fieldset>
+        <fieldset class="trip-step" data-title="天数与人数" hidden disabled>
+          <legend>玩几天，几个人同行？</legend><div class="trip-grid">
           <label>游玩天数<input name="days" type="number" min="1" max="30" step="1" required placeholder="例如 3" inputmode="numeric" list="trip-days"></label>
           <label>出行人数<input name="people" type="number" min="1" max="100" step="1" required placeholder="例如 2" inputmode="numeric" list="trip-people"></label>
+        </div></fieldset>
+        <fieldset class="trip-step" data-title="预算" hidden disabled>
+          <legend>这趟旅行的预算是多少？</legend><div class="trip-grid">
           <label>全员总预算 / 人民币元<input name="budget" type="number" min="1" max="10000000" step="1" required placeholder="例如 3000" inputmode="numeric" list="trip-budgets"></label>
           <label>预算包含范围<select name="budgetIncludes" required aria-label="预算包含范围"><option value="">请选择</option><option>往返交通、住宿、餐饮、门票及市内交通全部费用</option><option>目的地内住宿、餐饮、门票及市内交通，不含往返大交通</option><option>餐饮、门票及市内交通，不含住宿和往返大交通</option></select></label>
-          <label>每天步数 / 行动限制<input name="mobility" required maxlength="1000" placeholder="选择建议或填写，如不爬坡" list="trip-mobility"></label>
+        </div></fieldset>
+        <fieldset class="trip-step" data-title="出发地" data-optional="true" hidden disabled>
+          <legend>打算从哪里出发？</legend>
+          <p class="trip-note">尚未确定可以跳过；查询铁路车次时需要填写。</p>
+          <div class="trip-grid"><label>出发地<input name="origin" maxlength="80" placeholder="城市或车站，例如厦门北" list="trip-cities"></label></div>
+        </fieldset>
+        <fieldset class="trip-step" data-title="交通方式" hidden disabled>
+          <legend>希望怎么前往目的地？</legend><div class="trip-grid">
           <label>交通方式<select name="transport" aria-label="交通方式"><option>不限</option><option>高铁</option><option>动车</option><option>火车</option><option>飞机</option><option>自驾</option><option>其他</option></select></label>
-          <label>出发日期 <span class="trip-optional">选填，未定可留空</span><input name="date" type="date"></label>
-          <label>出发地 <span class="trip-optional">选填，查车次时填写</span><input name="origin" maxlength="80" placeholder="城市或车站，例如厦门北" list="trip-cities"></label>
-        </div>
+        </div><p class="trip-note">没有偏好可以选择“不限”。</p></fieldset>
+        <fieldset class="trip-step" data-title="步行偏好" hidden disabled>
+          <legend>每天能接受多少步行？</legend><div class="trip-grid">
+          <label>每天步数 / 行动限制<input name="mobility" required maxlength="1000" placeholder="选择建议或填写，如不爬坡" list="trip-mobility"></label>
+        </div><p class="trip-note">没有限制可选择“无特别步数或行动限制”。</p></fieldset>
+        <fieldset class="trip-step" data-title="确认需求" hidden disabled>
+          <legend>确认一下这次的旅行需求</legend>
+          <div id="trip-review" class="trip-review"></div>
+          <p class="trip-note">如需修改，点击“上一步”。确认后将自动生成需求并发送。</p>
+        </fieldset>
         <datalist id="trip-cities"><option value="福建厦门"><option value="北京"><option value="上海"><option value="杭州"><option value="成都"><option value="广州"><option value="西安"></datalist>
         <datalist id="trip-days"><option value="1"><option value="2"><option value="3"><option value="5"><option value="7"><option value="10"><option value="14"></datalist>
         <datalist id="trip-people"><option value="1"><option value="2"><option value="3"><option value="4"><option value="6"></datalist>
         <datalist id="trip-budgets"><option value="1000"><option value="3000"><option value="5000"><option value="10000"></datalist>
         <datalist id="trip-mobility"><option value="每天 5000 步以内，尽量不爬坡"><option value="每天 10000 步以内"><option value="每天 15000 步以内"><option value="无特别步数或行动限制"></datalist>
-        <p class="trip-note">出发地和日期未定也能规划攻略。查询铁路车次时，请选择高铁、动车或火车，并填写出发地、目的地和日期。</p>
-        <div class="trip-actions"><button type="submit" id="trip-submit">生成并发送</button><button type="button" id="train-search">查询铁路车次</button><button type="button" id="quick-fill-cancel">取消</button></div>
-        <div id="train-results" class="train-results" role="status" aria-live="polite"></div>
+        <div class="trip-actions"><button type="button" id="trip-back" disabled>上一步</button><button type="submit" id="trip-submit">下一步</button><button type="button" id="trip-skip" hidden>暂不确定，跳过</button><button type="button" id="quick-fill-cancel">取消</button></div>
+        <div id="trip-rail" hidden><button type="button" id="train-search">查询铁路车次</button><div id="train-results" class="train-results" role="status" aria-live="polite"></div></div>
       </form>
     </dialog>
     <form id="form">
@@ -733,9 +769,46 @@
   const tripForm = document.querySelector('#trip-form');
   const tripInput = document.querySelector('#input');
   const tripPanel = document.querySelector('#quick-fill');
+  const tripSteps = [...tripForm.querySelectorAll('.trip-step')];
+  let tripStep = 0;
+  function showTripStep(index) {
+    tripStep = index;
+    tripSteps.forEach((step, i) => { step.hidden = i !== index; step.disabled = i !== index; });
+    document.querySelector('#trip-step-label').textContent = `第 ${index + 1} / ${tripSteps.length} 步 · ${tripSteps[index].dataset.title}`;
+    document.querySelector('#trip-progress').max = tripSteps.length;
+    document.querySelector('#trip-progress').value = index + 1;
+    document.querySelector('#trip-back').disabled = index === 0;
+    document.querySelector('#trip-skip').hidden = tripSteps[index].dataset.optional !== 'true';
+    const reviewing = index === tripSteps.length - 1;
+    document.querySelector('#trip-submit').textContent = reviewing ? '确认并发送' : '下一步';
+    document.querySelector('#trip-rail').hidden = !reviewing;
+    if (reviewing) {
+      const f = tripForm.elements;
+      document.querySelector('#trip-review').textContent = [
+        `目的地：${f.destination.value.trim()}`, `出发日期：${f.date.value || '待定，按第几天规划'}`,
+        `游玩天数：${f.days.value} 天 · 同行人数：${f.people.value} 人`,
+        `全员总预算：${f.budget.value} 元人民币`, `预算包含：${f.budgetIncludes.value}`,
+        `出发地：${f.origin.value.trim() || '待定'}`, `交通方式：${f.transport.value}`,
+        `步行与行动限制：${f.mobility.value.trim()}`
+      ].join('\n');
+    } else document.querySelector('#train-results').textContent = '';
+    const focus = tripSteps[index].querySelector('input, select') || tripSteps[index].querySelector('legend');
+    if (focus) { if (reviewing) focus.tabIndex = -1; focus.focus(); }
+  }
   document.querySelector('#quick-fill-open').addEventListener('click', () => {
     if (document.querySelector('#send').disabled || tripInput.disabled || tripPanel.open) return;
     tripPanel.showModal();
+    showTripStep(0);
+  });
+  document.querySelector('#trip-back').addEventListener('click', () => {
+    if (tripStep > 0) showTripStep(tripStep - 1);
+  });
+  document.querySelector('#trip-skip').addEventListener('click', () => {
+    if (tripSteps[tripStep].dataset.optional !== 'true') return;
+    for (const field of tripSteps[tripStep].querySelectorAll('input, select')) {
+      field.value = ''; field.setCustomValidity('');
+    }
+    showTripStep(tripStep + 1);
   });
   for (const id of ['#quick-fill-close', '#quick-fill-cancel']) {
     document.querySelector(id).addEventListener('click', () => tripPanel.close());
@@ -759,6 +832,10 @@
     fields.destination.setCustomValidity(fields.destination.value.trim() ? '' : '请选择或填写目的地');
     fields.mobility.setCustomValidity(fields.mobility.value.trim() ? '' : '请选择或填写步数与行动限制');
     if (!tripForm.reportValidity()) return;
+    if (tripStep < tripSteps.length - 1) {
+      showTripStep(tripStep + 1);
+      return;
+    }
     const origin = fields.origin.value.trim();
     let departure = '';
     if (fields.date.value) {
