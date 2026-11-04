@@ -22,6 +22,16 @@ class Node {
   }
   querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
   focus() {}
+  showModal() { this.open = true; }
+  close() { this.open = false; }
+  checkValidity() {
+    if (!String(this.value).trim()) return !this.required;
+    if (this.type !== 'number') return true;
+    const value = Number(this.value);
+    return Number.isFinite(value) && (this.min === undefined || value >= Number(this.min))
+      && (this.max === undefined || value <= Number(this.max));
+  }
+  reportValidity() { return this.checkValidity(); }
   set textContent(value) { this.text = value; this.children = []; }
   get textContent() { return this.text + this.children.map(child => child.textContent).join(''); }
 }
@@ -119,8 +129,8 @@ test('typewriter paints safe Markdown before completion, drains buffered frames,
   assert.equal(timers.size, 0);
 });
 
-test('composer question card submits typed answers and clears when starting a new chat', () => {
-  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history', 'sidebar', 'interaction']
+test('question wizard opens on demand, keeps closed drafts, validates steps and submits only after review', () => {
+  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history', 'sidebar', 'interaction', 'interaction-open']
     .map(id => [id, new Node('div')]));
   let submits = 0;
   elements.form.requestSubmit = () => submits++;
@@ -136,16 +146,44 @@ test('composer question card submits typed answers and clears when starting a ne
     {key: 'budget_scope', label: '预算口径', type: 'select', options: [{value: 'total', label: '全员预算'}]}
   ]})`, context);
   assert.equal(elements.interaction.hidden, false);
+  assert.ok(!elements.interaction.open);
+  assert.equal(elements['interaction-open'].hidden, false);
+  elements['interaction-open'].handlers.click();
   assert.equal(elements.interaction.open, true);
   const all = nodes(elements.interaction);
   const questionForm = all.find(node => node.tagName === 'FORM');
-  questionForm.reportValidity = () => true;
   const days = all.find(node => node.name === 'days');
   assert.equal(days.min, 1); assert.equal(days.max, 30); assert.equal(days.required, true);
-  days.value = '3';
-  all.find(node => node.name === 'mobility').value = '每天8000步';
-  all.find(node => node.name === 'budget_scope').value = 'total';
-  questionForm.handlers.submit({preventDefault() {}});
+  const steps = all.filter(node => node.className === 'interaction-step');
+  const next = () => questionForm.handlers.submit({preventDefault() {}});
+  assert.deepEqual(steps.map(step => step.hidden), [false, true, true]);
+  next();
+  assert.equal(steps[0].hidden, false);
+  assert.equal(submits, 0);
+  days.value = '31'; next();
+  assert.equal(steps[0].hidden, false);
+  const pick = nodes(steps[0]).find(node => node.tagName === 'BUTTON' && node.textContent === '3 天');
+  pick.handlers.click();
+  assert.equal(days.value, '3');
+  assert.equal(pick['aria-pressed'], 'true');
+  all.find(node => node.tagName === 'BUTTON' && node.textContent === '稍后再选').handlers.click();
+  assert.equal(elements.interaction.open, false);
+  elements['interaction-open'].handlers.click();
+  assert.equal(elements.interaction.open, true);
+  assert.equal(days.value, '3');
+  next();
+  assert.deepEqual(steps.map(step => step.hidden), [true, false, true]);
+  all.find(node => node.name === 'mobility').value = '每天8000步'; next();
+  nodes(steps[2]).find(node => node.tagName === 'BUTTON' && node.textContent === '全员预算').handlers.click();
+  next();
+  assert.equal(submits, 0);
+  const review = all.find(node => node.className === 'trip-review');
+  assert.equal(review.hidden, false);
+  assert.ok(review.textContent.includes('可接受步数：每天8000步'));
+  all.find(node => node.tagName === 'BUTTON' && node.textContent === '上一步').handlers.click();
+  assert.equal(steps[2].hidden, false);
+  assert.equal(all.find(node => node.name === 'budget_scope').value, 'total');
+  next(); next();
   assert.equal(submits, 1);
   const reply = JSON.parse(vm.runInContext('JSON.stringify(pendingResponse)', context));
   assert.deepEqual(reply.answers, {days: 3, mobility: '每天8000步', budget_scope: 'total'});
@@ -155,7 +193,58 @@ test('composer question card submits typed answers and clears when starting a ne
   assert.equal(submits, 1);
   vm.runInContext('busy = false; resetConversation()', context);
   assert.equal(elements.interaction.hidden, true);
+  assert.equal(elements.interaction.open, false);
+  assert.equal(elements['interaction-open'].hidden, true);
   assert.equal(vm.runInContext('pendingResponse', context), null);
+  context.saved = {days: 5, mobility: '每天8000步', budget_scope: 'total'};
+  vm.runInContext(`showInteraction({id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', title: '重试', fields: [
+    {key: 'days', label: '天数', type: 'number', min: 1, max: 30},
+    {key: 'mobility', label: '步数', type: 'text'},
+    {key: 'budget_scope', label: '预算口径', type: 'select', options: [{value: 'total', label: '全员预算'}]}
+  ]}, saved)`, context);
+  const restored = nodes(elements.interaction);
+  assert.equal(restored.find(node => node.className === 'trip-review').hidden, false);
+  assert.equal(restored.find(node => node.name === 'days').value, '5');
+  assert.equal(elements.interaction.open, false);
+  assert.equal(submits, 1);
+});
+
+test('history restores latest scroll position without opening a dialog or interrupting upward reading during recovery', async () => {
+  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history', 'sidebar', 'interaction', 'interaction-open', 'conversation']
+    .map(id => [id, new Node('div')]));
+  const viewport = elements.conversation;
+  viewport.scrollHeight = 2000; viewport.clientHeight = 400; viewport.scrollTop = 0;
+  const replace = elements.messages.replaceChildren.bind(elements.messages);
+  elements.messages.replaceChildren = (...children) => { replace(...children); viewport.scrollTop = 0; };
+  const context = vm.createContext({
+    setTimeout, clearTimeout,
+    document: {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []},
+    renderMarkdown, localStorage: {getItem: () => 'test', setItem() {}},
+    fetch: async () => ({ok: true, json: async () => ({messages: [
+      {role: 'user', content: '最早的问题'},
+      {role: 'assistant', content: '最新的回答', interaction: {id: 'a'.repeat(32), title: '补充条件', fields: [{key: 'days', label: '天数', type: 'number'}]}}
+    ]})}),
+  });
+  vm.runInContext(appSource, context);
+  await vm.runInContext('loadConversation("test")', context);
+  assert.equal(viewport.scrollTop, 2000);
+  assert.ok(!elements.interaction.open);
+  assert.equal(elements['interaction-open'].hidden, false);
+  viewport.scrollTop = 100;
+  await vm.runInContext('loadConversation("test", true)', context);
+  assert.equal(viewport.scrollTop, 100);
+  viewport.scrollTop = 1590;
+  await vm.runInContext('loadConversation("test", true)', context);
+  assert.equal(viewport.scrollTop, 2000);
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const fetchHistory = context.fetch;
+  context.fetch = async () => { await gate; return fetchHistory(); };
+  const recovery = vm.runInContext('loadConversation("test", true)', context);
+  viewport.scrollTop = 250;
+  release();
+  await recovery;
+  assert.equal(viewport.scrollTop, 250);
 });
 
 test('Enter sends, Ctrl/Command+Enter inserts a newline, and IME confirmation stays untouched', () => {

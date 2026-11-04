@@ -115,19 +115,25 @@
   .table-scroll th { white-space: nowrap; }
   .table-scroll td { vertical-align: top; }
   .table-scroll td:first-child { white-space: nowrap; }
-  .interaction-card { max-height: 42dvh; overflow-y: auto; margin-bottom: 12px; border: 1px solid #a7c9be; border-radius: 16px; background: var(--tint); padding: 12px 16px; }
-  .interaction-card > summary { font-weight: 600; color: var(--accent); }
-  .interaction-card > summary { position: sticky; top: -12px; background: var(--tint); padding: 8px 0; z-index: 1; }
-  .composer:has(#interaction:not([hidden])) .quick-fill,
-  .composer:has(#interaction:not([hidden])) .entry-tools { display: none; }
-  .composer:has(#interaction:not([hidden])) #form { padding: 8px 12px; }
-  .composer:has(#interaction:not([hidden])) textarea { height: 44px; min-height: 44px; resize: none; }
+  .interaction-card.quick-plan-dialog { max-height: 80dvh; overflow-y: auto; border: 1px solid #a7c9be; background: var(--tint); }
+  .interaction-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; position: sticky; top: -24px; background: var(--tint); padding: 8px 0; z-index: 1; }
+  .interaction-heading h2 { font-size: 20px; margin: 0; }
+  .interaction-entry { margin-bottom: 10px; color: var(--accent-hover); background: var(--tint); border-color: #a7c9be; font-size: 14px; }
   .interaction-card p { font-size: 13px; color: var(--muted); margin: 8px 0; }
-  .interaction-card form { padding: 0; border: 0; box-shadow: none; }
-  .interaction-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
-  .interaction-fields label { display: grid; gap: 4px; font-size: 13px; }
-  .interaction-fields input, .interaction-fields select { width: 100%; min-width: 0; min-height: 44px; font: inherit; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: white; color: var(--text); }
-  @media (max-width: 700px) { .interaction-fields { grid-template-columns: 1fr; } }
+  .interaction-card form, .interaction-card form:focus-within { padding: 0; border: 0; box-shadow: none; background: transparent; }
+  .interaction-step { border: 0; padding: 0; margin: 12px 0; min-width: 0; }
+  .interaction-progress { width: 100%; height: 6px; accent-color: var(--accent); }
+  .interaction-step[hidden] { display: none; }
+  .interaction-step legend { font-size: 18px; font-weight: 600; padding: 0 0 12px; }
+  .interaction-choices { display: flex; flex-wrap: wrap; gap: 8px; }
+  .interaction-choices button { text-align: left; }
+  .interaction-choices button[aria-pressed="true"] { background: var(--accent); color: white; border-color: var(--accent); }
+  .interaction-custom { margin-top: 12px; }
+  .interaction-custom summary { color: var(--accent-hover); font-size: 14px; padding: 6px 0; }
+  .interaction-step input { width: 100%; min-width: 0; min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: white; color: var(--text); }
+  .interaction-actions { display: flex; flex-wrap: wrap; gap: 8px; position: sticky; bottom: -12px; padding: 10px 0; border-top: 1px solid var(--line); background: var(--tint); }
+  .interaction-actions button[type="submit"] { background: var(--accent); color: white; border-color: var(--accent); }
+  .interaction-card .interaction-error { color: #a32d2d; }
   .entry-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
   .entry-tools button { min-height: 36px; padding: 5px 12px; font-size: 13px; color: var(--accent-hover); background: var(--tint); border-color: transparent; }
   .quick-plan-dialog { width: min(680px, calc(100% - 32px)); max-height: 85dvh; padding: 24px; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 24px; box-shadow: 0 24px 80px #193c3826; }
@@ -247,7 +253,8 @@
     <section id="messages" aria-label="对话内容" role="log" aria-live="off"></section>
   </div></div>
   <div class="composer"><div class="chat-width">
-    <details id="interaction" class="interaction-card" hidden open aria-label="待补充的信息"></details>
+    <button id="interaction-open" class="interaction-entry" type="button" hidden aria-haspopup="dialog" aria-controls="interaction">补充旅行条件 · 点击选择 ↗</button>
+    <dialog id="interaction" class="interaction-card quick-plan-dialog" hidden aria-labelledby="interaction-title"></dialog>
     <dialog class="quick-plan-dialog" id="quick-fill" aria-labelledby="quick-plan-title" aria-describedby="quick-plan-description">
       <div class="quick-plan-heading"><h2 id="quick-plan-title">快速规划旅行</h2><button id="quick-fill-close" type="button" aria-label="关闭快速规划">关闭</button></div>
       <p class="trip-note" id="quick-plan-description">一步步选择旅行条件，选填项可以跳过。最后确认后自动整理需求并发送。</p>
@@ -341,21 +348,44 @@
   let busy = false;
   let activeInteraction = null;
   let pendingResponse = null;
+  document.querySelector('#interaction-open')?.addEventListener('click', () => {
+    if (activeInteraction && !busy && !send.disabled) document.querySelector('#interaction').showModal();
+  });
   function showInteraction(interaction, answers = {}) {
     activeInteraction = interaction || null;
     const panel = document.querySelector('#interaction');
     if (!panel) return;
+    if (panel.open) panel.close();
     panel.replaceChildren();
     panel.hidden = !interaction;
+    const entry = document.querySelector('#interaction-open');
+    if (entry) {
+      entry.hidden = !interaction;
+      if (interaction) entry.textContent = interaction.title + ' · 点击选择 ↗';
+    }
     if (!interaction) return;
-    panel.open = true;
-    const title = document.createElement('summary'); title.textContent = interaction.title;
-    const description = document.createElement('p'); description.textContent = interaction.description;
-    const questionForm = document.createElement('form');
-    const grid = document.createElement('div'); grid.className = 'interaction-fields';
+    const heading = document.createElement('div'); heading.className = 'interaction-heading';
+    const title = document.createElement('h2'); title.id = 'interaction-title'; title.textContent = interaction.title;
+    const close = document.createElement('button'); close.type = 'button'; close.textContent = '稍后再选';
+    close.setAttribute('aria-label', '关闭补充条件'); close.addEventListener('click', () => panel.close());
+    heading.append(title, close);
+    const description = document.createElement('p'); description.textContent = interaction.description?.replace('填写后继续规划', '按步骤选择后继续规划') || '';
+    const questionForm = document.createElement('form'); questionForm.noValidate = true;
+    const progressLabel = document.createElement('p'); progressLabel.setAttribute('role', 'status');
+    const progress = document.createElement('progress'); progress.max = interaction.fields.length + 1;
+    progress.className = 'interaction-progress'; progress.setAttribute('aria-label', '补充条件进度');
+    const presets = {
+      destination: ['北京', '上海', '杭州', '成都', '厦门', '西安'],
+      days: ['1', '2', '3', '5', '7', '10'], travelers: ['1', '2', '3', '4', '6'],
+      budget: ['1000', '3000', '5000', '10000'],
+      budget_currency: ['CNY', 'USD', 'EUR', 'HKD', 'JPY'],
+      budget_includes: ['往返交通、住宿、餐饮、门票及市内交通全部费用', '目的地内住宿、餐饮、门票及市内交通，不含往返大交通', '餐饮、门票及市内交通，不含住宿和往返大交通'],
+    };
     const controls = [];
     for (const field of interaction.fields) {
-      const label = document.createElement('label'); label.textContent = field.label;
+      const step = document.createElement('fieldset'); step.className = 'interaction-step';
+      const legend = document.createElement('legend'); legend.textContent = field.label; legend.tabIndex = -1;
+      step.append(legend);
       const control = document.createElement(field.type === 'select' ? 'select' : 'input');
       control.name = field.key; control.required = true;
       control.setAttribute('aria-label', field.label);
@@ -369,31 +399,82 @@
       } else {
         control.type = field.type;
         for (const key of ['min', 'max', 'maxLength', 'step', 'placeholder']) if (field[key] !== undefined) control[key] = field[key];
-        if (field.suggestions) {
-          const list = document.createElement('datalist'); list.id = 'choices-' + field.key;
-          for (const value of field.suggestions) { const option = document.createElement('option'); option.value = value; list.append(option); }
-          control.setAttribute('list', list.id); label.append(list);
-        }
       }
       if (answers[field.key] !== undefined) control.value = String(answers[field.key]);
-      label.append(control); grid.append(label); controls.push({field, control});
+      const choices = field.options || (field.suggestions || presets[field.key] || []).map(value => ({value, label: value}));
+      const group = document.createElement('div'); group.className = 'interaction-choices';
+      group.setAttribute('role', 'group'); group.setAttribute('aria-label', field.label);
+      const buttons = choices.map(choice => {
+        const button = document.createElement('button'); button.type = 'button';
+        const unit = field.key === 'days' ? ' 天' : field.key === 'travelers' ? ' 人' : '';
+        const currencies = {CNY: '人民币 CNY', USD: '美元 USD', EUR: '欧元 EUR', HKD: '港币 HKD', JPY: '日元 JPY'};
+        button.textContent = field.key === 'budget_currency' ? (currencies[choice.value] || choice.label) : choice.label + unit;
+        button.addEventListener('click', () => {
+          if (busy || send.disabled) return;
+          control.value = String(choice.value); updateChoices(); error.textContent = '';
+        });
+        group.append(button); return button;
+      });
+      function updateChoices() {
+        buttons.forEach((button, i) => button.setAttribute('aria-pressed', String(String(choices[i].value) === control.value)));
+      }
+      control.addEventListener('input', updateChoices); updateChoices();
+      step.append(group);
+      let custom = null;
+      if (field.type === 'select') { control.hidden = true; step.append(control); }
+      else if (choices.length) {
+        custom = document.createElement('details'); custom.className = 'interaction-custom';
+        const summary = document.createElement('summary'); summary.textContent = '其他 / 自定义';
+        custom.open = !!control.value && !choices.some(choice => String(choice.value) === control.value);
+        custom.append(summary, control); step.append(custom);
+      } else step.append(control);
+      questionForm.append(step); controls.push({field, control, step, legend, buttons, custom});
     }
-    const submit = document.createElement('button'); submit.type = 'submit'; submit.textContent = '提交并继续';
-    questionForm.append(grid, submit);
+    const review = document.createElement('div'); review.className = 'trip-review'; review.tabIndex = -1;
+    const error = document.createElement('p'); error.className = 'interaction-error'; error.setAttribute('role', 'alert');
+    const actions = document.createElement('div'); actions.className = 'interaction-actions';
+    const back = document.createElement('button'); back.type = 'button'; back.textContent = '上一步';
+    const submit = document.createElement('button'); submit.type = 'submit';
+    actions.append(back, submit); questionForm.append(review, error, actions);
+    panel.append(heading, description, progressLabel, progress, questionForm);
+    let index = 0;
+    const answerText = () => controls.map(({field, control}) => field.label + '：' +
+      (field.options?.find(option => option.value === control.value)?.label || control.value.trim())).join('\n');
+    function showStep(next, focus = true) {
+      index = next; error.textContent = '';
+      controls.forEach(({step}, i) => { step.hidden = i !== index; });
+      const reviewing = index === controls.length;
+      review.hidden = !reviewing;
+      if (reviewing) review.textContent = '确认本次补充\n' + answerText();
+      progressLabel.textContent = `第 ${index + 1} / ${controls.length + 1} 步 · ${reviewing ? '确认条件' : controls[index].field.label}`;
+      progress.value = index + 1; back.disabled = index === 0;
+      submit.textContent = reviewing ? '确认并继续规划' : '下一步';
+      if (focus) (reviewing ? review : controls[index].legend).focus();
+    }
+    function valid(i) {
+      const {field, control, buttons, custom} = controls[i];
+      if (control.value.trim() && control.checkValidity()) return true;
+      showStep(i); error.textContent = '请选择或填写有效的' + field.label;
+      if (!control.value.trim() && buttons.length) buttons[0].focus();
+      else { if (custom) custom.open = true; control.reportValidity(); control.focus(); }
+      return false;
+    }
+    back.addEventListener('click', () => { if (!busy && !send.disabled && index > 0) showStep(index - 1); });
     questionForm.addEventListener('submit', event => {
       event.preventDefault();
-      if (busy || send.disabled || !questionForm.reportValidity()) return;
+      if (busy || send.disabled) return;
+      if (index < controls.length) { if (valid(index)) showStep(index + 1); return; }
+      if (!controls.every((_, i) => valid(i))) return;
       const answers = {};
       for (const {field, control} of controls) {
-        if (!control.value.trim()) { control.focus(); return; }
         answers[field.key] = field.type === 'number' ? Number(control.value) : control.value.trim();
       }
       pendingResponse = {id: interaction.id, answers};
-      input.value = controls.map(({field, control}) => field.label + '：' +
-        (field.options?.find(option => option.value === control.value)?.label || control.value.trim())).join('\n');
+      input.value = answerText();
       form.requestSubmit();
     });
-    panel.append(title, description, questionForm);
+    const firstMissing = controls.findIndex(({control}) => !control.value.trim());
+    showStep(firstMissing < 0 ? controls.length : firstMissing, false);
   }
   const selectedSessions = new Set();
   let multiSelect = false;
@@ -678,6 +759,7 @@
   }
   async function loadConversation(id, recovering = false) {
     if (busy) return;
+    const viewport = document.querySelector('.conversation');
     busy = true;
     send.disabled = newChat.disabled = historySelect.disabled = true;
     clearTimeout(recoveryTimer);
@@ -689,6 +771,8 @@
       if (response.status === 404) { resetConversation(); return; }
       if (!response.ok) throw new Error('history unavailable');
       const data = await response.json();
+      const previousScroll = viewport?.scrollTop;
+      const followLatest = !recovering || viewport && viewport.scrollHeight - previousScroll - viewport.clientHeight < 48;
       generating = data.generating === true;
       if (!generating) showInteraction(data.messages[data.messages.length - 1]?.interaction);
       else showInteraction(null);
@@ -713,6 +797,7 @@
         }
       }
       for (const step of data.progress?.steps || []) recoveryProgress?.add(step.text, step.sources);
+      if (viewport) viewport.scrollTop = followLatest ? viewport.scrollHeight : previousScroll;
 
       status.textContent = generating ? '回复仍在生成，完成后会自动恢复。' : data.interrupted ? '上次回复未完成，可继续补充需求。' : '对话已恢复，可以继续聊';
     } catch {
