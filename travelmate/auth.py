@@ -33,7 +33,8 @@ def require_access(request: Request):
                 or request.headers.get('sec-fetch-site') in ('same-site', 'cross-site')
                 or origin is not None and origin != str(request.base_url).rstrip('/')):
             raise HTTPException(403, '请通过本站页面提交请求')
-    public = {'/', '/login', '/assets/markdown.js', '/assets/auth.js', '/health'}
+    public = {'/', '/login', '/assets/markdown.js', '/assets/auth.js', '/assets/theme.css', '/health',
+              *(f'/assets/visual/{name}.webp' for name in ('companion', 'coast', 'mountains', 'town', 'icon'))}
     if request.method in ('GET', 'HEAD') and request.url.path in public:
         return
     if request.method == 'POST' and request.url.path in ('/auth/register', '/auth/login'):

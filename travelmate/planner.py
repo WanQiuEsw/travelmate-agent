@@ -1,6 +1,7 @@
 """Explicit, checkpointed planning stages. The model proposes; code routes and checks."""
 import json
 import logging
+import os
 from concurrent.futures import ThreadPoolExecutor
 from time import perf_counter
 from datetime import datetime, timezone
@@ -18,7 +19,7 @@ from travelmate.workflow import (PlanningState, update_trip, Itinerary, PartialR
                                  period_plan, time_label, travel_label, cost_label, total_cost_label, TIME_NOTICE)
 from travelmate.evidence import normalize, validate_evidence, context_key
 from travelmate.public import public_data, public_answer
-from travelmate.guide import version_snapshot
+from travelmate.guide import version_snapshot, get_version, guide_markdown, preliminary_brief
 from travelmate.review import ReviewReport, program_review, blocking_messages, plan_key, timing_warnings
 from travelmate.interaction import Decision, requirements_interaction, decision_interaction
 
@@ -60,10 +61,14 @@ def build_planner(model, saver, knowledge, tools, prompt):
             runnable = model.with_structured_output(schema, method="function_calling")
             for attempt in range(2):
                 try:
-                    return runnable.invoke(messages)
-                except ValidationError as exc:
-                    errors = [{"field": list(error["loc"]), "type": error["type"], "message": error["msg"]}
-                              for error in exc.errors(include_input=False, include_url=False)]
+                    result = runnable.invoke(messages)
+                    if schema is Itinerary and not result.foods:
+                        raise ValueError('foods 必须包含目的地特色美食介绍，不能只输出景点')
+                    return result
+                except ValueError as exc:
+                    errors = ([{"field": list(error["loc"]), "type": error["type"], "message": error["msg"]}
+                               for error in exc.errors(include_input=False, include_url=False)] if isinstance(exc, ValidationError)
+                              else [{"field": ['foods'], "message": str(exc)}])
                     logging.getLogger(__name__).warning("Model stage %s returned invalid fields: %s", schema.__name__, errors)
                     if attempt:
                         raise
@@ -111,7 +116,7 @@ def build_planner(model, saver, knowledge, tools, prompt):
                 except ValueError:
                     return {"intake_result": {"intent": "clarify"}, "messages": [AIMessage(content="填写内容不符合要求，请检查数值范围和必填项。", additional_kwargs={"interaction": previous})]}
             else:
-                data = structured(Intake, "分类普通问答、初步规划或修改；conditions只含用户本轮明确给出的字段，未知字段省略，绝不能填写待确认等占位符，不能猜测。普通问答不要清除旅行条件。direction用Markdown给有用答复或暂定方向，不在正文追问缺失字段，系统会显示表单。任务含糊、操作范围不明确或涉及更改已订安排需先确认时，填写confirmation的问题及2至5个具体选项，等待选择后才继续；不能自行代替用户确认，也不能重复确认已选事项。", {"history": history, "requirements": old.get("requirements", {}), "form_answers": answers})
+                data = structured(Intake, "分类普通问答、初步规划或修改；conditions只含用户本轮明确给出的字段，未知字段省略，绝不能填写待确认等占位符，不能猜测。两个人/我们等明确人数语义需提取travelers；喜欢吃需提取preferences或interests。direction先给玩法判断、按天骨架和预算取舍，不因缺失日期或步数而只返回表单；预算口径不明时明确写待确认，不擅自当作人均或全员金额。普通问答不要清除旅行条件。direction用Markdown给有用答复或暂定方向，不在正文追问缺失字段，系统会显示表单。任务含糊、操作范围不明确或涉及更改已订安排需先确认时，填写confirmation的问题及2至5个具体选项，等待选择后才继续；不能自行代替用户确认，也不能重复确认已选事项。", {"history": history, "requirements": old.get("requirements", {}), "form_answers": answers})
             if data.confirmation:
                 return {"workflow": stage(old, "clarify", status="collecting"), "intake_result": {"intent": "clarify"},
                         "messages": [AIMessage(content="请在下方选择确认后继续。", additional_kwargs={"interaction": decision_interaction(data.confirmation)})]}
@@ -128,7 +133,7 @@ def build_planner(model, saver, knowledge, tools, prompt):
                         "messages": [AIMessage(content="旅行条件存在冲突，原有条件与方案已保留。", additional_kwargs={"interaction": decision_interaction(Decision(question=result.get("error", "请确认修改范围"), options=["保留原有安排", "调整条件后重新规划"]))})]}
             workflow = stage(result.update["workflow"], "requirements")
             if workflow.get("missing"):
-                text = (data.direction or "可以先按目的地区域讨论游玩方向，具体行程等待关键条件补齐。").replace("\\n", "\n")
+                text = (data.direction if len(data.direction) >= 80 else preliminary_brief(workflow['requirements']) + ('\n\n' + data.direction if data.direction else '')).replace("\\n", "\n")
                 return {"workflow": stage(workflow, "clarify"), "intake_result": {"intent": "clarify"},
                         "messages": [AIMessage(content=text + "\n\n请在下方填写旅行条件后继续。", additional_kwargs={"interaction": requirements_interaction(workflow["missing"])})]}
             return {"workflow": stage(workflow, "ready", status="researching", issues=[], review_history=[]), "intake_result": data.model_dump(),
@@ -154,9 +159,13 @@ def build_planner(model, saver, knowledge, tools, prompt):
         w = state["workflow"]
         req = w["requirements"]
         get_stream_writer()({"text": f"已整理：{req['travelers']}人，{req['destination']}{req['days']}天；正在检索旅游参考资料。"})
-        query_text = f"{req['destination']} {req['days']}天 {req.get('preferences', '')} {req.get('interests', [])} {req.get('exclusions', [])}"
+        query_text = f"{req['destination']} {req['days']}天 特色美食 地方小吃 {req.get('dietary') or ''} {req.get('preferences', '')} {req.get('interests', [])} {req.get('exclusions', [])}"
         data, records = query("search_knowledge", {"query": query_text}, req)
         research_data = [{"tool": "search_knowledge", "data": data}]
+        if os.getenv('TAVILY_API_KEY') and 'search_web' in tools:
+            web, web_records = query('search_web', {'query': f'{req["destination"]} 官方旅游 特色美食 场馆 参观须知 {req.get("start_date") or "最新公告"}'}, req)
+            records.update(web_records)
+            research_data.append({'tool': 'search_web', 'data': web})
         if req.get("origin") and req.get("start_date") and req.get("transport") in ("高铁", "动车", "火车"):
             args = {"origin": req["origin"], "destination": req["destination"], "departure_date": req["start_date"], "transport": req["transport"]}
             rail, evidence = query("search_train_tickets", args, req)
@@ -171,7 +180,7 @@ def build_planner(model, saver, knowledge, tools, prompt):
     def organize(state):
         w = state["workflow"]
         try:
-            areas = structured(Areas, "根据资料和约束按片区组织候选地点，每天优先同片区；候选名称尚不代表已核实。最多3个片区、每区4个地点。", {"requirements": w["requirements"], "research": state.get("research_data", [])})
+            areas = structured(Areas, "根据资料和约束按片区组织候选地点，每天优先同片区；用户喜欢美食时，每个片区兼顾用餐地点或餐饮街区，不能只列景区。候选名称尚不代表已核实，后续用高德地点查询核对；地点匹配也不代表营业时间和价格已核实。最多3个片区、每区4个地点。", {"requirements": w["requirements"], "research": state.get("research_data", [])})
             return {"workflow": stage(w, "organize_places"), "areas": areas.model_dump()}
         except Exception:
             return fail(w, "organize_failed")
@@ -194,7 +203,7 @@ def build_planner(model, saver, knowledge, tools, prompt):
         w = state["workflow"]
         try:
             evidence = {k: v for k, v in state.get("evidence", {}).items() if v["context"] == context_key(w["requirements"])}
-            candidate = structured(Itinerary, "生成或按issues修订结构化行程。交通或到离时刻不确定时，time_granularity必须为period；每个活动只填period（上午/中午/下午/晚上等），start/end留空，不生成精确到小时的完整时间表，也不要在notes重复虚构的精确时段。travel_minutes未知可留空，travel_estimate给约30至60分钟等估算范围或待确认说明。只在时间与交通充分确定时用precise。用户已订安排和返程时限必须保留，在对应日notes说明需提前结束、取行李与交通预留，不用估算覆盖已确认时间。费用为全员人民币估算；未知日期为null。fact_refs的值必须逐字复制evidence键，地点名称逐字采用对应value；只引用success且matched的记录，不支持的字段省略引用并标为待核实。铁路查询失败或无结果时rail_segments留空，不编车次或票价，往返费用注明待核实及是否计入预算。未查询的字段不写已核实。遵守已订安排、返程时限及排除项；activities准确标注climbing等活动。高风险安排填写具体备选，补充有用的行前提醒。"
+            candidate = structured(Itinerary, "填写summary给出简洁玩法判断，lodging给出顺路住宿片区与订房筛选条件，不编造酒店房态或价格。若用户喜欢美食，每个完整游玩日安排合理正餐或小吃停留，stop.activities标food；景点串起用餐而不是另附泛泛美食名单，避免连续多顿重餐，预留排队与消化休息。foods填写day和meal关联每天的用餐，不把吃过的同一餐重复计价。必须填写foods：给出3至5项本目的地特色菜或小吃，逐项介绍口味特点、顺路用餐建议和饮食注意事项，遵守dietary及排除项；不能把景区名称当美食；只有对应地点查询记录支持时才点名门店，没有对应结果时只推荐菜品和片区。地点存在不等于营业或价格已核实，不能编造门店、现价、营业时间或过敏安全保证。正文不输出检查项、待确定事项或内部审查记录。\n生成或按issues修订结构化行程。交通或到离时刻不确定时，time_granularity必须为period；每个活动只填period（上午/中午/下午/晚上等），start/end留空，不生成精确到小时的完整时间表，也不要在notes重复虚构的精确时段。travel_minutes未知可留空，travel_estimate给约30至60分钟等估算范围或待确认说明。只在时间与交通充分确定时用precise。用户已订安排和返程时限必须保留，在对应日notes说明需提前结束、取行李与交通预留，不用估算覆盖已确认时间。费用为全员人民币估算；未知日期为null。fact_refs的值必须逐字复制evidence键，地点名称逐字采用对应value；只引用success且matched的记录，不支持的字段省略引用并标为待核实。铁路查询失败或无结果时rail_segments留空，不编车次或票价，往返费用注明待核实及是否计入预算。未查询的字段不写已核实。遵守已订安排、返程时限及排除项；activities准确标注climbing等活动。高风险安排填写具体备选，补充有用的行前提醒。"
                 "\n可交付规则：航班到离时刻未知不等于条件不足，不追问已完整需求；首日仅安排抵达后可选的市区轻量活动，把轮渡上岛等依赖时刻的核心活动放到中间完整日。不假设早班抵达或晚班返程；在首末日notes与reminders写明按实际航班调整及机场交通、值机预留。明确时间仅为估算，用户可以调整顺序、删减或继续细化。"
                 "\n每日步数受限时按片区安排2至3个主要景点，安排午餐及明确休息时段，跨片区乘车；notes给步行量估算范围与临近上限时的删减顺序，不把估算写成保证。不要默认看日出或登高。交通衔接计入候车、换乘和出入口缓冲；渡轮不编确定班次，按当日订票时刻调整。"
                 "\n预算严格遵守budget_includes：明确排除的住宿、机票不计入stop.cost或other_cost，也不因未查这些价格阻塞行程；明确包含的往返交通、住宿即使未查到价格，也要按公开估算计入other_cost并在cost_notes标待核实，不能因为未查询就不计入，也不能为凑预算压到无依据的低价；确实超预算时如实写出超支额和取舍，由用户决定。other_cost只放范围内尚未逐项列出的费用并解释算式。对票价、开放时段、交通时长保留估算/待确认并给替代方案，不编造确定事实。未查询实时天气时禁止输出具体日期的天气预报，只提示出发前查询。输出精简，避免冗长重复notes。", {"requirements": w["requirements"], "areas": state["areas"], "research": state["research_data"], "evidence": evidence, "previous_candidate": state.get("candidate"), "issues": w.get("issues", [])})
@@ -254,8 +263,6 @@ def build_planner(model, saver, knowledge, tools, prompt):
 
     def present(state):
         w = state["workflow"]
-        def cell(value):
-            return public_answer(str(value)).replace("|", "／").replace("\n", " ").replace("\r", " ")
 
         text = ""
         if w["status"] == "blocked":
@@ -269,51 +276,9 @@ def build_planner(model, saver, knowledge, tools, prompt):
                 text += ("\n这类问题通常不是换一种排法能解决的，需要先调整条件：直接回复要改的部分"
                          "（预算金额或包含范围、天数、目的地、出发地、交通方式）即可重新规划，也可以稍后重试。\n\n")
         if w.get("plan"):
-            req, plan = w.get("plan_requirements", w["requirements"]), w["plan"]
-            text += f"## {req['destination']} · {req['days']}天旅行攻略\n\n"
-            text += f"**{req['travelers']} 人同行 · 版本 {w['version']} · {req.get('start_date') or '出发日期待定'}**\n\n"
-            if plan.get("time_granularity") == "period":
-                text += TIME_NOTICE + "\n\n"
-            text += "### 旅行概览\n\n| 项目 | 安排 |\n| --- | --- |\n"
-            scope = "人均" if req.get("budget_scope") == "per_person" else "全员"
-            for label, value in (("目的地", req['destination']), ("出发地", req.get('origin') or '待定'),
-                                 ("预算", f"{scope} {req['budget']} {req.get('budget_currency') or 'CNY'}"),
-                                 ("预算范围", req.get('budget_includes') or '待确认'),
-                                 ("步行与行动限制", req.get('mobility') or '未说明')):
-                text += f"| {label} | {cell(value)} |\n"
-            for i, day in enumerate(plan["days"], 1):
-                text += f"\n### 第{i}天" + (f" · {day['date']}" if day.get('date') else '') + "\n\n"
-                text += "| 时间 | 地点与安排 | 交通预留 | 全员费用 |\n| --- | --- | --- | --- |\n"
-                for stop in day["stops"]:
-                    text += f"| {time_label(plan, stop)} | **{cell(stop['place'])}** | {cell(travel_label(stop))} | {cost_label(stop, req, state.get('evidence', {}))} |\n"
-                notes = [f"- **{cell(stop['place'])}**：{stop['notes']}" for stop in day['stops'] if stop.get('notes')]
-                if notes:
-                    text += "\n**游玩提示**\n\n" + "\n".join(notes) + "\n"
-            text += "\n### 预算汇总\n\n| 项目 | 全员费用 |\n| --- | ---: |\n"
-            for i, day in enumerate(plan['days'], 1):
-                text += f"| 第{i}天已列活动 | {total_cost_label(day['stops'], req, state.get('evidence', {}))} |\n"
-            stops = [stop for day in plan['days'] for stop in day['stops']]
-            text += f"| 其他费用 | 无法查询 |\n| **合计** | **{total_cost_label(stops, req, state.get('evidence', {}), plan['other_cost'])}** |\n\n未取得有效价格查询结果的费用显示“无法查询”，不代表免费。\n"
-            text += "\n### 交通与行前提醒\n\n"
-            for segment in plan.get("rail_segments", []):
-                ticket = segment["ticket"]
-                text += f"\n铁路查询参考：{ticket.get('start_train_code')}，{ticket.get('from_station')} → {ticket.get('to_station')}，{ticket.get('start_date')} {ticket.get('start_time')}出发 / {ticket.get('arrive_time')}到达。第三方MCP查询不保证出票，价格及余票以12306下单页面为准。\n"
-            if req.get("bookings"):
-                text += "\n已订安排：" + "；".join(b["description"] + (f"（第{b['day']}天）" if b.get("day") else "") + (f" {b['departure']}出发" if b.get("departure") else "") for b in req["bookings"]) + "。\n"
-            if req.get("return_deadline"):
-                text += f"\n最后一天返程时限：{req['return_deadline']}；应提前结束活动并预留取行李、交通及值机时间。\n"
-            if not req.get("origin"):
-                text += "\n出发地未定，往返大交通费用及时间尚未计入可靠校验，当前合计不能视为全旅程预算已满足。\n"
-            text += "\n时间、距离及费用未有对应查询依据的部分仍为估算，出发前需核实。\n"
-        records = [v for v in state.get("evidence", {}).values() if v["context"] == context_key(w["requirements"])]
-        source_names = {"search_places": "高德地图地点搜索", "search_train_tickets": "铁路车次查询",
-                        "search_knowledge": "旅游参考资料检索", "search_route": "高德地图路线查询",
-                        "search_web": "网页资料搜索", "search_weather": "高德天气预报（非天气保证）"}
-        records = [{**r, "title": source_names.get(r["title"], r["title"])} for r in records]
-        records = list({(r["title"], r.get("url"), r["query_status"], r["verification"]): r for r in records}.values())
-        summaries = list(dict.fromkeys(f"{('[' + r['title'] + '](' + r['url'] + ')') if r.get('url') else r['title']}（查询时间{r['queried_at']}）：{ {'success': '查询匹配' if r['verification'] == 'matched' else '文档参考', 'empty': '无结果', 'failed': '查询失败', 'out_of_range': '超查询范围'}[r['query_status']]}" for r in records))
-        if summaries:
-            text += "\n## 参考来源\n" + "\n".join("- " + item for item in summaries)
+            guide = get_version(w, w['version'])
+            if guide is not None:
+                text += guide_markdown(guide)
         return {"workflow": stage(w, "present"), "messages": [AIMessage(content=text, additional_kwargs={"plan_version": w["version"]} if w["status"] == "review" else {})]}
 
     graph = StateGraph(PlanningState)
@@ -322,7 +287,7 @@ def build_planner(model, saver, knowledge, tools, prompt):
             labels = {"intake": "正在整理人数、日期、预算范围与行动限制…", "research": "正在检索目的地旅游资料…",
                       "organize": "正在按片区筛选景点，减少往返和步行…", "verify_places": "正在核对候选地点…",
                       "check": "正在核对日期、活动衔接、费用和查询依据…", "review": "正在检查方案是否符合预算、体力限制与出行安排…",
-                      "save": "检查完成，正在保存本次方案…", "present": "正在整理最终行程和待确认事项…"}
+                      "save": "检查完成，正在保存本次方案…", "present": "正在整理每日行程、天气与特色美食…"}
             text = labels.get(name)
             if name == "generate":
                 attempt = state["workflow"].get("attempts", 0) + 1

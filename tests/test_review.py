@@ -93,7 +93,7 @@ def test_estimated_timing_warning_does_not_regenerate_or_discard_plan(tmp_path):
         text = chat(agent, 'trip', '修改')
         assert '按大致时段安排' in text and '上午' in text
         assert '| 位置 | 待解决问题 | 调整建议 |' not in text
-        assert '| 时间 | 地点与安排 |' in text
+        assert '| 时段 | 顺路安排 |' in text
         assert '09:00' not in text and '11:00' not in text
         assert '106.579027' not in text and 'travel_minutes' not in text
         state = get_workflow(agent, 'trip')
@@ -110,5 +110,5 @@ def test_first_blocked_plan_does_not_publish_an_unvalidated_itinerary(tmp_path):
         assert '用户不爬山，方案安排登高' in text and '改为平地游览' in text
         assert 'PROGRAM-' not in text and '按程序提示' not in text
         assert '需要先调整条件' in text
-        assert '| 时间 | 地点与安排 |' not in text
+        assert '| 时段 | 顺路安排 |' not in text
         assert 'plan' not in get_workflow(agent, 'new')

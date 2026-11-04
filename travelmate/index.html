@@ -3,31 +3,34 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TravelMate · 旅行规划助手</title>
+<meta name="theme-color" content="#087f7a">
+<link rel="icon" type="image/webp" href="/assets/visual/icon.webp">
+<link rel="stylesheet" href="/assets/theme.css">
 <style>
-  :root { --bg: #fff; --surface: #fff; --text: #243247; --muted: #69778b; --line: #e5eaf0; --accent: #3568a8; --tint: #eff4fa; }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.75 system-ui, "Microsoft YaHei", sans-serif; }
   button, textarea { font: inherit; }
   button { cursor: pointer; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 9px 14px; min-height: 44px; touch-action: manipulation; }
   button:hover:enabled { background: var(--tint); }
   button:disabled { opacity: .55; cursor: wait; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-  .sidebar { position: fixed; inset: 0 auto 0 0; width: 260px; padding: 28px 16px; background: #f6f8fb; border-right: 1px solid var(--line); overflow-y: auto; }
+  .sidebar { position: fixed; inset: 0 auto 0 0; width: 244px; padding: 28px 18px 18px; background: var(--sidebar); border-right: 1px solid var(--line); overflow-y: auto; }
+  .sidebar-content { display: flex; flex-direction: column; min-height: 100%; }
   .sidebar > summary { display: none; }
-  .sidebar:not([open]) > :not(summary) { display: block; }
+  .sidebar:not([open]) > .sidebar-content { display: flex; }
   @media (min-width: 701px) { .sidebar::details-content { content-visibility: visible; display: block; } }
   .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; }
-  .brand svg { width: 32px; height: 32px; color: var(--accent); }
+  .brand img { width: 46px; height: 46px; border-radius: 14px; }
   h1 { font-size: 20px; margin: 0; letter-spacing: -.5px; }
   .brand small { display: block; color: var(--muted); font-size: 12px; font-weight: 400; }
-  #new { width: 100%; text-align: left; color: var(--accent); }
-  .account { margin-top: 16px; font-size: 13px; }
+  #new { width: 100%; text-align: left; color: white; background: var(--accent); border-color: var(--accent); font-weight: 600; }
+  #new:hover:enabled { background: var(--accent-hover); }
+  .account { margin-top: auto; padding-top: 18px; border-top: 1px solid var(--line); font-size: 14px; }
   .account small { display: block; color: var(--muted); }
   .account button { margin-top: 8px; padding: 4px 10px; min-height: 36px; }
   .history-label { color: var(--muted); font-size: 12px; margin: 28px 12px 10px; }
   #history { border: 0; padding: 0; margin: 0; min-width: 0; }
   #history button { display: block; width: 100%; margin: 4px 0; border: 0; background: transparent; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #history button:hover, #history button[aria-current="true"] { background: #e7eef7; color: var(--accent); }
+  #history button:hover, #history button[aria-current="true"] { background: var(--tint); color: var(--accent); }
   .history-row { display: flex; align-items: center; gap: 4px; }
   #history .history-row .history-open { flex: 1; min-width: 0; }
   .history-tools { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0; }
@@ -35,27 +38,39 @@
   .history-menu { position: relative; flex-shrink: 0; }
   .history-menu > summary { list-style: none; cursor: pointer; width: 36px; min-height: 44px; display: grid; place-items: center; border-radius: 8px; font-size: 22px; }
   .history-menu > summary::-webkit-details-marker { display: none; }
-  .history-menu > summary:hover, .history-menu[open] > summary { background: #e7eef7; }
+  .history-menu > summary:hover, .history-menu[open] > summary { background: var(--tint); }
   .history-menu[open] { z-index: 2; }
-  .history-actions { position: absolute; right: 0; top: 100%; width: 170px; padding: 6px; background: white; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 24px #24324718; }
+  .history-actions { position: absolute; right: 0; top: 100%; width: 170px; padding: 6px; background: white; border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
   #history .history-actions button { padding: 8px 12px; }
   #history .history-actions .history-delete { width: 100%; color: #c43d3d; }
   .history-tools { align-items: center; }
   .history-tools > span { width: 100%; font-size: 12px; color: var(--muted); }
   .action-icon { display: inline-flex; width: 18px; height: 18px; margin-right: 8px; vertical-align: -3px; flex-shrink: 0; }
   .action-icon svg { width: 100%; height: 100%; }
-  .selection-footer { position: fixed; bottom: 0; left: 0; width: 259px; padding: 12px 16px max(12px, env(safe-area-inset-bottom)); background: #f6f8fb; border-top: 1px solid var(--line); z-index: 3; }
+  .selection-footer { position: sticky; bottom: 0; padding: 12px 0; background: var(--sidebar); border-top: 1px solid var(--line); z-index: 3; }
   #history .batch-delete { color: #c43d3d; background: #fff; border: 1px solid #efdbdb; text-align: center; }
   #history input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
-  #history { padding-bottom: 150px; }
+  #history { padding-bottom: 28px; }
   .history-empty { padding: 0 12px; font-size: 13px; color: var(--muted); }
-  main { margin-left: 260px; height: 100dvh; display: flex; flex-direction: column; min-width: 0; }
-  .topbar { padding: 18px 32px; font-size: 14px; color: var(--muted); border-bottom: 1px solid #f2f4f7; }
-  .conversation { flex: 1; overflow-y: auto; min-height: 0; padding: 20px 28px; }
-  .chat-width { width: 100%; max-width: 800px; margin: 0 auto; }
-  .hero { display: none; text-align: center; padding: 24px 0; }
-  main:has(#messages:empty) .conversation { display: flex; align-items: center; }
-  main:has(#messages:empty) .hero { display: block; }
+  main { margin-left: 244px; height: 100dvh; display: flex; flex-direction: column; min-width: 0; }
+  .topbar { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 36px; font-size: 14px; color: var(--muted); border-bottom: 1px solid var(--line); }
+  .topbar strong { color: var(--text); font-weight: 600; }
+  .topbar-note { font-size: 12px; }
+  .conversation { flex: 1; overflow-y: auto; min-height: 0; padding: 28px 36px; }
+  .chat-width { width: 100%; max-width: 840px; margin: 0 auto; }
+  .hero, .inspiration { display: none; }
+  main:has(#messages:empty) { overflow-y: auto; }
+  main:has(#messages:empty) .conversation { flex: none; overflow: visible; padding-bottom: 0; }
+  main:has(#messages:empty) .chat-width { max-width: 1120px; }
+  main:has(#messages:empty) .hero { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 24px; min-height: 292px; }
+  .eyebrow { color: var(--orange); font-size: 12px; font-weight: 700; letter-spacing: .18em; margin: 0 0 18px; }
+  .hero h2 { font-size: clamp(30px, 3.1vw, 48px); line-height: 1.25; letter-spacing: -.055em; font-weight: 750; margin-bottom: 18px; }
+  .hero h2 span { display: block; }
+  .hero-photo { margin: 0; height: 292px; position: relative; border-radius: 48px 16px 48px 16px; overflow: hidden; background: var(--tint); }
+  .hero-photo > img { width: 100%; height: 100%; object-fit: cover; }
+  .hero-photo figcaption { position: absolute; bottom: 14px; left: 16px; color: white; font-size: 12px; padding: 4px 10px; border-radius: 20px; background: #193c38c9; }
+  .companion-note { display: flex; align-items: center; gap: 10px; margin-top: 22px; font-size: 13px; color: var(--muted); }
+  .companion-note img { width: 42px; height: 42px; border-radius: 50%; }
   h2 { font-size: clamp(23px, 3vw, 30px); line-height: 1.5; font-weight: 600; margin: 0 0 12px; }
   .intro { color: var(--muted); margin: 0; }
   .message { margin: 12px 0 28px; overflow-wrap: anywhere; }
@@ -74,7 +89,7 @@
   .content > :last-child { margin-bottom: 0; }
   .content li { margin: 6px 0; }
   .content ul, .content ol { padding-left: 24px; }
-  .content a { color: #215c82; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  .content a { color: var(--accent-hover); text-decoration-thickness: 1px; text-underline-offset: 3px; }
   .content code { font: .9em/1.6 ui-monospace, monospace; background: var(--tint); padding: 2px 5px; border-radius: 4px; }
   .content pre { overflow: auto; background: var(--tint); padding: 16px; border-radius: 8px; }
   .content pre code { padding: 0; }
@@ -88,20 +103,21 @@
   .references { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 10px; color: var(--muted); font-size: 13px; }
   summary { cursor: pointer; }
   .guide-link { margin-left: 10px; }
-  .export-pdf { display: inline-block; margin-top: 18px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
+  .export-pdf, .export-md { display: inline-block; margin-top: 18px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
+  .export-md { margin-left: 12px; }
   .table-scroll { overflow-x: auto; margin: 16px 0; }
   table { border-collapse: collapse; width: 100%; font-size: 14px; }
   th, td { border: 1px solid var(--line); padding: 10px 12px; text-align: left; min-width: 80px; }
   th { background: var(--tint); }
-  tbody tr:nth-child(even) { background: #f8fafc; }
+  tbody tr:nth-child(even) { background: var(--bg); }
   .table-scroll { border: 1px solid var(--line); border-radius: 10px; }
   .table-scroll table { margin: 0; border-style: hidden; line-height: 1.65; }
   .table-scroll th { white-space: nowrap; }
   .table-scroll td { vertical-align: top; }
   .table-scroll td:first-child { white-space: nowrap; }
-  .interaction-card { max-height: 42dvh; overflow-y: auto; margin-bottom: 12px; border: 1px solid #b5c9e2; border-radius: 14px; background: #f7faff; padding: 12px 16px; }
+  .interaction-card { max-height: 42dvh; overflow-y: auto; margin-bottom: 12px; border: 1px solid #a7c9be; border-radius: 16px; background: var(--tint); padding: 12px 16px; }
   .interaction-card > summary { font-weight: 600; color: var(--accent); }
-  .interaction-card > summary { position: sticky; top: -12px; background: #f7faff; padding: 8px 0; z-index: 1; }
+  .interaction-card > summary { position: sticky; top: -12px; background: var(--tint); padding: 8px 0; z-index: 1; }
   .composer:has(#interaction:not([hidden])) .quick-fill,
   .composer:has(#interaction:not([hidden])) .entry-tools { display: none; }
   .composer:has(#interaction:not([hidden])) #form { padding: 8px 12px; }
@@ -113,10 +129,9 @@
   .interaction-fields input, .interaction-fields select { width: 100%; min-width: 0; min-height: 44px; font: inherit; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: white; color: var(--text); }
   @media (max-width: 700px) { .interaction-fields { grid-template-columns: 1fr; } }
   .entry-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
-  .entry-tools button { min-height: 36px; padding: 5px 12px; font-size: 13px; color: var(--accent); background: var(--tint); }
-  .quick-fill { margin-bottom: 12px; color: var(--accent); font-size: 13px; }
-  .quick-plan-dialog { width: min(680px, calc(100% - 32px)); max-height: 85dvh; padding: 20px 24px; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 16px 60px #24324730; }
-  .quick-plan-dialog::backdrop { background: #182b4659; }
+  .entry-tools button { min-height: 36px; padding: 5px 12px; font-size: 13px; color: var(--accent-hover); background: var(--tint); border-color: transparent; }
+  .quick-plan-dialog { width: min(680px, calc(100% - 32px)); max-height: 85dvh; padding: 24px; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 24px; box-shadow: 0 24px 80px #193c3826; }
+  .quick-plan-dialog::backdrop { background: #163b3866; }
   .quick-plan-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
   .quick-plan-heading h2 { font-size: 20px; margin: 0; }
   #trip-submit { background: var(--accent); color: white; border-color: var(--accent); }
@@ -130,64 +145,109 @@
   .trip-step .trip-grid:has(> label:only-child) { grid-template-columns: 1fr; }
   .trip-review { white-space: pre-wrap; padding: 14px; background: var(--tint); border-radius: 10px; line-height: 1.9; }
   .trip-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-  .trip-grid label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+  .trip-grid label { display: grid; gap: 6px; font-size: 14px; color: var(--muted); }
   .trip-grid input, .trip-grid select { min-width: 0; width: 100%; min-height: 44px; border: 1px solid var(--line); border-radius: 8px; padding: 8px; font: inherit; color: var(--text); background: var(--surface); }
   .trip-optional { color: var(--muted); font-size: 11px; font-weight: normal; }
   .trip-actions { display: flex; flex-wrap: wrap; gap: 8px; }
   .train-results { white-space: pre-wrap; font-size: 13px; max-height: 220px; overflow-y: auto; margin-top: 10px; }
-  .trip-note { margin: 8px 0; font-size: 12px; color: var(--muted); }
+  .trip-note { margin: 8px 0; font-size: 14px; color: var(--muted); }
   @media (max-width: 700px) { .trip-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-  .composer { padding: 12px 28px max(12px, env(safe-area-inset-bottom)); background: var(--surface); }
-  form { padding: 14px 18px; border: 1px solid #d9e1eb; border-radius: 20px; box-shadow: 0 4px 20px #24324706; }
-  form:focus-within { border-color: #91afd2; }
+  .composer { flex-shrink: 0; padding: 16px 36px max(16px, env(safe-area-inset-bottom)); background: var(--bg); }
+  form { padding: 18px 22px; border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--shadow); background: var(--surface); }
+  form:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px #087f7a12; }
   .input-label, .skip { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .skip:focus { width: auto; height: auto; clip-path: none; background: white; padding: 8px; z-index: 3; }
   textarea { display: block; width: 100%; resize: vertical; min-height: 64px; max-height: 180px; border: 0; padding: 4px 0; color: inherit; background: transparent; }
   textarea:focus-visible { outline: 0; }
-  textarea::placeholder { color: #8591a2; }
+  textarea::placeholder { color: var(--muted); }
   .actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 8px; }
   .keyboard-hint, #status, footer { font-size: 12px; color: var(--muted); }
   #status { margin: 8px 4px 0; min-height: 21px; }
-  #send { background: var(--accent); color: white; border: 0; border-radius: 12px; }
-  #send:hover:enabled { background: #28578f; }
-  footer { text-align: center; margin-top: 4px; font-size: 11px; }
+  #send { background: var(--accent); color: white; border: 0; border-radius: 12px; padding: 10px 22px; font-weight: 600; }
+  #send:hover:enabled, #trip-submit:hover:enabled { background: var(--accent-hover); }
+  footer { text-align: center; margin-top: 4px; font-size: 12px; }
+  main:has(#messages:empty) .inspiration { display: block; flex-shrink: 0; padding: 6px 36px 32px; }
+  .inspiration-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+  .inspiration-heading h2 { font-size: 20px; margin: 0; }
+  .inspiration-heading p { color: var(--muted); font-size: 12px; margin: 0; }
+  .inspiration-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+  .inspiration-card { display: block; overflow: hidden; text-align: left; padding: 0; border-radius: 16px; box-shadow: 0 2px 8px #193c3803; }
+  .inspiration-card:hover:enabled { background: white; border-color: #a7c9be; box-shadow: var(--shadow); }
+  .inspiration-card img { display: block; width: 100%; height: 126px; object-fit: cover; }
+  .inspiration-copy { display: block; padding: 12px 16px; }
+  .inspiration-copy strong { display: block; font-size: 16px; font-weight: 650; }
+  .inspiration-copy small { display: block; color: var(--muted); font-size: 12px; margin-top: 3px; }
+  .inspiration-copy strong::after { content: '↗'; float: right; color: var(--accent); }
+  .inspiration-note { margin: 12px 0 0; color: var(--muted); font-size: 12px; }
+  @media (min-width: 701px) { .sidebar::details-content { height: 100%; } }
+  @media (min-width: 701px) and (max-width: 1050px) {
+    .sidebar { width: 216px; padding-inline: 14px; }
+    main { margin-left: 216px; }
+    .conversation, .composer, main:has(#messages:empty) .inspiration { padding-inline: 24px; }
+    main:has(#messages:empty) .hero { gap: 18px; }
+    .hero h2 { font-size: 32px; }
+    .hero-photo { height: 270px; }
+  }
   @media (max-width: 700px) {
     .sidebar { position: relative; width: 100%; padding: 0 16px; max-height: 45dvh; border-right: 0; border-bottom: 1px solid var(--line); }
-    .selection-footer { position: sticky; width: auto; left: auto; bottom: 0; margin-top: 12px; padding: 10px 0; }
-    .sidebar > summary { display: block; padding: 12px 0; cursor: pointer; font-size: 14px; color: var(--accent); }
-    .sidebar:not([open]) > :not(summary) { display: none; }
+    .selection-footer { padding: 10px 0; }
+    .sidebar > summary { display: flex; align-items: center; gap: 10px; padding: 10px 0; cursor: pointer; font-size: 14px; color: var(--accent-hover); list-style: none; }
+    .sidebar > summary::-webkit-details-marker { display: none; }
+    .sidebar > summary img { width: 30px; height: 30px; border-radius: 8px; }
+    .sidebar > summary span { margin-left: auto; color: var(--muted); }
+    .sidebar:not([open]) > .sidebar-content { display: none; }
     .brand { display: none !important; }
     #new { margin-bottom: 8px; }
     .history-label { margin-top: 12px; }
     body { height: 100dvh; display: flex; flex-direction: column; }
     main { margin-left: 0; height: auto; flex: 1; min-height: 0; }
     .topbar { display: none; }
-    .conversation { padding: 16px; }
-    .composer { padding: 10px 12px max(10px, env(safe-area-inset-bottom)); }
+    .conversation { padding: 22px 20px; }
+    .composer { padding: 16px 20px max(12px, env(safe-area-inset-bottom)); }
     .message.user { max-width: 92%; }
-    .keyboard-hint { font-size: 11px; }
+    .keyboard-hint { display: none; }
+    .actions { justify-content: flex-end; }
+    main:has(#messages:empty) .hero { grid-template-columns: 1fr; gap: 20px; }
+    .hero h2 { font-size: clamp(30px, 8vw, 42px); }
+    .hero h2 span { display: inline; }
+    .eyebrow { margin-bottom: 12px; }
+    .intro { font-size: 14px; }
+    .hero-photo { height: 180px; border-radius: 28px 12px; }
+    .companion-note { margin-top: 16px; }
+    main:has(#messages:empty) .inspiration { padding: 8px 20px 24px; }
+    .inspiration-heading { display: block; }
+    .inspiration-heading p { margin-top: 4px; }
+    .inspiration-grid { grid-template-columns: 1fr; gap: 12px; }
+    .inspiration-card { display: flex; align-items: center; }
+    .inspiration-card img { width: 100px; height: 96px; flex-shrink: 0; }
+    .inspiration-copy { flex: 1; min-width: 0; }
+    form { padding: 16px; }
+    .account { margin-bottom: 16px; }
   }
   @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
 </style>
 <a class="skip" href="#input">跳到消息输入框</a>
 <details class="sidebar" id="sidebar">
-  <summary>☰ 对话记录</summary>
-  <div class="brand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m16 8-2.5 5.5L8 16l2.5-5.5Z"/></svg><h1>TravelMate<small>智能旅游助手</small></h1></div>
-  <button id="new" type="button">＋ 开启新对话</button>
-  <div class="account"><span id="account-name"></span><small id="account-quota" title="每次提交聊天扣 1 次，北京时间每天零点恢复；查看历史与导出不扣额度"></small><button id="logout" type="button">退出登录</button></div>
-  <p class="history-label">最近对话</p>
+  <summary><img src="/assets/visual/icon.webp" alt="" width="30" height="30">TravelMate<span>旅程记录 ☰</span></summary>
+  <div class="sidebar-content">
+  <div class="brand"><img src="/assets/visual/icon.webp" alt="" width="46" height="46"><h1>TravelMate<small>你的 AI 旅行搭子</small></h1></div>
+  <button id="new" type="button">＋ 开启新的旅程</button>
+  <p class="history-label">最近规划</p>
   <fieldset id="history" aria-label="历史对话"><p class="history-empty">暂无历史对话</p></fieldset>
+  <div class="account"><span id="account-name"></span><small id="account-quota" title="每次提交聊天扣 1 次，北京时间每天零点恢复；查看历史与导出不扣额度"></small><button id="logout" type="button">退出登录</button></div>
+  </div>
 </details>
 <main>
-  <header class="topbar">TravelMate · 你的智能旅游助手</header>
+  <header class="topbar"><strong>旅程，从一个想法开始</strong><span class="topbar-note">灵感探索 / 智能规划</span></header>
   <div class="conversation"><div class="chat-width">
-    <section class="hero" aria-labelledby="welcome"><h2 id="welcome">你好，我是智能旅游助手 TravelMate</h2><p class="intro">想去哪里走走？一起规划你的下一段旅程。</p>
+    <section class="hero" aria-labelledby="welcome">
+      <div class="hero-copy"><p class="eyebrow">YOUR NEXT JOURNEY</p><h2 id="welcome">把向往，<span>变成行程。</span></h2><p class="intro">告诉我想去哪里，<br>一起规划你的下一段旅程。</p><div class="companion-note"><img src="/assets/visual/companion.webp" alt="海鸥旅行家" width="42" height="42"><span>你的 AI 旅伴，陪你发现沿途的美好</span></div></div>
+      <figure class="hero-photo"><img src="/assets/visual/coast.webp" alt="阳光下的山海步道，远处的旅人正在沿海岸前行" width="1536" height="1024" fetchpriority="high"><figcaption>山海之间，去发现新的风景</figcaption></figure>
     </section>
     <section id="messages" aria-label="对话内容" role="log" aria-live="off"></section>
   </div></div>
   <div class="composer"><div class="chat-width">
     <details id="interaction" class="interaction-card" hidden open aria-label="待补充的信息"></details>
-    <button class="quick-fill" id="quick-fill-open" type="button" aria-haspopup="dialog" aria-controls="quick-fill">快速规划 ↗</button>
     <dialog class="quick-plan-dialog" id="quick-fill" aria-labelledby="quick-plan-title" aria-describedby="quick-plan-description">
       <div class="quick-plan-heading"><h2 id="quick-plan-title">快速规划旅行</h2><button id="quick-fill-close" type="button" aria-label="关闭快速规划">关闭</button></div>
       <p class="trip-note" id="quick-plan-description">一步步选择旅行条件，选填项可以跳过。最后确认后自动整理需求并发送。</p>
@@ -242,14 +302,22 @@
       </form>
     </dialog>
     <form id="form">
-      <div class="entry-tools"><button id="preset" type="button">试试预设示例 ↗</button></div>
+      <div class="entry-tools"><button class="quick-fill" id="quick-fill-open" type="button" aria-haspopup="dialog" aria-controls="quick-fill">快速规划 ↗</button><button id="preset" type="button">试试预设示例 ↗</button></div>
       <label class="input-label" for="input">你的旅行想法</label>
-      <textarea id="input" maxlength="8000" required placeholder="自由描述旅行想法，或使用上方的快速规划 / 预设示例…"></textarea>
+      <textarea id="input" maxlength="8000" required placeholder="想去哪里？聊聊目的地、天数和预算，或先选一个旅行灵感…"></textarea>
       <div class="actions"><span class="keyboard-hint">Enter 发送 · Ctrl + Enter 换行</span><button id="send" type="submit">发送 ↑</button></div>
     </form>
     <p id="status" role="status" aria-live="polite">准备好了，随时出发</p>
     <footer>行程建议仅供参考，出行前请核实价格和开放时间。</footer>
   </div></div>
+  <section class="inspiration" aria-labelledby="inspiration-title"><div class="chat-width">
+    <div class="inspiration-heading"><h2 id="inspiration-title">从一个旅行灵感开始</h2><p>山野、海岸，或一座慢下来的城</p></div>
+    <div class="inspiration-grid">
+      <button class="inspiration-card" type="button" data-trip-idea="想找一个适合轻徒步、亲近山野的目的地，安排一段放松的旅行。请先和我确认出发地、天数、人数及预算。"><img src="/assets/visual/mountains.webp" alt="云雾间的青山与草甸步道" width="1536" height="1024" loading="lazy"><span class="inspiration-copy"><strong>去山野，深呼吸</strong><small>走进自然，让脚步慢一点</small></span></button>
+      <button class="inspiration-card" type="button" data-trip-idea="想去海边放松，沿着海岸散步，探索当地美食。请先和我确认出发地、天数、人数及预算。"><img src="/assets/visual/coast.webp" alt="碧蓝海水与阳光下的海岸" width="1536" height="1024" loading="lazy"><span class="inspiration-copy"><strong>沿着海岸慢慢走</strong><small>把时间交给海风与日落</small></span></button>
+      <button class="inspiration-card" type="button" data-trip-idea="想去一座有历史文化的古城，逛老街、看建筑、吃当地小吃。请先和我确认出发地、天数、人数及预算。"><img src="/assets/visual/town.webp" alt="石桥、绿水与白墙黛瓦的古镇" width="1536" height="1024" loading="lazy"><span class="inspiration-copy"><strong>在古城里闲逛</strong><small>在街巷中，遇见当地生活</small></span></button>
+    </div><p class="inspiration-note">AI 生成的旅行意境图 · 点击仅填写灵感，编辑后发送即可开始规划</p>
+  </div></section>
 </main>
 <script type="module">
   import {renderMarkdown} from '/assets/markdown.js';
@@ -365,6 +433,11 @@
     link.target = '_blank';
     link.rel = 'noopener';
     body.append(link);
+    const markdown = document.createElement('a');
+    markdown.className = 'export-md';
+    markdown.textContent = '下载 Markdown';
+    markdown.href = '/sessions/' + encodeURIComponent(sessionId) + '/answers/' + messageId + '/md';
+    body.append(markdown);
     if (Number.isInteger(planVersion) && planVersion > 0) {
       const guide = document.createElement('a');
       guide.className = 'export-pdf guide-link';
@@ -687,7 +760,7 @@
     messages.replaceChildren();
 
     status.textContent = '已开始新对话';
-    input.focus();
+    input.focus({preventScroll: true});
   }
   newChat.addEventListener('click', () => { if (!busy) resetConversation(); });
 
@@ -787,7 +860,7 @@
       status.textContent = (error.message || '请求失败，请稍后重试') + '。输入已保留。';
     } finally {
       progress.finish(done);
-      input.placeholder = '自由描述旅行想法，或使用上方的快速规划 / 预设示例…';
+      input.placeholder = '想去哪里？聊聊目的地、天数和预算，或使用快速规划…';
       send.textContent = '发送 ↑';
       busy = false;
       send.disabled = newChat.disabled = historySelect.disabled = input.disabled = false;
@@ -924,5 +997,10 @@
       trainResults.textContent = '车次查询失败，请检查服务或稍后重试。仍可生成旅行攻略。';
     } finally { trainSearch.disabled = false; }
   });
+</script>
+<script id="inspiration-script">
+  for (const card of document.querySelectorAll('[data-trip-idea]')) {
+    card.addEventListener('click', () => fillTripDraft(card.dataset.tripIdea));
+  }
 </script>
 </html>

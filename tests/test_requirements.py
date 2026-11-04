@@ -1,5 +1,8 @@
 """Step-one constraint regression; models below do not call external services."""
 from types import SimpleNamespace
+from pathlib import Path
+
+import pytest
 
 from travelmate.workflow import update_trip, validate_plan, budget_total, save_workflow, get_workflow
 from travelmate.agent import open_agent, PROMPT, PROMPT_VERSION
@@ -22,12 +25,13 @@ def test_sparse_and_invalid_conditions():
     assert "error" in error(state, unknown="ignored?")
 
 
-def test_existing_sessions_collect_newly_required_mobility():
+def test_unspecified_mobility_does_not_block_a_complete_request():
     state = {"schema_version": 2, "requirements": {k: v for k, v in REQ.items() if k != 'mobility'},
-             "missing": [], "assumptions": {}}
+             "missing": [], "assumptions": {}, 'status': 'researching'}
     updated = call(update_trip, state, conditions={})
-    assert updated['missing'] == ['mobility']
-    assert updated['status'] == 'collecting'
+    assert updated['missing'] == []
+    assert updated['status'] == 'researching'
+    assert updated['requirements'].get('mobility') is None
 
 
 def test_budget_scope_and_assumptions():
@@ -89,6 +93,35 @@ def test_old_and_new_checkpoint_restart(tmp_path):
 def test_prompt_contract_and_formatting():
     rendered = PROMPT.format(today="2026-11-03")
     assert PROMPT_VERSION == "advisor-v1/tools-v1"
-    assert "系统表单" in rendered and "普通问答" in rendered
-    assert "带老人不等于体力差" in rendered
+    assert "行策 · 旅游攻略策划专家" in rendered
+    assert "可靠性 > 完整性 > 华丽度" in rendered
+    assert "等用户确认方案后再生成成品" in rendered
+    assert ":root{" in rendered and "{行程目录}/" in rendered
+    assert '@media(max-width:640px){.grid2,.grid4{grid-template-columns:1fr}}' in rendered
+    assert '{{城市拼音}}' not in rendered
+    assert "不要求用户审核、保存 JSON 或确认" not in rendered
     assert "不生成行程" not in rendered
+
+
+@pytest.mark.parametrize("legacy_tool_loop", [False, True])
+def test_document_role_reaches_agent_without_formatting_damage(tmp_path, monkeypatch, legacy_tool_loop):
+    captured = {}
+    sentinel = object()
+
+    def planner(model, saver, knowledge, tools, prompt):
+        captured['prompt'] = prompt
+        return sentinel
+
+    def tool_agent(**kwargs):
+        captured['prompt'] = kwargs['system_prompt']
+        return sentinel
+
+    monkeypatch.setattr('travelmate.planner.build_planner', planner)
+    monkeypatch.setattr('travelmate.agent.create_agent', tool_agent)
+    with open_agent(model=object(), database=tmp_path / 'role.sqlite', knowledge=tmp_path,
+                    legacy_tool_loop=legacy_tool_loop) as agent:
+        assert agent is sentinel
+    role = (Path(__file__).parents[1] / 'travelmate/prompts/advisor-v1.txt').read_text(encoding='utf-8')
+    assert captured['prompt'].startswith(role + '\n')
+    assert '--brand:#0d9488;' in captured['prompt']
+    assert '{城市拼音}-{N}d{M}n.html' in captured['prompt']

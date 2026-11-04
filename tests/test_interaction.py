@@ -17,7 +17,7 @@ def test_missing_fields_roundtrip_is_structured_and_survives_restart(tmp_path):
         done = frames[-1][1]
         interaction = done["interaction"]
         keys = {field["key"] for field in interaction["fields"]}
-        assert "days" in keys and "mobility" in keys and "destination" not in keys
+        assert 'days' in keys and 'mobility' not in keys and 'destination' not in keys
         assert model.calls == ["Intake"]
     model = Model()
     with open_test(tmp_path, model) as agent:
@@ -26,7 +26,7 @@ def test_missing_fields_roundtrip_is_structured_and_survives_restart(tmp_path):
             "id": interaction["id"], "answers": {key: REQ[key] for key in keys}})
         assert "Intake" not in model.calls
         assert get_workflow(agent, "form")["requirements"]["destination"] == "杭州"
-        assert "| 时间 |" in answer and "### 预算汇总" in answer
+        assert '| 时段 |' in answer and '## 预算怎么用' in answer
         assert "interaction" not in conversation(agent, "form")["messages"][-1]
 
 
@@ -94,5 +94,5 @@ def test_api_stream_transports_form_answers(tmp_path):
         response = client.post('/chat/stream', json={"session_id": "api-form", "message": "提交条件",
             "interaction_response": {"id": interaction['id'], "answers": answers}})
         assert 'event: done' in response.text
-        assert '预算汇总' in response.text
+        assert '预算怎么用' in response.text
         assert client.get('/sessions/api-form/trip').json()['status'] == 'review'

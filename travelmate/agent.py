@@ -23,6 +23,8 @@ from travelmate.public import public_data, public_answer
 
 PROMPT_VERSION = "advisor-v1/tools-v1"
 PROMPT = "\n".join((Path(__file__).parent / "prompts" / name).read_text(encoding="utf-8")
+                   .replace("{", "{{").replace("}", "}}") if name == "advisor-v1.txt"
+                   else (Path(__file__).parent / "prompts" / name).read_text(encoding="utf-8")
                    for name in ("advisor-v1.txt", "tools-v1.txt"))
 
 

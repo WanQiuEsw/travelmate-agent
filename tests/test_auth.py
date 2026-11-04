@@ -44,7 +44,7 @@ def register(app, client, username='alice', code=None):
 def test_all_business_routes_require_login(protected):
     app, client = protected
     for route in app.routes:
-        if route.path in ('/', '/login', '/health', '/assets/auth.js', '/assets/markdown.js', '/auth/register', '/auth/login'):
+        if route.path in ('/', '/login', '/health', '/assets/auth.js', '/assets/markdown.js', '/assets/theme.css', '/auth/register', '/auth/login'):
             continue
         path = route.path.replace('{session_id}', 'private').replace('{message_id}', 'a' * 32).replace('{version}', '1')
         for method in route.methods:
@@ -53,6 +53,22 @@ def test_all_business_routes_require_login(protected):
     for path in ('/', '/login', '/assets/auth.js', '/assets/markdown.js', '/health'):
         assert client.get(path).status_code == 200
     assert client.get('/docs').status_code == 404
+
+
+def test_brand_assets_are_public_but_do_not_expose_other_files(protected):
+    _, client = protected
+    for name in ('companion', 'coast', 'mountains', 'town', 'icon'):
+        response = client.get(f'/assets/visual/{name}.webp')
+        assert response.status_code == 200
+        assert response.headers['content-type'] == 'image/webp'
+        assert response.content[:4] == b'RIFF'
+    stylesheet = client.get('/assets/theme.css')
+    assert stylesheet.status_code == 200
+    assert stylesheet.headers['content-type'].startswith('text/css')
+    assert client.get('/assets/visual/.env').status_code == 401
+    assert client.get('/assets/visual/auth.py').status_code == 401
+    register(*protected)
+    assert client.get('/assets/visual/auth.py').status_code == 422
 
 
 def test_register_login_logout_and_hashed_secrets(protected):
@@ -125,7 +141,7 @@ def test_isolation_covers_history_mutation_export_and_bulk(protected):
     bob = TestClient(app, headers=HEADERS)
     register(app, bob, 'bob')
     assert bob.get('/sessions').json() == {'sessions': []}
-    for path in ('', '/trip', '/trip/pdf', f'/answers/{answer_id}/pdf', '/plans/1', '/plans/1/pdf'):
+    for path in ('', '/trip', '/trip/pdf', f'/answers/{answer_id}/pdf', f'/answers/{answer_id}/md', '/plans/1', '/plans/1/pdf', '/plans/1/md'):
         assert bob.get('/sessions/alice-trip' + path).status_code == 404
     assert bob.delete('/sessions/alice-trip').status_code == 404
     assert bob.patch('/sessions/alice-trip/title', json={'title': 'stolen'}).status_code == 404

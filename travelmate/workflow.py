@@ -106,6 +106,16 @@ class Alternative(BaseModel):
     extra_cost: float | None = Field(default=None, ge=0, le=1e8)
 
 
+class Food(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=80)
+    description: str = Field(min_length=1, max_length=400, description="介绍当地菜品或小吃的口味、特点，不编造价格、餐厅或营业信息。")
+    area: str = Field(default="", max_length=120, description="建议结合当日游玩片区顺路用餐；不是已核实的门店地址。")
+    tips: str = Field(default="", max_length=300, description="结合用户忌口、过敏和饮食偏好给出点单提醒。")
+    day: int | None = Field(default=None, ge=1, le=30, description="顺路安排在第几天；未确定时留空。")
+    meal: Literal["早餐", "午餐", "晚餐", "加餐", "不限"] = "不限"
+
+
 class Itinerary(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     time_granularity: Literal["precise", "period"] = Field(default="precise", description="交通或到离时刻不确定时用period，按上午/中午/下午等安排；precise兼容已有精确行程。")
@@ -113,6 +123,9 @@ class Itinerary(BaseModel):
     other_cost: float = Field(ge=0, le=1e8, description="仅用户预算包含范围内、尚未计入活动的全员费用；明确排除的住宿或往返交通不计入，没有额外项目时为0。cost_notes说明构成及合计算式。")
     alternatives: list[Alternative] = Field(default_factory=list, max_length=30)
     reminders: list[str] = Field(default_factory=list, max_length=30)
+    foods: list[Food] = Field(default_factory=list, max_length=8, description="新攻略必须包含3至5项目的地特色美食介绍；空列表仅兼容历史行程。")
+    summary: str = Field(default="", max_length=600, description="先给玩法判断，说明如何围绕兴趣顺路安排；没有价格依据不能断言预算够用。")
+    lodging: list[str] = Field(default_factory=list, max_length=5, description="住宿片区、交通与订房筛选建议；不编造酒店报价、房态或星级。")
     rail_segments: list[RailSegment] = Field(default_factory=list, max_length=30)
     cost_notes: str = Field(min_length=1, max_length=2000)
 
@@ -198,6 +211,9 @@ def validate_plan(requirements, plan):
     if total > limit:
         issues.append(f"全员总费用 {amount(total)} 元超过预算 {amount(limit)} 元，"
                       f"超出 {amount(total - limit)} 元")
+    for food in plan.foods:
+        if food.day and food.day > req.days:
+            issues.append(f'美食{food.name}安排在第{food.day}天，超出行程天数')
     for day in plan.days:
         previous = 0
         for stop in day.stops:
@@ -250,7 +266,7 @@ def update_trip(conditions: dict, runtime: ToolRuntime, assumptions: dict | None
         return {"error": str(exc)}
     merged = parsed.model_dump(mode="json", exclude_unset=True)
     missing = [key for key in ("destination", "days", "travelers", "budget",
-               "budget_scope", "budget_currency", "budget_includes", "mobility") if merged.get(key) in (None, "")]
+               "budget_scope", "budget_currency", "budget_includes") if merged.get(key) in (None, "")]
     if any(not 1 <= int(day) <= (merged.get("days") or 30) for day in merged.get("day_exclusions", {})):
         return {"error": "按天排除项必须在行程天数内"}
     if any(b.get("day") and b["day"] > (merged.get("days") or 30) for b in merged.get("bookings", [])):

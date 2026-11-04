@@ -20,7 +20,7 @@ from travelmate.agent import chat, conversation, conversations, open_agent, stre
 from travelmate.evidence import validate_evidence
 from travelmate.workflow import Itinerary, get_workflow, save_workflow, validate_plan
 from travelmate.pdf_export import itinerary_pdf, answer_pdf, guide_pdf
-from travelmate.guide import get_version, render_guide
+from travelmate.guide import get_version, render_guide, guide_markdown
 from travelmate.accounts import Accounts
 from travelmate.auth import install_auth, require_access
 
@@ -126,6 +126,14 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
     def markdown_script():
         return FileResponse(Path(__file__).with_name("markdown.js"), media_type="text/javascript")
 
+    @app.get("/assets/theme.css", include_in_schema=False)
+    def theme_stylesheet():
+        return FileResponse(Path(__file__).with_name("theme.css"), media_type="text/css")
+
+    @app.get("/assets/visual/{filename}", include_in_schema=False)
+    def visual_asset(filename: Literal["companion.webp", "coast.webp", "mountains.webp", "town.webp", "icon.webp"]):
+        return FileResponse(Path(__file__).with_name("images") / filename, media_type="image/webp")
+
     @app.get("/health")
     def health():
         return {"status": "ok"}
@@ -204,17 +212,26 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
     def trip(session_id: SessionId):
         return get_workflow(app.state.agent, session_id)
 
-    @app.get("/sessions/{session_id}/answers/{message_id}/pdf")
-    def export_answer(session_id: SessionId,
-                      message_id: Annotated[str, PathParam(pattern=r"^[a-f0-9]{32}$")]):
+    def saved_answer(session_id, message_id):
         with trip_lock():
             messages = conversation(app.state.agent, session_id)["messages"]
             answer = next((m for m in messages if m.get("message_id") == message_id), None)
             if answer is None:
                 raise HTTPException(404, "这条回答不存在或尚未完成，请刷新对话后重试")
-            text = answer["content"]
+            return answer["content"]
+
+    @app.get("/sessions/{session_id}/answers/{message_id}/pdf")
+    def export_answer(session_id: SessionId,
+                      message_id: Annotated[str, PathParam(pattern=r"^[a-f0-9]{32}$")]):
+        text = saved_answer(session_id, message_id)
         return Response(answer_pdf(text), media_type="application/pdf",
                         headers={"Content-Disposition": f'attachment; filename="travelmate-{message_id[:8]}.pdf"'})
+
+    @app.get('/sessions/{session_id}/answers/{message_id}/md')
+    def export_answer_markdown(session_id: SessionId,
+                               message_id: Annotated[str, PathParam(pattern=r'^[a-f0-9]{32}$')]):
+        return Response(saved_answer(session_id, message_id), media_type='text/markdown',
+                        headers={'Content-Disposition': f'attachment; filename="travelmate-{message_id[:8]}.md"'})
 
     @app.put("/sessions/{session_id}/trip")
     def edit_trip(session_id: SessionId, plan: Itinerary):
@@ -273,6 +290,11 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
         guide = load_guide(session_id, version)
         return Response(guide_pdf(guide), media_type="application/pdf",
             headers={"Cache-Control": "no-store", "Content-Disposition": f'attachment; filename="travelmate-v{version}.pdf"'})
+
+    @app.get('/sessions/{session_id}/plans/{version}/md')
+    def export_guide_markdown(session_id: SessionId, version: Annotated[int, PathParam(ge=1)]):
+        return Response(guide_markdown(load_guide(session_id, version)), media_type='text/markdown',
+                        headers={'Content-Disposition': f'attachment; filename="travelmate-v{version}.md"'})
 
     @app.get("/sessions/{session_id}/trip/pdf")
     def export_trip(session_id: SessionId):

@@ -277,6 +277,10 @@ test('each export link keeps its answer and session, without review controls', (
   assert.equal(links.length, 2);
   assert.equal(links[0].href, '/sessions/session-shanghai/answers/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/pdf');
   assert.equal(links[1].href, '/sessions/session-chongqing/answers/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/pdf');
+  const markdown = nodes(elements.messages).filter(node => node.className === 'export-md');
+  assert.equal(markdown.length, 2);
+  assert.equal(markdown[0].href, '/sessions/session-shanghai/answers/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/md');
+  assert.equal(markdown[1].href, '/sessions/session-chongqing/answers/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/md');
   assert.ok(!html.includes('id="trip-panel"'));
   assert.ok(!html.includes('保存并校验'));
 });

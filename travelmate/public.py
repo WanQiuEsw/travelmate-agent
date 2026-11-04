@@ -3,6 +3,38 @@ import os
 import re
 
 
+def internal_title(value):
+    value = re.split(r'[:：]', value, maxsplit=1)[0]
+    title = re.sub(r'^[\s#>*\-\d.、（）()一二三四五六七八九十]+', '', value)
+    title = re.sub(r'[\s*：:]+$', '', title)
+    return bool(re.fullmatch(r'(?:内部)?(?:检查项|检查清单|检查结果|检查与仍待确认事项|待确定事项|待确认事项|仍待确认事项|内部检查|内部审查|审核记录|审查记录)(?:[及与和、/]*(?:仍)?待(?:确认|确定)事项)?(?:[（(]内部[）)])?', title))
+
+
+def travel_content(text):
+    """Remove editorial sections while retaining practical travel and safety advice."""
+    lines = text.splitlines()
+    output, hidden_level, current_level = [], None, 0
+    for index, line in enumerate(lines):
+        heading = re.match(r'^\s*(#{1,6})\s+(.+?)\s*#*\s*$', line)
+        bold = re.fullmatch(r'\s*\*\*(.+?)\*\*\s*[:：]?\s*', line)
+        setext = index + 1 < len(lines) and re.fullmatch(r'\s*(?:=+|-{3,})\s*', lines[index + 1])
+        label = line.strip().rstrip(':：')
+        level = len(heading[1]) if heading else (1 if lines[index + 1].strip().startswith('=') else 2) if setext else current_level + 1
+        title = heading[2] if heading else bold[1] if bold else label
+        if internal_title(title):
+            hidden_level = level
+            continue
+        if hidden_level is not None:
+            if (heading or bold or setext) and level <= hidden_level:
+                hidden_level = None
+            else:
+                continue
+        if heading or setext:
+            current_level = level
+        output.append(line)
+    return '\n'.join(output).strip()
+
+
 def public_data(value, messages=()):
     hidden = {os.getenv(key, "") for key in ("ALIYUN_INDEX_ID", "ALIYUN_WORKSPACE_ID")}
     for message in messages:
@@ -26,7 +58,7 @@ def public_data(value, messages=()):
 
 def public_answer(text, messages=()):
     """Keep reference labels short without changing the travel advice."""
-    text = public_data(text, messages)
+    text = travel_content(public_data(text, messages))
     # Evidence IDs must survive machine-readable state and model input.
     text = re.sub(r"(?<![\w-])[a-f0-9]{32}:\d+(?!\w)", "查询依据", text)
     # Map coordinates belong in navigation links, not in travel prose.

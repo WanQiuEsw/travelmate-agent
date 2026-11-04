@@ -28,11 +28,12 @@ def test_shared_document_costs_statuses_and_navigation():
     assert guide["total"] == 600
     text = str(guide)
     assert "第1天" in text and "无法查询" in text
-    assert "地点存在：查询时已核实" not in text and "全员费用：无法查询" in text
-    assert "交通耗时：待核实" not in text and "uri.amap.com/marker" in text
+    assert "地点存在：查询时已核实" not in text
+    assert next(section for section in guide['sections'] if section['kind'] == 'day')['rows'][0][-1] == '无法查询'
+    assert "交通耗时：待核实" not in text and "uri.amap.com/marker" not in text
     assert guide_pdf(guide).startswith(b"%PDF-")
     for section in guide["sections"]:
-        assert section["title"] in render_guide(guide, "/download")
+        assert all(part in render_guide(guide, '/download') for part in section['title'].split(' · '))
 
 
 def test_snapshots_dont_change_with_current_evidence():

@@ -6,7 +6,8 @@ from xml.sax.saxutils import escape
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether
+from travelmate.public import public_answer
 
 
 def itinerary_pdf(state):
@@ -18,9 +19,12 @@ def itinerary_pdf(state):
     story = []
 
     def add(text, title=False):
-        story.append(Paragraph(escape(str(text)), heading if title else style))
+        text = public_answer(str(text))
+        if text:
+            story.append(Paragraph(escape(text).replace('\n', '<br/>'), heading if title else style))
 
     from travelmate.workflow import budget_total, time_label, travel_label, cost_label, total_cost_label, TIME_NOTICE
+    from travelmate.guide import day_heading, food_items
     req, plan = state["requirements"], state["plan"]
     add(f'TravelMate · {req["destination"]}旅行行程', True)
     add(f'{req.get("origin") or "出发地待定"} / {req.get("start_date") or "日期待定"} / {req["days"]}天 / {req["travelers"]}人')
@@ -35,10 +39,15 @@ def itinerary_pdf(state):
         add(f"最后一天返程时限：{req['return_deadline']}，需提前结束活动并预留交通时间。")
     for index, day in enumerate(plan["days"], 1):
         story.append(Spacer(1, 10))
-        add(day.get("date") or f"第{index}天", True)
+        add(day_heading(day.get("date"), index, req, state.get('evidence', {})), True)
         for stop in day["stops"]:
             add(f'{time_label(plan, stop)} {stop["city"]} · {stop["place"]}')
             add(f'交通衔接：{travel_label(stop)}；全员费用：{cost_label(stop, req, state.get("evidence", {}))}。{stop["notes"]}')
+    foods = food_items(plan, req)
+    if foods:
+        add('当地特色美食', True)
+        for item in foods:
+            add(item)
     add('其他费用：无法查询。无法查询不代表免费。')
     add("费用均为估算；地点、交通、开放时间及票价请出行前核实。")
     SimpleDocTemplate(output, title="TravelMate 行程", leftMargin=48, rightMargin=48,
@@ -47,7 +56,8 @@ def itinerary_pdf(state):
 
 
 def answer_pdf(text):
-    """Export the selected answer verbatim in content, without consulting the latest trip."""
+    """Export the selected public answer, without consulting the latest trip."""
+    text = public_answer(text)
     pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
     style = ParagraphStyle("Answer", fontName="STSong-Light", fontSize=10,
                            leading=17, wordWrap="CJK", spaceAfter=7)
@@ -77,7 +87,10 @@ def answer_pdf(text):
                 i += 1
             columns = max(map(len, rows))
             cells = [[paragraph(cell.strip()) for cell in row + [""] * (columns - len(row))] for row in rows]
-            table = Table(cells, colWidths=[499 / columns] * columns, repeatRows=1,
+            headers = [cell.strip() for cell in rows[0]]
+            widths = ([44, 88, 200, 88, 79] if columns == 5 and headers[0] == '时段' else
+                      [64, 146, 58, 122, 109] if columns == 5 and headers[0] == '美食' else [499 / columns] * columns)
+            table = Table(cells, colWidths=widths, repeatRows=1,
                           hAlign="LEFT", splitByRow=1, splitInRow=1)
             table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"),
                                        ("BACKGROUND", (0, 0), (-1, 0), "#e9eee4"),
@@ -103,6 +116,8 @@ def guide_pdf(guide):
     """Render the exact frozen public document used by the HTML preview."""
     from html import escape as html_escape
     from travelmate.evidence import safe_url
+    from travelmate.guide import public_guide
+    guide = public_guide(guide)
     pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
     body = ParagraphStyle("GuideBody", fontName="STSong-Light", fontSize=10.5, leading=17,
                           wordWrap="CJK", spaceAfter=8, textColor="#243b35", splitLongWords=1)
@@ -114,10 +129,24 @@ def guide_pdf(guide):
              Paragraph(escape(f"版本 {guide['version']} · 保存于 {guide['saved_at']}"), meta),
              Paragraph(escape(guide["notice"]), meta)]
     for section in guide["sections"]:
-        story.append(Paragraph(escape(section["title"]), heading))
+        section_title = escape(section['title'])
+        if section['kind'] == 'day':
+            section_title = section_title.replace(' · 天气', '<br/>天气', 1)
+        story.append(Paragraph(section_title, heading))
+        if section.get('columns'):
+            rows = [section['columns'], *section['rows']]
+            cells = [[Paragraph(escape(str(value)).replace('\n', '<br/>'), body) for value in row] for row in rows]
+            widths = ([45, 90, 205, 90, 81] if section['kind'] == 'day' else [65, 150, 60, 125, 111]
+                      if section['kind'] == 'food' else [160, 351])
+            table = Table(cells, colWidths=widths, repeatRows=1, splitByRow=1, splitInRow=1)
+            table.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('BACKGROUND', (0, 0), (-1, 0), '#edf2e9'), ('GRID', (0, 0), (-1, -1), .4, '#dce3d9'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 6), ('RIGHTPADDING', (0, 0), (-1, -1), 6)]))
+            story.extend([table, Spacer(1, 8)])
         for item in section["items"]:
             content = escape(item["text"]).replace("\n", "<br/>")
-            story.append(Paragraph(content, body))
+            paragraph = Paragraph(content, body)
+            story.append(KeepTogether([paragraph]) if section['kind'] == 'food' else paragraph)
             url = safe_url(item.get("link"))
             if url:
                 story.append(Paragraph(f'<link href="{html_escape(url, quote=True)}" color="#236d57">{escape(item.get("link_label", "公开来源"))}</link>', meta))

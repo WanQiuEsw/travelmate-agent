@@ -3,7 +3,8 @@ import {readFile} from 'node:fs/promises';
 import {test} from 'node:test';
 import vm from 'node:vm';
 const html = await readFile(new URL('../travelmate/index.html', import.meta.url), 'utf8');
-const source = html.match(/<script id="quick-fill-script">([\s\S]*?)<\/script>/)[1];
+const source = html.match(/<script id="quick-fill-script">([\s\S]*?)<\/script>/)[1]
+  + html.match(/<script id="inspiration-script">([\s\S]*?)<\/script>/)[1];
 function setup(fetch = async () => ({ok: true, json: async () => ({results: [], notice: "以12306为准"})})) {
   const elements = Object.fromEntries(['trip-form', 'form', 'input', 'quick-fill', 'quick-fill-open', 'quick-fill-close', 'quick-fill-cancel', 'send', 'preset', 'status', 'train-search', 'train-results', 'trip-step-label', 'trip-progress', 'trip-back', 'trip-skip', 'trip-submit', 'trip-rail', 'trip-review'].map(id => [id, {
     handlers: {}, addEventListener(name, handler) { this.handlers[name] = handler; },
@@ -34,11 +35,30 @@ function setup(fetch = async () => ({ok: true, json: async () => ({results: [], 
   }));
   elements.steps.forEach((step, i) => { step.disabled = i !== 0; });
   elements['trip-form'].querySelectorAll = () => elements.steps;
-  vm.runInNewContext(source, {document: {querySelector: id => elements[id.slice(1)]}, Event, fetch});
+  elements.cards = [...html.matchAll(/data-trip-idea="([^"]+)"/g)].map(match => ({
+    dataset: {tripIdea: match[1]}, handlers: {},
+    addEventListener(name, handler) { this.handlers[name] = handler; },
+  }));
+  vm.runInNewContext(source, {document: {querySelector: id => elements[id.slice(1)], querySelectorAll: () => elements.cards}, Event, fetch});
   return elements;
 }
 function next(e) { e['trip-form'].handlers.submit({preventDefault() {}}); }
 function finish(e) { for (let step = 0; step < 8; step++) next(e); }
+
+test('travel inspiration fills editable drafts without sending or changing a busy draft', () => {
+  const e = setup();
+  assert.equal(e.cards.length, 3);
+  for (const card of e.cards) {
+    card.handlers.click();
+    assert.equal(e.input.value, card.dataset.tripIdea);
+    assert.equal(e.input.focused, true);
+    assert.equal(e.form.submissions.length, 0);
+  }
+  e.send.disabled = true;
+  e.input.value = '正在生成，保留草稿';
+  e.cards[0].handlers.click();
+  assert.equal(e.input.value, '正在生成，保留草稿');
+});
 
 test('wizard gates later steps and waits for final confirmation', () => {
   const e = setup(); e['quick-fill-open'].handlers.click();
