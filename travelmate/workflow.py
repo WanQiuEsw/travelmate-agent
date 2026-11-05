@@ -77,9 +77,11 @@ class Stop(BaseModel):
     start: str | None = Field(default=None, pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
     end: str | None = Field(default=None, pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
     period: Literal["清晨", "上午", "中午", "下午", "晚上", "全天", "机动安排"] | None = None
+    suggested_window: str | None = Field(default=None, pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d[–-](?:[01]\d|2[0-3]):[0-5]\d$", description="分时段方案的可选参考窗口，例如09:00–11:00；仅用于不依赖未确认班次或营业时段的活动。")
     travel_minutes: int | None = Field(default=None, ge=0, le=1440, description="活动开始前的交通分钟数；未知时留空，不编造精确值。分时段安排仅作估算，不用于硬时间校验。")
     travel_estimate: str | None = Field(default=None, max_length=200, description="交通耗时估算范围或待确认说明，例如约30至60分钟，含候车缓冲。")
     cost: float = Field(ge=0, le=1e8, description="全员费用，人民币")
+    cost_estimated: bool = Field(default=False, description="有合理估算依据时为true，并在notes写明口径；金额未知时为false且cost填0。")
     notes: str = Field(default="", max_length=1000)
     activities: list[Literal["walking", "climbing", "museum", "food", "rest", "other"]] = Field(default_factory=list, max_length=10)
     fact_refs: dict[Literal["place", "cost", "opening_hours", "travel_minutes"], str] = Field(default_factory=dict)
@@ -121,6 +123,7 @@ class Itinerary(BaseModel):
     time_granularity: Literal["precise", "period"] = Field(default="precise", description="交通或到离时刻不确定时用period，按上午/中午/下午等安排；precise兼容已有精确行程。")
     days: list[Day] = Field(min_length=1, max_length=30)
     other_cost: float = Field(ge=0, le=1e8, description="仅用户预算包含范围内、尚未计入活动的全员费用；明确排除的住宿或往返交通不计入，没有额外项目时为0。cost_notes说明构成及合计算式。")
+    other_cost_estimated: bool = Field(default=False, description="有依据且已在cost_notes列明费用构成和算式时为true。")
     alternatives: list[Alternative] = Field(default_factory=list, max_length=30)
     reminders: list[str] = Field(default_factory=list, max_length=30)
     foods: list[Food] = Field(default_factory=list, max_length=8, description="新攻略必须包含3至5项目的地特色美食介绍；空列表仅兼容历史行程。")
@@ -168,20 +171,33 @@ def adapt_timing(requirements, plan, evidence):
 
 
 def time_label(plan, stop):
-    return (stop.get('period') or '机动安排') if plan.get("time_granularity") == "period" else f"{stop['start']}–{stop['end']}"
+    if plan.get("time_granularity") != "period":
+        return f"{stop['start']}–{stop['end']}"
+    period = stop.get('period') or '机动安排'
+    window = stop.get('suggested_window')
+    return f'{period} · {window}（建议）' if window and window[:5] < window[-5:] else period
 
 
 def cost_label(stop, requirements, evidence, now=None):
     ref = stop.get('fact_refs', {}).get('cost')
     if check_reference(evidence, ref, 'price', stop.get('cost'), requirements, now):
-        return '无法查询'
+        return f"约¥{stop['cost']:.2f}（估算）" if stop.get('cost_estimated') else '无法查询'
     return f"¥{stop['cost']:.2f}"
 
 
-def total_cost_label(stops, requirements, evidence, other_cost=0, now=None):
-    if other_cost or any(cost_label(stop, requirements, evidence, now) == '无法查询' for stop in stops):
+def total_cost_label(stops, requirements, evidence, other_cost=0, now=None, *, other_cost_estimated=False):
+    if other_cost and not other_cost_estimated and not any(stop.get('cost_estimated') for stop in stops):
         return '无法查询'
-    return f"¥{sum(stop['cost'] for stop in stops):.2f}"
+    labels = [cost_label(stop, requirements, evidence, now) for stop in stops]
+    amounts = [stop['cost'] for stop, label in zip(stops, labels) if label != '无法查询']
+    if other_cost_estimated:
+        amounts.append(other_cost)
+    incomplete = '无法查询' in labels or (other_cost and not other_cost_estimated)
+    if not amounts and incomplete:
+        return '无法查询'
+    estimated = incomplete or other_cost_estimated or any(label.startswith('约') for label in labels)
+    return (('约' if estimated else '') + f"¥{sum(amounts):.2f}"
+            + ('（部分项目待核实）' if incomplete else '（估算）' if estimated else ''))
 
 
 def travel_label(stop):

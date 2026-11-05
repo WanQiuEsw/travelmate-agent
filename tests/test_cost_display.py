@@ -13,6 +13,15 @@ def test_unknown_zero_cost_is_not_presented_as_free_and_totals_stay_unknown():
     assert time_label({'time_granularity': 'period'}, {'period': '上午'}) == '上午'
 
 
+def test_estimates_show_partial_subtotal_and_advisory_window():
+    stop = {**PLAN['days'][0]['stops'][0], 'cost_estimated': True}
+    unknown = {**stop, 'cost': 0, 'cost_estimated': False}
+    assert cost_label(stop, REQ, {}) == '约¥100.00（估算）'
+    assert total_cost_label([stop, unknown], REQ, {}, 500, other_cost_estimated=True) == '约¥600.00（部分项目待核实）'
+    assert time_label({'time_granularity': 'period'}, {
+        'period': '上午', 'suggested_window': '09:00–11:00'}) == '上午 · 09:00–11:00（建议）'
+
+
 def test_only_matched_current_price_is_displayed_including_a_verified_free_price():
     stop = {**deepcopy(PLAN['days'][0]['stops'][0]), 'cost': 0, 'fact_refs': {'cost': 'price:0'}}
     record = {'context': context_key(REQ), 'query_status': 'success', 'verification': 'matched',

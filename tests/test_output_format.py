@@ -40,7 +40,7 @@ def test_chat_preview_and_markdown_share_food_route_budget_and_alternatives(tmp_
         assert answer.strip() == guide_markdown(guide).strip()
         assert '| 时段 | 顺路安排 | 吃什么 / 怎么玩 |' in answer
         assert '| 片儿川 |' in answer and '第1天 · 午餐' in answer
-        assert '下雨 → 减少湖边步行' in answer
+        assert '| 下雨 | 减少湖边步行，在同片区休息用餐 | 待核实 |' in answer
         assert '不能确认预算是否足够' in answer and '5000足够' not in answer
         assert '住哪里更顺路' in answer
         html = render_guide(guide, '/guide.pdf')

@@ -69,3 +69,15 @@ def test_train_date_and_unbacked_text():
     plan = deepcopy(PLAN)
     plan["days"][0]["stops"][0]["notes"] = "乘坐G9999"
     assert validate_evidence(REQ, plan, {})
+
+
+def test_return_train_must_match_direction_and_last_day():
+    req = {**REQ, "origin": "北京", "destination": "杭州", "days": 3}
+    args = {"origin": "杭州", "destination": "北京", "departure_date": "2026-12-03"}
+    row = {"start_train_code": "G10", "from_station": "杭州东", "to_station": "北京南",
+           "start_date": "2026-12-03", "start_time": "08:00", "arrive_time": "13:00", "prices": []}
+    evidence = normalize("search_train_tickets", args, {"results": [row]}, "rail", req)
+    plan = {**PLAN, "rail_segments": [{"ticket": row, "evidence_id": "rail:0"}]}
+    assert not validate_evidence(req, plan, evidence)
+    evidence["rail:0"]["query"] = {**args, "origin": "上海"}
+    assert validate_evidence(req, plan, evidence)

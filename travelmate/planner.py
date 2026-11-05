@@ -4,7 +4,7 @@ import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
 from time import perf_counter
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 from uuid import uuid4
 from typing import Literal
@@ -168,9 +168,15 @@ def build_planner(model, saver, knowledge, tools, prompt):
             research_data.append({'tool': 'search_web', 'data': web})
         if req.get("origin") and req.get("start_date") and req.get("transport") in ("高铁", "动车", "火车"):
             args = {"origin": req["origin"], "destination": req["destination"], "departure_date": req["start_date"], "transport": req["transport"]}
-            rail, evidence = query("search_train_tickets", args, req)
-            records.update(evidence)
-            research_data.append({"tool": "search_train_tickets", "data": rail})
+            legs = [("去程", args)]
+            if req["days"] > 1 or req.get("return_deadline"):
+                return_day = date.fromisoformat(req["start_date"]) + timedelta(days=req["days"] - 1)
+                legs.append(("返程", {**args, "origin": req["destination"], "destination": req["origin"],
+                                      "departure_date": return_day.isoformat()}))
+            for label, leg in legs:
+                rail, evidence = query("search_train_tickets", leg, req)
+                records.update(evidence)
+                research_data.append({"tool": "search_train_tickets", "leg": label, "data": rail})
         if req.get("start_date"):
             weather, weather_records = query("search_weather", {"city": req["destination"], "start_date": req["start_date"], "days": req["days"]}, req)
             records.update(weather_records)
@@ -204,6 +210,8 @@ def build_planner(model, saver, knowledge, tools, prompt):
         try:
             evidence = {k: v for k, v in state.get("evidence", {}).items() if v["context"] == context_key(w["requirements"])}
             candidate = structured(Itinerary, "填写summary给出简洁玩法判断，lodging给出顺路住宿片区与订房筛选条件，不编造酒店房态或价格。若用户喜欢美食，每个完整游玩日安排合理正餐或小吃停留，stop.activities标food；景点串起用餐而不是另附泛泛美食名单，避免连续多顿重餐，预留排队与消化休息。foods填写day和meal关联每天的用餐，不把吃过的同一餐重复计价。必须填写foods：给出3至5项本目的地特色菜或小吃，逐项介绍口味特点、顺路用餐建议和饮食注意事项，遵守dietary及排除项；不能把景区名称当美食；只有对应地点查询记录支持时才点名门店，没有对应结果时只推荐菜品和片区。地点存在不等于营业或价格已核实，不能编造门店、现价、营业时间或过敏安全保证。正文不输出检查项、待确定事项或内部审查记录。\n生成或按issues修订结构化行程。交通或到离时刻不确定时，time_granularity必须为period；每个活动只填period（上午/中午/下午/晚上等），start/end留空，不生成精确到小时的完整时间表，也不要在notes重复虚构的精确时段。travel_minutes未知可留空，travel_estimate给约30至60分钟等估算范围或待确认说明。只在时间与交通充分确定时用precise。用户已订安排和返程时限必须保留，在对应日notes说明需提前结束、取行李与交通预留，不用估算覆盖已确认时间。费用为全员人民币估算；未知日期为null。fact_refs的值必须逐字复制evidence键，地点名称逐字采用对应value；只引用success且matched的记录，不支持的字段省略引用并标为待核实。铁路查询失败或无结果时rail_segments留空，不编车次或票价，往返费用注明待核实及是否计入预算。未查询的字段不写已核实。遵守已订安排、返程时限及排除项；activities准确标注climbing等活动。高风险安排填写具体备选，补充有用的行前提醒。"
+                "\n在分时段方案中，只有不依赖未确认班次、预约或营业时间的活动才可填写suggested_window（如09:00–11:00），这是可移动的建议窗口。铁路去程与返程分别引用对应方向和日期的记录，某程无有效记录就省略该程具体车次。"
+                "\n费用有可解释依据才填写cost_estimated或other_cost_estimated，分别在notes或cost_notes写明全员金额的构成和口径。未知活动费用用cost=0且cost_estimated=false表示，不写成免费。应急方案选本行程最相关的情形，如下雨、餐馆排队、闭馆、约不上或无票；trigger写明影响哪天哪项，action写立即怎么替换、怎么去或在哪里复核，extra_cost只填有依据的全员预计增加额，未知留空。"
                 "\n可交付规则：航班到离时刻未知不等于条件不足，不追问已完整需求；首日仅安排抵达后可选的市区轻量活动，把轮渡上岛等依赖时刻的核心活动放到中间完整日。不假设早班抵达或晚班返程；在首末日notes与reminders写明按实际航班调整及机场交通、值机预留。明确时间仅为估算，用户可以调整顺序、删减或继续细化。"
                 "\n每日步数受限时按片区安排2至3个主要景点，安排午餐及明确休息时段，跨片区乘车；notes给步行量估算范围与临近上限时的删减顺序，不把估算写成保证。不要默认看日出或登高。交通衔接计入候车、换乘和出入口缓冲；渡轮不编确定班次，按当日订票时刻调整。"
                 "\n预算严格遵守budget_includes：明确排除的住宿、机票不计入stop.cost或other_cost，也不因未查这些价格阻塞行程；明确包含的往返交通、住宿即使未查到价格，也要按公开估算计入other_cost并在cost_notes标待核实，不能因为未查询就不计入，也不能为凑预算压到无依据的低价；确实超预算时如实写出超支额和取舍，由用户决定。other_cost只放范围内尚未逐项列出的费用并解释算式。对票价、开放时段、交通时长保留估算/待确认并给替代方案，不编造确定事实。未查询实时天气时禁止输出具体日期的天气预报，只提示出发前查询。输出精简，避免冗长重复notes。", {"requirements": w["requirements"], "areas": state["areas"], "research": state["research_data"], "evidence": evidence, "previous_candidate": state.get("candidate"), "issues": w.get("issues", [])})

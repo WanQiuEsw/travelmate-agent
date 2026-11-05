@@ -105,7 +105,15 @@ def validate_evidence(requirements, plan, evidence):
     for segment in plan.get("rail_segments", []):
         problem = check_reference(evidence, segment["evidence_id"], "train", segment["ticket"], requirements)
         record = evidence.get(segment["evidence_id"], {})
-        if record.get("applicable_date") != requirements.get("start_date"):
+        start = requirements.get("start_date")
+        query = record.get("query", {})
+        direction = (query.get("origin"), query.get("destination"))
+        outbound = (requirements.get("origin"), requirements.get("destination"))
+        expected = start
+        if start and direction == outbound[::-1] and direction != outbound:
+            expected = (datetime.fromisoformat(start).date() + timedelta(days=requirements["days"] - 1)).isoformat()
+        if (not expected or direction not in (outbound, outbound[::-1])
+                or record.get("applicable_date") != expected or segment["ticket"].get("start_date") != expected):
             problem = "铁路查询日期不匹配旅行日期"
         if problem:
             issues.append("铁路: " + problem)

@@ -1,4 +1,6 @@
 """Bounded, read-only travel tools."""
+import asyncio
+import json
 import math
 import os
 import re
@@ -67,6 +69,34 @@ def estimate_budget(days: int, travelers: int, daily_per_person: float,
             "per_person": round(total / travelers, 2), "type": "估算，非实时报价"}
 
 
+async def tavily_mcp_search(key, query):
+    from mcp import ClientSession
+    from mcp.client.streamable_http import streamable_http_client
+
+    async with httpx.AsyncClient(headers={"Authorization": f"Bearer {key}"}, timeout=15) as client:
+        async with streamable_http_client("https://mcp.tavily.com/mcp/", http_client=client) as (read, write, _):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                result = await session.call_tool("tavily_search", {"query": query, "max_results": 5, "search_depth": "basic"})
+                if result.isError:
+                    raise ValueError("Web search failed")
+                if result.structuredContent is not None:
+                    return result.structuredContent
+                content = "\n".join(block.text for block in result.content if block.type == "text")
+                try:
+                    return json.loads(content)
+                except json.JSONDecodeError:
+                    # Tavily also sends its search results as labeled plain text.
+                    _, header, details = content.partition("Detailed Results:")
+                    if not header:
+                        raise ValueError("Unexpected MCP search format")
+                    rows = re.finditer(
+                        r"(?:^|\n\n)(?:Title: (?P<title>[^\n]*)\n)?(?:ID: [^\n]*\n)?"
+                        r"URL: (?P<url>https?://\S+)\nContent: (?P<content>.*?)(?=\n\n(?:Title: |ID: |URL: )|\Z)",
+                        details.strip(), re.S)
+                    return {"results": [match.groupdict(default="") for match in rows]}
+
+
 @tool
 def search_web(query: str) -> dict:
     """搜索旅游资料、开放时间等，返回来源链接；服务未配置时明确告知。"""
@@ -76,14 +106,20 @@ def search_web(query: str) -> dict:
     if not query.strip() or len(query) > 500:
         return {"error": "查询需为 1–500 字符"}
     try:
-        response = httpx.post("https://api.tavily.com/search", json={
-            "api_key": key, "query": query, "max_results": 5,
-            "include_raw_content": False}, timeout=20)
-        response.raise_for_status()
+        if os.getenv("TAVILY_SEARCH_TRANSPORT") == "mcp":
+            data = asyncio.run(asyncio.wait_for(tavily_mcp_search(key, query), timeout=20))
+        else:
+            response = httpx.post("https://api.tavily.com/search", json={
+                "api_key": key, "query": query, "max_results": 5,
+                "include_raw_content": False}, timeout=20)
+            response.raise_for_status()
+            data = response.json()
         return {"results": [{"title": r.get("title", ""), "url": r.get("url", ""),
                              "content": r.get("content", "")[:2000]}
-                            for r in response.json()["results"]]}
-    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+                            for r in data["results"][:5]]}
+    except ImportError:
+        return {"error": "请先执行 uv sync --extra rail 安装 MCP 依赖"}
+    except Exception:
         return {"error": "搜索服务失败，当前资料未核实，请稍后重试"}
 
 

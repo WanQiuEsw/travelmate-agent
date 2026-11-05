@@ -28,7 +28,7 @@ MODEL_NAME=deepseek-flash
 MODEL_BASE_URL=https://api.deepseek.com
 ```
 
-本地运行的是 Python 程序；模型通过网络调用 DeepSeek 云端，并非在本机部署模型。TAVILY_API_KEY 是独立的搜索服务密钥，可暂时留空；留空时联网检索会明确返回不可用。修改配置后重启程序。如果系统环境变量已经设置同名配置，它会优先于 `.env`。
+本地运行的是 Python 程序，模型通过网络调用 DeepSeek 云端。网页检索需要独立的 `TAVILY_API_KEY`。要通过 [Tavily MCP](https://docs.tavily.com/documentation/mcp) 联网，执行 `uv sync --extra rail` 安装 MCP 客户端，在 `.env` 设置 `TAVILY_SEARCH_TRANSPORT=mcp` 后重启。未指定传输方式时沿用 Tavily HTTP API。MCP 查询失败时继续使用其他可用资料，并保留查询失败状态。系统环境变量优先于 `.env`。
 
 示例：`从上海出发，两个人，杭州三天，预算3000元，喜欢自然风景，帮我规划`。再次使用 `--session demo` 可继续对话。知识文件放在 `knowledge/*.md`，每次检索读取最新文件；示例资料并非实时旅游数据库。
 

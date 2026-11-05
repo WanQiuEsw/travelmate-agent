@@ -123,7 +123,8 @@ def make_guide(version, evidence):
 
     stops = [stop for day in plan['days'] for stop in day['stops']]
     total = round(plan['other_cost'] + sum(stop['cost'] for stop in stops), 2)
-    displayed_total = total_cost_label(stops, req, evidence, plan['other_cost'], asof)
+    other_estimated = plan.get('other_cost_estimated', False)
+    displayed_total = total_cost_label(stops, req, evidence, plan['other_cost'], asof, other_cost_estimated=other_estimated)
     scope = '人均' if req.get('budget_scope') == 'per_person' else '全员'
     route = (req.get('origin') + ' → ' if req.get('origin') else '') + req['destination']
     judgment = ('当前报价未齐，不能确认预算是否足够；先落实往返交通和住宿，再安排餐饮及机动资金。'
@@ -137,13 +138,18 @@ def make_guide(version, evidence):
         ['旅行偏好', req.get('preferences') or '未说明'],
         ['行动与饮食', f'{req.get("mobility") or "行动限制未说明，先预留休息"}；{req.get("dietary") or "忌口未说明，点单前确认"}']])
     budget_rows = [[f'第{i}天已列活动', total_cost_label(day['stops'], req, evidence, now=asof)] for i, day in enumerate(plan['days'], 1)]
-    budget_rows += [['其他费用', '无法查询' if plan['other_cost'] else '未单列，不能据此判断免费'], ['已列项目合计', displayed_total]]
+    other_label = (f"约¥{plan['other_cost']:.2f}（估算）" if other_estimated else
+                   '无法查询' if plan['other_cost'] else '未单列，不能据此判断免费')
+    budget_rows += [['其他费用', other_label], ['已列项目合计', displayed_total]]
     allocation = budget_allocation(req)
     if allocation:
         section('预算怎么用', ['以下只是从用户总预算中分配的可调整预留额度，不是票价、房价或餐费查询结果。拿到真实报价后再调整比例；机动资金也属于总预算，不重复相加。'],
                 'budget', ['用途', '建议预留额度（非报价）'], allocation)
-    section('已列费用与报价状态' if allocation else '预算怎么用', ['此表只汇总已列项目，不是完整报价；未取得有效价格依据的费用显示“无法查询”，不代表免费。',
-        '先预留往返交通、预算范围内的住宿及机动资金，再决定餐饮档次；同一笔交通或餐饮费用只计一次，不为凑预算虚构价格。'],
+    budget_notes = ['此表汇总已列项目；估算与实时查询分开标注，未知金额不计入小计。',
+                    '先预留往返交通、预算范围内的住宿及机动资金，再决定餐饮档次。']
+    if other_estimated:
+        budget_notes.append(plan['cost_notes'])
+    section('已列费用与报价状态' if allocation else '预算怎么用', budget_notes,
         'budget', ['项目', '全员费用'], budget_rows)
     traffic = []
     for segment in plan.get('rail_segments', []):
@@ -168,7 +174,14 @@ def make_guide(version, evidence):
     if foods:
         rows = [[food['name'], food['description'], (f'第{food["day"]}天 · ' if food.get('day') else '') + food.get('meal', '不限'), food.get('area') or '结合当日片区顺路选择', food.get('tips') or '点单前确认食材与忌口'] for food in foods]
         section('当地特色美食', ['推荐用于选择菜品与用餐片区，不代表餐厅房态、实时价格或过敏安全保证。'] + ([f'饮食要求：{req["dietary"]}；点单时向商家确认。'] if req.get('dietary') else []), 'food', ['美食', '特色', '安排在哪顿', '顺路建议', '点单提醒'], rows)
-    section('下雨、排队或约不上时怎么换', [a['trigger'] + ' → ' + a['action'] for a in plan.get('alternatives', [])] or ['遇雨可减少室外步行、选择同片区室内活动；餐馆排队时优先换附近同类菜品，是否开放及能否入场以当日公告为准。'])
+    alternatives = plan.get('alternatives', [])
+    if alternatives:
+        rows = [[a['trigger'], a['action'],
+                 f"约¥{a['extra_cost']:.2f}（估算）" if a.get('extra_cost') is not None else '待核实'] for a in alternatives]
+        section('下雨、排队或约不上时怎么换', ['应急方案 · 增加费用按全员计算。'],
+                columns=['触发情况', '立即怎么换', '预计增加费用'], rows=rows)
+    else:
+        section('下雨、排队或约不上时怎么换', ['遇雨可减少室外步行、选择同片区室内活动；餐馆排队时优先换附近同类菜品，是否开放及能否入场以当日公告为准。'])
     section('行前准备', plan.get('reminders', []) or ['确定日期后查询往返交通与天气；确认酒店取消条款、场馆规则、餐馆营业信息和饮食限制。'])
     sources, seen = [], set()
     for record in evidence.values():
