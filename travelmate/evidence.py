@@ -14,6 +14,18 @@ def merge_evidence(left, right):
     return {**(left or {}), **(right or {})}
 
 
+MODEL_FIELDS = ("id", "kind", "value", "title", "url", "query_status", "verification",
+                "address", "location", "applicable_date", "query")
+ALWAYS = ("id", "value")
+
+
+def model_view(evidence):
+    """给模型的依据只留判断要用的字段；程序核验仍用完整记录。省一半左右输入。"""
+    return {key: {field: record.get(field) for field in MODEL_FIELDS
+                  if field in ALWAYS or record.get(field) not in (None, "", {})}
+            for key, record in evidence.items()}
+
+
 def context_key(requirements):
     return sha256(json.dumps(requirements, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:20]
 

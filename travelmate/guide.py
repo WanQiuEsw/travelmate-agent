@@ -107,6 +107,34 @@ def display_time(value):
     return moment.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M（北京时间）")
 
 
+SOURCE_NAMES = {'search_knowledge': '旅游参考资料', 'search_web': '网页资料搜索',
+                'search_places': '高德地点查询', 'search_weather': '天气预报', 'search_train_tickets': '铁路车次查询'}
+
+
+def source_note(requirements, evidence, asof):
+    """金额结论后面标明来自哪类网上资料、哪天查的，方便判断时效。"""
+    found = {}
+    for record in evidence.values():
+        if record.get('context') != context_key(requirements) or record.get('query_status') != 'success':
+            continue
+        if record.get('kind') not in ('document', 'train', 'weather_forecast'):
+            continue
+        name = SOURCE_NAMES.get(record.get('tool'), record.get('title'))
+        try:
+            day = datetime.fromisoformat(record['queried_at']).astimezone(
+                timezone(timedelta(hours=8))).strftime('%Y-%m-%d')
+        except (KeyError, TypeError, ValueError):
+            continue
+        found[name] = max(found.get(name, ''), day)
+    if not found:
+        return None
+    order = list(SOURCE_NAMES.values())
+    parts = [f'{name} · {found[name]} 查询'
+             for name in sorted(found, key=lambda item: order.index(item) if item in order else 99)]
+    return ('金额来源：' + '；'.join(parts)
+            + '。以上是网上公开资料，价格会变；没有标注来源的金额是估算，⏳ 项目请在出行前按官方渠道复核。')
+
+
 def make_guide(version, evidence):
     req, plan = version['requirements'], version['plan']
     if not version.get('saved_at'):
@@ -135,6 +163,7 @@ def make_guide(version, evidence):
         opening.append('由此推出的硬规则：\n'
                        + '\n'.join(f'{index}. {rule}' for index, rule in enumerate(plan['hard_rules'], 1)))
     section('先说结论', [*opening, judgment])
+    note = source_note(req, evidence, asof)
     section('旅行概览', kind='overview', columns=['项目', '安排'], rows=[
         ['路线', route], ['人数与天数', f'{req["travelers"]}人 · {req["days"]}天'],
         ['日期', req.get('start_date') or '日期未定，按第几天展示'],
@@ -152,6 +181,8 @@ def make_guide(version, evidence):
                 'budget', ['用途', '建议预留额度（非报价）'], allocation)
     budget_notes = ['此表汇总已列项目；估算与实时查询分开标注，未知金额不计入小计。',
                     '先预留往返交通、预算范围内的住宿及机动资金，再决定餐饮档次。']
+    if note:
+        budget_notes.append(note)
     if other_estimated:
         budget_notes.append(plan['cost_notes'])
     section('已列费用与报价状态' if allocation else '预算怎么用', budget_notes,
@@ -161,7 +192,8 @@ def make_guide(version, evidence):
         rows = [[tier['name'], tier['lodging'], tier['transport'], tier['dining'],
                  f"约¥{tier['total']:.0f}" if tier.get('total') is not None else '待核实',
                  tier.get('note') or '按档位替换住宿与餐标，行程不用重做'] for tier in tiers]
-        section('预算三档对照', ['三档只换住宿、交通和餐标，行程顺序不变；金额为全员估算，标注待核实的以官方渠道为准。'],
+        section('预算三档对照', ['三档只换住宿、交通和餐标，行程顺序不变；金额为全员估算，标注待核实的以官方渠道为准。']
+                + ([note] if note else []),
                 'budget', ['档位', '住宿', '交通', '餐饮', '全员总计', '说明'], rows)
     traffic = []
     for segment in plan.get('rail_segments', []):

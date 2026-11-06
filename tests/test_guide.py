@@ -17,6 +17,20 @@ def version(plan=None):
     return {"version": 1, "plan": plan or deepcopy(PLAN), "requirements": REQ, "saved_at": datetime.now(timezone.utc).isoformat()}
 
 
+def test_money_block_states_where_prices_came_from_and_when():
+    req = {**REQ, 'start_date': '2026-11-06'}
+    records = normalize('search_web', {'query': '上海 门票价格'},
+                        {'results': [{'title': '门票', 'url': 'https://example.org', 'content': '门票 40 元'}]},
+                        'web', req, datetime(2026, 11, 4, 2, tzinfo=timezone.utc))
+    plan = deepcopy(PLAN)
+    plan['days'][0]['date'] = '2026-11-06'
+    v = {'version': 1, 'requirements': req, 'plan': plan, 'saved_at': datetime(2026, 11, 6, tzinfo=timezone.utc).isoformat()}
+    text = guide_markdown(make_guide(v, records))
+    assert '金额来源：网页资料搜索 · 2026-11-04 查询' in text
+    assert '网上公开资料' in text
+    assert '网上公开资料' not in guide_markdown(make_guide(v, {}))
+
+
 def test_sample_sections_render_tiers_pitfalls_and_verification_order():
     plan = deepcopy(PLAN)
     plan.update(key_call='5000 元两人玩三天够用，但高铁占掉 44%，钱要先认清分配。',
