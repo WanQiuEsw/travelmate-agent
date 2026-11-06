@@ -204,14 +204,24 @@ def build_planner(model, saver, knowledge, tools, prompt, review_model=None):
     def research(state):
         w = state["workflow"]
         req = w["requirements"]
-        get_stream_writer()({"text": f"已整理：{req['travelers']}人，{req['destination']}{req['days']}天；正在并行检索资料、车次与天气。"})
+        writer = get_stream_writer()
+        writer({"text": f"已整理：{req['travelers']}人，{req['destination']}{req['days']}天；先查本地知识库。"})
         query_text = f"{req['destination']} {req['days']}天 特色美食 地方小吃 {req.get('dietary') or ''} {req.get('preferences', '')} {req.get('interests', [])} {req.get('exclusions', [])}"
-        jobs = [("search_knowledge", {"query": query_text}, {})]
-        if (os.getenv('TAVILY_API_KEY') or os.getenv('MODEL_API_KEY')) and 'search_web' in tools:
+        # 知识库优先：有可用原文就不联网找同类资料，省钱也少一份幻觉来源。
+        knowledge_data, knowledge_records = query("search_knowledge", {"query": query_text}, req)
+        hit = bool((knowledge_data.get("results") or [])
+                   and any(len(str(row.get("content") or "")) >= 120 for row in knowledge_data["results"]
+                           if isinstance(row, dict)))
+        writer({"text": "知识库已命中，跳过联网找攻略。" if hit
+                else "知识库没有可用资料，改用联网检索。"})
+        jobs = []
+        online = (os.getenv('TAVILY_API_KEY') or os.getenv('MODEL_API_KEY')) and 'search_web' in tools
+        if online and not hit:
             jobs.append(('search_web', {'query': f'{req["destination"]} 官方旅游 特色美食 场馆 参观须知 {req.get("start_date") or "最新公告"}'}, {}))
-            if cost_mode() == 'research':
-                jobs.append(('search_web', {'query': f'{req["destination"]} 景点门票价格 人均消费 {req.get("start_date") or ""}'.strip()},
-                             {'purpose': 'price'}))
+        if online and cost_mode() == 'research':
+            # 价格是实时信息，知识库不会有时效性，总查一次。
+            jobs.append(('search_web', {'query': f'{req["destination"]} 景点门票价格 人均消费 {req.get("start_date") or ""}'.strip()},
+                         {'purpose': 'price'}))
         if req.get("start_date"):
             jobs.append(("search_weather", {"city": req["destination"], "start_date": req["start_date"], "days": req["days"]}, {}))
         legs = []
@@ -223,7 +233,7 @@ def build_planner(model, saver, knowledge, tools, prompt, review_model=None):
                 legs.append(("返程", {**args, "origin": req["destination"], "destination": req["origin"],
                                       "departure_date": return_day.isoformat()}))
         # 检索之间互不依赖，串行等 HTTP 是白等；铁路两程仍在一个线程里顺序跑，避免并发抢同一个 MCP 会话。
-        research_data, records = [], {}
+        research_data, records = [{"tool": "search_knowledge", "data": knowledge_data}], dict(knowledge_records)
         with ThreadPoolExecutor(max_workers=min(6, len(jobs) + 1)) as pool:
             pending = [(job, pool.submit(query, job[0], job[1], req)) for job in jobs]
             rail_future = pool.submit(lambda: [query("search_train_tickets", leg, req) for _, leg in legs]) if legs else None

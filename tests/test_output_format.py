@@ -111,3 +111,26 @@ def test_planning_allowances_add_to_budget_and_do_not_invent_quotes_or_ignored_c
     assert budget_allocation({**req, 'budget_includes': '不含住宿和往返交通'}) == []
     assert budget_allocation({**req, 'budget_currency': 'USD'}) == []
     assert sum(Decimal(row[1][1:]) for row in budget_allocation({**req, 'budget_scope': 'per_person'})) == Decimal('10000')
+
+
+def test_knowledge_hit_skips_web_research_and_is_labelled_in_sources(tmp_path, monkeypatch):
+    (tmp_path / '杭州.md').write_text('杭州西湖环湖步行与片儿川面馆，' * 20, encoding='utf-8')
+    import travelmate.agent as module
+    queries = []
+
+    @tool
+    def search_web(query: str) -> dict:
+        """Return offline public reference material."""
+        queries.append(query)
+        return {'results': [{'title': '网页资料', 'url': 'https://example.com/x', 'content': '联网资料'}]}
+
+    monkeypatch.setattr(module, 'search_web', search_web)
+    monkeypatch.setenv('TAVILY_API_KEY', 'offline-test-only')
+    monkeypatch.setenv('COST_MODE', 'plan')
+    model = Model()
+    with open_test(tmp_path, model) as agent:
+        answer = chat(agent, 'kb', '规划')
+    assert queries == []
+    assert '本地知识库「杭州.md」' in answer
+    assert '本版参考了本地知识库文档' in answer
+    assert model.calls == ['Intake', 'Areas', 'Itinerary', 'ReviewReport']

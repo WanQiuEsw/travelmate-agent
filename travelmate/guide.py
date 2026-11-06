@@ -107,7 +107,7 @@ def display_time(value):
     return moment.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M（北京时间）")
 
 
-SOURCE_NAMES = {'search_knowledge': '旅游参考资料', 'search_web': '网页资料搜索',
+SOURCE_NAMES = {'search_knowledge': '本地知识库', 'search_web': '网页资料搜索',
                 'search_places': '高德地点查询', 'search_weather': '天气预报', 'search_train_tickets': '铁路车次查询'}
 
 
@@ -235,7 +235,7 @@ def make_guide(version, evidence):
     if plan.get('verify_items'):
         section('待核实清单', ['以下内容本次没有取得可核实的实时数据，出发前按对应渠道确认，不要按记忆出发。'], 'verify',
                 ['项目', '核验渠道'], [[item['item'], item['channel']] for item in plan['verify_items']])
-    sources, seen = [], set()
+    sources, seen, used_knowledge = [], set(), False
     for record in evidence.values():
         if record.get('context') != context_key(req):
             continue
@@ -244,9 +244,18 @@ def make_guide(version, evidence):
         if key in seen:
             continue
         seen.add(key)
-        name = {'search_knowledge': '旅游参考资料检索', 'search_places': '高德地点查询', 'search_web': '网页资料搜索', 'search_weather': '天气预报查询', 'search_train_tickets': '铁路车次查询'}.get(record['title'], record['title'])
+        tool = record.get('tool')
+        if tool == 'search_knowledge':
+            name = f'本地知识库「{record["title"]}」'
+            used_knowledge = used_knowledge or record['query_status'] == 'success'
+        elif tool == 'search_web':
+            name = f'网页资料「{record["title"]}」'
+        else:
+            name = {'search_places': '高德地点查询', 'search_weather': '天气预报查询',
+                    'search_train_tickets': '铁路车次查询'}.get(tool, record['title'])
         sources.append({'text': f'{name} · {label} · 查询时间{display_time(record["queried_at"])}', 'link': safe_url(record.get('url')), 'link_label': '公开来源'})
-    section('参考来源', sources or ['本版没有可追溯的公开查询结果，不将具体报价或营业状态标为已核实。'], 'sources')
+    intro = ['本版参考了本地知识库文档，其余为联网检索与工具查询结果。'] if used_knowledge else []
+    section('参考来源', intro + (sources or ['本版没有可追溯的公开查询结果，不将具体报价或营业状态标为已核实。']), 'sources')
     return public_guide(public_data({'title': f'{route} · {req["days"]}天旅行攻略', 'version': version['version'],
         'saved_at': display_time(version['saved_at']) if version.get('saved_at') else '未记录（历史版本）',
         'hero': hero_image(req, plan),
