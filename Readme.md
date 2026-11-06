@@ -171,7 +171,15 @@ ASR_API_KEY=sk-你的key
 - `ASR_BASE_URL` 末尾不要带 `/audio/transcriptions`，代码会自己拼。
 - 改完要重启服务（`uvicorn` 不会热加载 `.env`）；页面上的语音按钮不需要重新登录。
 - 不想申请 Key 就走本地：`pip install faster-whisper`，然后 `ASR_PROVIDER=local`，首次调用会下载模型（`ASR_LOCAL_MODEL=small` 约 480MB），之后零成本、可离线。
-- 自检：`curl -X POST http://127.0.0.1:8000/asr -H "X-TravelMate-Request: 1" -H "Content-Type: audio/webm" --data-binary @sample.webm`，返回 `{"text": ...}` 即通。
+
+配完先跑自检，不要直接去点页面：
+
+```bash
+.venv/Scripts/python.exe scripts/check_asr.py                      # 发 1.2 秒静音探测鉴权与格式
+.venv/Scripts/python.exe scripts/check_asr.py --file 录音.webm      # 用真实录音看识别效果
+```
+
+脚本会打印生效配置（Key 打码）、指出 `.com`／多余路径／模型对不上这类常见错配，再按返回码给结论：静音探测返回「没有识别到语音内容」就是通了；401/403 是 Key 或域名；400/415 是厂商不收这段音频格式。
 
 ## 行前保鲜（Trip Watch）
 

@@ -1,4 +1,6 @@
 from contextlib import contextmanager
+import importlib.util
+from pathlib import Path
 
 import pytest
 import httpx
@@ -148,3 +150,27 @@ def test_asr_endpoint_returns_text_without_touching_chat(tmp_path, monkeypatch):
         assert client.get("/sessions").json()["sessions"] == []
         assert client.post("/asr", content=b"a" * 4096, headers={"Content-Type": "text/plain"}).status_code == 415
         assert client.post("/asr", content=b"a", headers={"Content-Type": "audio/webm"}).status_code == 400
+
+
+def load_script(name):
+    path = Path(__file__).resolve().parent.parent / "scripts" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(f"_script_{name}", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_check_asr_script_generates_probe_audio_and_flags_mistakes(monkeypatch, capsys):
+    script = load_script("check_asr")
+    audio = script.silence_wav()
+    assert audio[:4] == b"RIFF" and audio[8:12] == b"WAVE"
+    assert len(audio) > 32_000 and audio.endswith(b"\x00\x00")
+    monkeypatch.setenv("ASR_PROVIDER", "openai")
+    monkeypatch.setenv("ASR_API_KEY", "sk-abcdefgh12345678")
+    monkeypatch.setenv("ASR_BASE_URL", "https://api.siliconflow.com/v1/audio/transcriptions")
+    monkeypatch.setenv("ASR_MODEL", "whisper-1")
+    _, problems = script.report_config()
+    text = " ".join(problems)
+    assert ".cn" in text and "/v1" in text and "SenseVoice" in text
+    printed = capsys.readouterr().out
+    assert "sk-abc" in printed and "sk-abcdefgh12345678" not in printed   # Key 只露头尾
