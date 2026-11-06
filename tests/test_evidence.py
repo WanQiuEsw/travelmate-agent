@@ -13,6 +13,15 @@ def place(now=None):
                      {"results": [{"name": "西湖"}]}, "lookup", REQ, now)
 
 
+def test_place_reference_tolerates_full_width_punctuation():
+    # 高德返回半角括号，模型习惯写全角，这一处曾让方案连续三轮被判不合格。
+    records = normalize("search_places", {"keyword": "牛街（清真小吃街区）", "city": "北京"},
+                        {"results": [{"name": "清真·鸦儿李记·涮肉(牛街店)"}]}, "place", REQ)
+    assert check_reference(records, "place:0", "place", "清真·鸦儿李记·涮肉（牛街店）", REQ) is None
+    mismatch = check_reference(records, "place:0", "place", "紫光园清真北京小吃（牛街北口店）", REQ)
+    assert "记录为「清真·鸦儿李记·涮肉(牛街店)」" in mismatch
+
+
 def test_field_level_support_and_forgery():
     evidence = place()
     assert check_reference(evidence, "lookup:0", "place", "西湖", REQ) is None

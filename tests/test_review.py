@@ -1,6 +1,6 @@
 from copy import deepcopy
 from langchain_core.runnables import RunnableLambda
-from travelmate.review import program_review
+from travelmate.review import program_review, blocking_messages, fix_hint
 from travelmate.workflow import get_workflow
 from travelmate.agent import chat
 from test_workflow import REQ, PLAN
@@ -9,6 +9,16 @@ from test_planner import Model, open_test
 
 PROBLEM = {"rule_id": "PREF-CLIMB", "dimension": "preferences", "severity": "error",
            "location": "第1天/活动1", "basis": "用户不爬山，方案安排登高", "suggestion": "改为平地游览", "blocking": True}
+
+
+def test_program_issue_points_at_the_field_instead_of_the_budget():
+    text = "第2天 清真·鸦儿李记·涮肉（牛街店） place: 地点与查询记录不一致，记录为「清真·鸦儿李记·涮肉(牛街店)」"
+    assert "fact_refs.place" in fix_hint(text)
+    assert "费用" not in fix_hint(text)
+    assert "费用" in fix_hint("全员总费用 6000 元超过预算 5000 元，超出 1000 元")
+    line = blocking_messages([{"location": text.split(":")[0], "basis": text,
+                               "suggestion": fix_hint(text), "blocking": True}])[0]
+    assert line.count("第2天") == 1 and "记录为" in line
 
 
 class ReviewedModel(Model):

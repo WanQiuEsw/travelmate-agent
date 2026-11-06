@@ -44,6 +44,19 @@ class Areas(BaseModel):
     areas: list[Area] = Field(min_length=1, max_length=3)
 
 
+def cost_mode():
+    """research：联网查价；plan：只排流程不调研价格。"""
+    return "plan" if (os.getenv("COST_MODE") or "research").strip().lower() in ("plan", "plan_only", "none") else "research"
+
+
+def cost_instruction():
+    if cost_mode() == "research":
+        return ("\n金额处理：本次开启价格调研，门票、人均餐费、车票等主要花费若已检索到公开价格，"
+                "写进notes或cost_notes并注明来源；查不到就标待核实，不按记忆报价，不编造具体门店价。")
+    return ("\n金额处理：本次只做流程规划，不调研价格。所有cost填0且cost_estimated=false，不写任何具体金额、人均或总价；"
+            "cost_notes写明「本次未做价格调研，费用请按官方渠道确认」；预算只用于取舍排序，不作为报价。")
+
+
 def stage(workflow, name, **updates):
     return {**workflow, **updates, "stage": name,
             "trace": [*workflow.get("trace", []), {"node": name, "at": datetime.now(timezone.utc).isoformat()}]}
@@ -166,6 +179,10 @@ def build_planner(model, saver, knowledge, tools, prompt):
             web, web_records = query('search_web', {'query': f'{req["destination"]} 官方旅游 特色美食 场馆 参观须知 {req.get("start_date") or "最新公告"}'}, req)
             records.update(web_records)
             research_data.append({'tool': 'search_web', 'data': web})
+            if cost_mode() == 'research':
+                prices, price_records = query('search_web', {'query': f'{req["destination"]} 景点门票价格 人均消费 {req.get("start_date") or ""}'.strip()}, req)
+                records.update(price_records)
+                research_data.append({'tool': 'search_web', 'purpose': 'price', 'data': prices})
         if req.get("origin") and req.get("start_date") and req.get("transport") in ("高铁", "动车", "火车"):
             args = {"origin": req["origin"], "destination": req["destination"], "departure_date": req["start_date"], "transport": req["transport"]}
             legs = [("去程", args)]
@@ -215,7 +232,7 @@ def build_planner(model, saver, knowledge, tools, prompt):
                 "\n可交付规则：航班到离时刻未知不等于条件不足，不追问已完整需求；首日仅安排抵达后可选的市区轻量活动，把轮渡上岛等依赖时刻的核心活动放到中间完整日。不假设早班抵达或晚班返程；在首末日notes与reminders写明按实际航班调整及机场交通、值机预留。明确时间仅为估算，用户可以调整顺序、删减或继续细化。"
                 "\n每日步数受限时按片区安排2至3个主要景点，安排午餐及明确休息时段，跨片区乘车；notes给步行量估算范围与临近上限时的删减顺序，不把估算写成保证。不要默认看日出或登高。交通衔接计入候车、换乘和出入口缓冲；渡轮不编确定班次，按当日订票时刻调整。"
                 "\n预算严格遵守budget_includes：明确排除的住宿、机票不计入stop.cost或other_cost，也不因未查这些价格阻塞行程；明确包含的往返交通、住宿即使未查到价格，也要按公开估算计入other_cost并在cost_notes标待核实，不能因为未查询就不计入，也不能为凑预算压到无依据的低价；确实超预算时如实写出超支额和取舍，由用户决定。other_cost只放范围内尚未逐项列出的费用并解释算式。对票价、开放时段、交通时长保留估算/待确认并给替代方案，不编造确定事实。未查询实时天气时禁止输出具体日期的天气预报，只提示出发前查询。输出精简，避免冗长重复notes。"
-                "\n按样稿骨架填写新增字段：key_call 写开篇关键判断（钱够不够、主要花在哪、必须舍弃什么），只能用已列费用和查询依据推导，不能无依据说预算充足；hard_rules 写三条以内可直接执行的规则（买哪个价位、住哪个片区、不买什么票）；budget_tiers 给出经济、舒适、品质三档，差异要落到具体住宿、交通与餐标，总额没有算法依据时留空；pitfalls 至少5条真实会踩的坑，分严重、注意、技巧，写清具体店名或环节与替代做法，不写注意安全这类空话；verify_items 列出出行前要复核的项目与官方渠道，与正文待核实的信息对应。", {"requirements": w["requirements"], "areas": state["areas"], "research": state["research_data"], "evidence": evidence, "previous_candidate": state.get("candidate"), "issues": w.get("issues", [])})
+                "\n按样稿骨架填写新增字段：key_call 写开篇关键判断（钱够不够、主要花在哪、必须舍弃什么），只能用已列费用和查询依据推导，不能无依据说预算充足；hard_rules 写三条以内可直接执行的规则（买哪个价位、住哪个片区、不买什么票）；budget_tiers 给出经济、舒适、品质三档，差异要落到具体住宿、交通与餐标，总额没有算法依据时留空；pitfalls 至少5条真实会踩的坑，分严重、注意、技巧，写清具体店名或环节与替代做法，不写注意安全这类空话；verify_items 列出出行前要复核的项目与官方渠道，与正文待核实的信息对应。" + cost_instruction(), {"requirements": w["requirements"], "areas": state["areas"], "research": state["research_data"], "evidence": evidence, "previous_candidate": state.get("candidate"), "issues": w.get("issues", [])})
             return {"workflow": stage(w, "generate", attempts=w.get("attempts", 0) + 1), "candidate": candidate.model_dump(mode="json")}
         except Exception:
             return fail(w, "generate_failed")

@@ -29,12 +29,25 @@ def plan_key(plan):
     return sha256(json.dumps(plan, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
+def fix_hint(text):
+    """建议要指向真正要改的字段，否则模型会去改费用，改完还是同一处失败。"""
+    if "地点" in text or "place" in text:
+        return "把 fact_refs.place 换成记录中的地点名，或删除该引用并在 notes 注明地点待重新核实"
+    if "车次" in text:
+        return "删除无依据车次，或补齐对应日期的车次查询"
+    if "预算" in text or "费用" in text:
+        return "调整费用金额或预算包含范围后重新规划"
+    if "时间" in text or "日期" in text or "时限" in text:
+        return "调整日期、时段或改用分时段安排"
+    return "按检查结果修正后重新规划"
+
+
 def program_review(requirements, plan, evidence):
     problems, total = validate_plan(requirements, plan)
     problems += validate_evidence(requirements, plan, evidence)
     issues = [ReviewIssue(rule_id=f"PROGRAM-{i+1}", dimension="budget" if "预算" in text or "费用" in text else "facts" if any(x in text for x in ("引用", "车次", "依据")) else "space_time",
                          severity="error", location=re.split(r"[:：]", text)[0][:200], basis=text,
-                         suggestion="调整对应费用或安排后重新规划", blocking=True).model_dump()
+                         suggestion=fix_hint(text), blocking=True).model_dump()
               for i, text in enumerate(problems)]
     for day, data in enumerate(plan["days"], 1):
         exclusions = requirements.get("exclusions", []) + requirements.get("day_exclusions", {}).get(str(day), [])
@@ -51,7 +64,9 @@ def program_review(requirements, plan, evidence):
 
 
 def blocking_messages(issues):
-    return [f"{x['location']}：{x['basis']}；建议：{x['suggestion']}" for x in issues if x["blocking"]]
+    # 程序问题的 location 就是 basis 的开头，避免重复两遍同一句话。
+    return [f"{'' if x['basis'].startswith(x['location']) else x['location'] + '：'}{x['basis']}；建议：{x['suggestion']}"
+            for x in issues if x["blocking"]]
 
 
 def timing_warnings(issues, requirements, plan):

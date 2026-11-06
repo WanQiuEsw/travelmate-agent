@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 from copy import deepcopy
 
+import pytest
 from fastapi.testclient import TestClient
 from langchain.tools import tool
 
@@ -71,7 +72,9 @@ def test_markdown_exports_the_selected_answer_and_frozen_version(tmp_path):
         assert client.get('/sessions/other/answers/' + answer['message_id'] + '/md').status_code == 404
 
 
-def test_configured_web_research_joins_existing_evidence_without_an_extra_model_node(tmp_path, monkeypatch):
+@pytest.mark.parametrize('cost_mode,queries_expected', [('research', 2), ('plan', 1)])
+def test_configured_web_research_joins_existing_evidence_without_an_extra_model_node(
+        tmp_path, monkeypatch, cost_mode, queries_expected):
     import travelmate.agent as module
     queries = []
 
@@ -83,10 +86,12 @@ def test_configured_web_research_joins_existing_evidence_without_an_extra_model_
 
     monkeypatch.setattr(module, 'search_web', search_web)
     monkeypatch.setenv('TAVILY_API_KEY', 'offline-test-only')
+    monkeypatch.setenv('COST_MODE', cost_mode)
     model = Model()
     with open_test(tmp_path, model) as agent:
         answer = chat(agent, 'research', '规划')
-        assert len(queries) == 1
+        assert len(queries) == queries_expected
+        assert any('门票价格' in query for query in queries) is (cost_mode == 'research')
         assert 'https://example.com/visit' in answer
         assert model.calls == ['Intake', 'Areas', 'Itinerary', 'ReviewReport']
 

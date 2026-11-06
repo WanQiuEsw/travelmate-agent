@@ -72,6 +72,16 @@ def normalize(name, args, data, call_id, requirements, now=None):
     return records
 
 
+PLACE_NOISE = re.compile(r"[\s·•・、，,。.()（）\[\]【】「」『』\-—_/|:：;；'\"“”‘’~～]+")
+
+
+def same_label(left, right):
+    """全半角括号、空白和分隔符差异不算不同地点；高德返回半角括号，模型常写全角。"""
+    def clean(value):
+        return PLACE_NOISE.sub("", str(value or "")).lower()
+    return clean(left) == clean(right)
+
+
 def check_reference(evidence, ref, kind, value, requirements, now=None):
     record = evidence.get(ref)
     if not record:
@@ -82,8 +92,13 @@ def check_reference(evidence, ref, kind, value, requirements, now=None):
         return "查询失败、空结果或文档参考不能作为已核实依据"
     if datetime.fromisoformat(record["expires_at"]) < (now or datetime.now(timezone.utc)):
         return "依据已过期，请重新查询"
-    if record["kind"] != kind or record["value"] != value:
-        return "依据不支持该字段的具体值"
+    if record["kind"] != kind:
+        return f"依据类型是{record['kind']}，不能核实{kind}"
+    if kind == "place":
+        if not same_label(record["value"], value):
+            return f"地点与查询记录不一致，记录为「{record['value']}」"
+    elif record["value"] != value:
+        return f"数值与查询记录不一致，记录为{record['value']}"
     return None
 
 
