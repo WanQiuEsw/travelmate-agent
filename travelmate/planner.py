@@ -82,6 +82,34 @@ def review_mode():
     return "full" if (os.getenv("REVIEW_MODE") or "program").strip().lower() in ("full", "on", "model") else "program"
 
 
+def transport_anchor(research_data):
+    """从车次查询里取出首日最早到达、末日最晚出发，作为编排的起止锚点。"""
+    outbound, inbound = [], []
+    for item in research_data or []:
+        if item.get("tool") != "search_train_tickets":
+            continue
+        for row in (item.get("data") or {}).get("results") or []:
+            if not isinstance(row, dict) or not (row.get("start_time") and row.get("arrive_time")):
+                continue
+            (outbound if item.get("leg") == "去程" else inbound).append(row)
+    anchor = {}
+    if outbound:
+        first = min(outbound, key=lambda row: row["arrive_time"])
+        anchor["outbound"] = {"code": first.get("start_train_code"), "depart": first["start_time"], "arrive": first["arrive_time"]}
+    if inbound:
+        last = max(inbound, key=lambda row: row["start_time"])
+        anchor["inbound"] = {"code": last.get("start_train_code"), "depart": last["start_time"], "arrive": last.get("arrive_time")}
+    return anchor
+
+
+TRANSPORT_RULE = ("\n交通时刻锚点：data.transport 给出首日最早到达 outbound.arrive、末日最晚出发 inbound.depart。"
+                  "有锚点时，首日行程从到达时刻加出站通勤之后开始，不安排抵达前的活动；"
+                  "末日所有活动必须在出发时刻前90分钟结束，并预留到站或值机时间，宁可少排一个景点，"
+                  "也不要在 notes 里写“视情况而定”。没有锚点（例如飞机只有联网参考）时，"
+                  "按检索到的参考班次给“抵达后/出发前”的条件式安排，并在对应处标待核实，不要假设早班抵达。"
+                  "首末日之外的完整游玩日不要受交通锚点影响，正常排满。")
+
+
 def cost_instruction():
     if cost_mode() == "research":
         return ("\n金额处理：本次开启价格调研，门票、人均餐费、车票等主要花费若已检索到公开价格，"
@@ -225,13 +253,27 @@ def build_planner(model, saver, knowledge, tools, prompt, review_model=None):
         if req.get("start_date"):
             jobs.append(("search_weather", {"city": req["destination"], "start_date": req["start_date"], "days": req["days"]}, {}))
         legs = []
-        if req.get("origin") and req.get("start_date") and req.get("transport") in ("高铁", "动车", "火车"):
+        transport = req.get("transport")
+        if req.get("origin") and req.get("start_date") and transport in ("高铁", "动车", "火车"):
             args = {"origin": req["origin"], "destination": req["destination"], "departure_date": req["start_date"], "transport": req["transport"]}
             legs = [("去程", args)]
             if req["days"] > 1 or req.get("return_deadline"):
                 return_day = date.fromisoformat(req["start_date"]) + timedelta(days=req["days"] - 1)
                 legs.append(("返程", {**args, "origin": req["destination"], "destination": req["origin"],
                                       "departure_date": return_day.isoformat()}))
+        # 飞机没有可用的实时接口，铁路在没有 12306 MCP 时也拿不到班次表：这类只能联网取参考价，
+        # 结果只作为"最早/最晚班次"的时间锚点，不作为可购买报价。
+        if (online and req.get("origin") and req.get("start_date")
+                and transport in ("飞机", "高铁", "动车", "火车")
+                and (transport == "飞机" or not os.getenv("RAIL_MCP_URL"))):
+            word = '航班' if transport == '飞机' else '高铁'
+            day = req["start_date"]
+            jobs.append(('search_web', {'query': f'{req["origin"]}到{req["destination"]} {day} {word} 票价 最早 最晚 参考'},
+                         {'purpose': 'transport'}))
+            if req["days"] > 1 or req.get("return_deadline"):
+                back_day = (date.fromisoformat(day) + timedelta(days=req["days"] - 1)).isoformat()
+                jobs.append(('search_web', {'query': f'{req["destination"]}到{req["origin"]} {back_day} {word} 票价 最晚 参考'},
+                             {'purpose': 'transport'}))
         # 检索之间互不依赖，串行等 HTTP 是白等；铁路两程仍在一个线程里顺序跑，避免并发抢同一个 MCP 会话。
         research_data, records = [{"tool": "search_knowledge", "data": knowledge_data}], dict(knowledge_records)
         with ThreadPoolExecutor(max_workers=min(6, len(jobs) + 1)) as pool:
@@ -284,7 +326,7 @@ def build_planner(model, saver, knowledge, tools, prompt, review_model=None):
                 "\n可交付规则：航班到离时刻未知不等于条件不足，不追问已完整需求；首日仅安排抵达后可选的市区轻量活动，把轮渡上岛等依赖时刻的核心活动放到中间完整日。不假设早班抵达或晚班返程；在首末日notes与reminders写明按实际航班调整及机场交通、值机预留。明确时间仅为估算，用户可以调整顺序、删减或继续细化。"
                 "\n每日步数受限时按片区安排2至3个主要景点，安排午餐及明确休息时段，跨片区乘车；notes给步行量估算范围与临近上限时的删减顺序，不把估算写成保证。不要默认看日出或登高。交通衔接计入候车、换乘和出入口缓冲；渡轮不编确定班次，按当日订票时刻调整。"
                 "\n预算严格遵守budget_includes：明确排除的住宿、机票不计入stop.cost或other_cost，也不因未查这些价格阻塞行程；明确包含的往返交通、住宿即使未查到价格，也要按公开估算计入other_cost并在cost_notes标待核实，不能因为未查询就不计入，也不能为凑预算压到无依据的低价；确实超预算时如实写出超支额和取舍，由用户决定。other_cost只放范围内尚未逐项列出的费用并解释算式。对票价、开放时段、交通时长保留估算/待确认并给替代方案，不编造确定事实。未查询实时天气时禁止输出具体日期的天气预报，只提示出发前查询。输出精简，避免冗长重复notes。"
-                "\n按样稿骨架填写新增字段：key_call 写开篇关键判断（钱够不够、主要花在哪、必须舍弃什么），只能用已列费用和查询依据推导，不能无依据说预算充足；hard_rules 写三条以内可直接执行的规则（买哪个价位、住哪个片区、不买什么票）；budget_tiers 给出经济、舒适、品质三档，差异要落到具体住宿、交通与餐标，总额没有算法依据时留空；pitfalls 至少5条真实会踩的坑，分严重、注意、技巧，写清具体店名或环节与替代做法，不写注意安全这类空话；verify_items 列出出行前要复核的项目与官方渠道，与正文待核实的信息对应。" + cost_instruction(), {"requirements": w["requirements"], "areas": state["areas"], "research": state["research_data"], "evidence": evidence, "previous_candidate": state.get("candidate"), "issues": w.get("issues", [])})
+                "\n按样稿骨架填写新增字段：key_call 写开篇关键判断（钱够不够、主要花在哪、必须舍弃什么），只能用已列费用和查询依据推导，不能无依据说预算充足；hard_rules 写三条以内可直接执行的规则（买哪个价位、住哪个片区、不买什么票）；budget_tiers 给出经济、舒适、品质三档，差异要落到具体住宿、交通与餐标，总额没有算法依据时留空；pitfalls 至少5条真实会踩的坑，分严重、注意、技巧，写清具体店名或环节与替代做法，不写注意安全这类空话；verify_items 列出出行前要复核的项目与官方渠道，与正文待核实的信息对应。" + TRANSPORT_RULE + cost_instruction(), {"requirements": w["requirements"], "areas": state["areas"], "research": state["research_data"], "transport": transport_anchor(state.get("research_data")), "evidence": evidence, "previous_candidate": state.get("candidate"), "issues": w.get("issues", [])})
             return {"workflow": stage(w, "generate", attempts=w.get("attempts", 0) + 1), "candidate": candidate.model_dump(mode="json")}
         except Exception:
             return fail(w, "generate_failed")

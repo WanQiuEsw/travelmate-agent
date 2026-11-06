@@ -134,3 +134,42 @@ def test_knowledge_hit_skips_web_research_and_is_labelled_in_sources(tmp_path, m
     assert '本地知识库「杭州.md」' in answer
     assert '本版参考了本地知识库文档' in answer
     assert model.calls == ['Intake', 'Areas', 'Itinerary', 'ReviewReport']
+
+
+def test_flight_trip_looks_up_reference_flights_instead_of_rail(tmp_path, monkeypatch):
+    conditions = {'origin': '上海', 'destination': '成都', 'start_date': '2026-12-01', 'transport': '飞机',
+                  'days': 2, 'travelers': 1, 'budget': 5000, 'budget_scope': 'total', 'budget_currency': 'CNY',
+                  'budget_includes': '全部费用'}
+    queries = []
+
+    @tool
+    def search_web(query: str) -> dict:
+        """Return offline flight reference."""
+        queries.append(query)
+        return {'results': [{'title': '航班参考', 'url': 'https://example.com/f', 'content': '最早 07:00，最晚 21:30，参考价 800 元'}]}
+
+    import travelmate.agent as module
+    monkeypatch.setattr(module, 'search_web', search_web)
+    monkeypatch.setenv('TAVILY_API_KEY', 'offline-test-only')
+    monkeypatch.setenv('COST_MODE', 'plan')
+    with open_test(tmp_path, Model(intake={'intent': 'plan', 'conditions': conditions})) as agent:
+        chat(agent, 'flight', '上海去成都两天，坐飞机')
+    transport = [query for query in queries if '航班' in query]
+    assert len(transport) == 2
+    assert transport[0].startswith('上海到成都 2026-12-01') and transport[1].startswith('成都到上海 2026-12-02')
+
+
+def test_transport_anchor_picks_earliest_arrival_and_latest_departure():
+    from travelmate.planner import transport_anchor
+    research = [
+        {'tool': 'search_train_tickets', 'leg': '去程', 'data': {'results': [
+            {'start_train_code': 'G7', 'start_time': '10:00', 'arrive_time': '14:28'},
+            {'start_train_code': 'G143', 'start_time': '07:50', 'arrive_time': '13:12'}]}},
+        {'tool': 'search_train_tickets', 'leg': '返程', 'data': {'results': [
+            {'start_train_code': 'G8', 'start_time': '18:00', 'arrive_time': '22:30'},
+            {'start_train_code': 'G10', 'start_time': '19:30', 'arrive_time': '23:50'}]}},
+    ]
+    anchor = transport_anchor(research)
+    assert anchor['outbound'] == {'code': 'G143', 'depart': '07:50', 'arrive': '13:12'}
+    assert anchor['inbound']['code'] == 'G10' and anchor['inbound']['depart'] == '19:30'
+    assert transport_anchor([]) == {}
