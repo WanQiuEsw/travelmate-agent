@@ -281,12 +281,13 @@ def convert(source: Path, target: Path):
                 '本条目票价与预约政策核对于 2026 年 11 月，由人工整理，未逐项联网复核。',
                 '出行前请以景区官方小程序或公众号当日公示为准；票价、开放时间、预约规则可能随时调整。',
                 '本条目有效期至 2027-05-03，过期后价格与班次信息需重新核对。', '']
-        output = target / 'cities' / (meta['slug'] + '.md')
+        # 文件名用中文城市名：和百炼里的文档名一致，本地检索也能按城市匹配
+        output = target / 'cities' / (city + '.md')
         output.parent.mkdir(parents=True, exist_ok=True)
         text = '\n'.join(front + [f'# {city}'] + body + tail)
         output.write_text(re.sub(r'\n{3,}', '\n\n', text), encoding='utf-8')
         index[city] = {key: meta[key] for key in ('slug', 'province', 'region', 'aliases', 'tags',
-                                                 'budget', 'days', 'hubs')} | {'file': f'cities/{meta["slug"]}.md'}
+                                                 'budget', 'days', 'hubs')} | {'file': f'cities/{city}.md'}
     (target / '_index.json').write_text(json.dumps(index, ensure_ascii=False, indent=1), encoding='utf-8')
     return index
 

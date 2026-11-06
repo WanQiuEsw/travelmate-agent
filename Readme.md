@@ -170,7 +170,7 @@ uv run python -m travelmate.check_amap
 .venv/Scripts/python.exe scripts/normalize_kb.py "E:/test/travel-agent/data/knowledge/已录入" kb
 ```
 
-输出到 `kb/`（英文目录，已加入 `.gitignore`，**不入库**）：每个城市一个 `cities/{slug}.md`，带 city/tags/best_season/valid_until 等 front matter、统一 8 段结构、每景点一行「速查」、超长段落按句切分。另有 `kb/_index.json` 供检索前过滤。字段说明见 `kb/README.md`。
+输出到 `kb/`（英文目录，已加入 `.gitignore`，**不入库**）：每个城市一个 `cities/{城市名}.md`（中文文件名，和百炼里的文档名一致），带 city/tags/best_season/valid_until 等 front matter、统一 8 段结构、每景点一行「速查」、超长段落按句切分。另有 `kb/_index.json` 供检索前过滤。字段说明见 `kb/README.md`。
 
 注意：front matter 只有上传到百炼时写进文档 metadata 才有过滤价值，光放本地不生效。
 
