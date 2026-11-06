@@ -127,6 +127,9 @@ uv run python -m travelmate.check_amap
 
 - `GET /sessions/{id}`：历史回答包含稳定的 `message_id`。
 - `POST /chat/stream`：完整 `done` 事件包含答案及 `message_id`。
+- `POST /asr`：录音转文字，只回填文本框，不产生对话。
+- `GET /sessions/{id}/watch`：出发前复核状态与最近一次 diff。
+- `POST /sessions/{id}/watch/check`：立刻复核当前版本；不在 3 天窗口内返回 409。
 - `GET /sessions/{id}/answers/{message_id}/pdf`：导出这一会话中指定的已完成回答；不存在返回 404，非法标识返回 422，服务繁忙返回 409。
 
 旧的 `/trip`、`/trip/confirm` 和 `/trip/pdf` 接口保留兼容已有调用，网页不再使用它们。旧接口的确认限制不影响按回答导出。
@@ -134,6 +137,26 @@ uv run python -m travelmate.check_amap
 最小版本限制：结构化规划面向单一目的地城市、最多 30 天。城市检查依据结构化字段，不是独立地理认证。地点真实性、开放时间及路线估算仍取决于外部工具和模型正确使用结果；未核实资料会保留到 PDF，出行前需核实。
 
 车次查询支持免费自部署的第三方12306 MCP。快速规划中的出发地和日期可选，新增交通方式及铁路查询按钮；缺少出发条件可按第几天规划目的地攻略。[完整配置与排错教程](docs/12306-mcp-setup.md)。安装可选依赖 `uv sync --extra rail` 并配置 `RAIL_MCP_URL` 后启用。
+
+## 语音成行（Voice intake）
+
+`POST /asr` 只做一件事：把这段录音转成文字，原样回给页面。前端拿到文字后填进输入框，用户确认或改完再自己点发送，走的还是原来的 `/chat/stream`。**语音永远不会直接进大模型**——地名、日期、人数只要听错一个字，用户都有机会在发送前改掉，不需要靠模型猜。
+
+- 请求：原始音频字节（`Content-Type: audio/webm|audio/ogg|audio/mp4|audio/wav|audio/mpeg`），上限 8MB、60 秒，超限分别返回 413 / 415。
+- 响应：`{text, raw, corrections, provider}`；`corrections` 是按热词表改回来的部分，页面会显示“鼓浪与 → 鼓浪屿”这样的提示。
+- 两个免费路径：`ASR_API_KEY` 配任意 OpenAI 兼容 `/audio/transcriptions`（各家免费额度都能用），或设 `ASR_PROVIDER=local` 用 faster-whisper 在本机跑，零调用成本。没配密钥时自动走 local，两者都没有则明确返回 503，不会静默降级成“假装识别”。
+- 热词表在 `travelmate/asr.py`：15 个城市 + 20 个景点共 35 条，既作为识别提示词（`ASR_PROMPT=1`）传给接口，也在识别后做一次纠错。纠错只处理三个字以上的词、且要求同长度错一两个字或多／少一个字，两个字的城市（北京/南京）一律不动——错一个字就是另一个地方，宁可让用户自己改。
+- 频控：每用户每小时 30 次、每天 200 次；不与生成额度混用。
+
+## 行前保鲜（Trip Watch）
+
+出发前 3 天，系统按当前版本重跑一次检索，只报“哪条变了、差多少”，不重做行程。
+
+- 触发：进程内定时任务（`WATCH_SCHEDULER=1`，默认每 60 分钟扫描一次）+ 页面上的“现在复核”按钮（`POST /sessions/{id}/watch/check`）。
+- 选目标：从已存的 `versions` 快照里取当前版本，按 **车次 > 门票/开放时间 > 地点** 排序，并且只挑 `evidence.expires_at` 已过期的项——依据没过期就不花钱重查。每次最多 `WATCH_MAX_QUERIES`（默认 3）次检索，说清“另有 N 项本轮没重跑”。
+- 比对：车次比时刻与同席别票价；门票/开放时间用 `search_web` 重跑后从文本里抽数字和时段，和快照里 `stop.cost`、`stop.opening_hours` 比；地点用 `search_places` 比名称与地址（沿用 `same_label` 的全半角容错）。抽不到数据时标“未取到”，不猜。
+- 输出：`| 项目 | 变动前 | 变动后 | 差额 |` 的 diff 表，写进会话消息，同时在页面顶部留一张复核卡片。同一版本 24 小时内不重复复核（`WATCH_INTERVAL_HOURS`），期间手动点按钮可强制重查。
+- 成本：每次 2–3 次搜索调用，量级与一次调研相当；没有变动的版本一天最多花一次。
 
 ## 交通时刻与票价
 

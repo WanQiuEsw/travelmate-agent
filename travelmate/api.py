@@ -23,6 +23,8 @@ from travelmate.pdf_export import itinerary_pdf, answer_pdf, guide_pdf
 from travelmate.guide import get_version, render_guide, guide_markdown
 from travelmate.accounts import Accounts
 from travelmate.auth import install_auth, require_access
+from travelmate import asr, watch
+from travelmate.tools import search_places, search_web
 
 
 class ChatRequest(BaseModel):
@@ -66,6 +68,11 @@ class RailRequest(BaseModel):
 
 
 def create_app(agent_factory=open_agent, *, auth_enabled=True):
+    # Serialize checkpoint updates, including concurrent requests for the same session.
+    lock = Lock()
+    watch_tools = {"search_web": search_web, "search_places": search_places,
+                   "search_train_tickets": search_train_tickets}
+
     @asynccontextmanager
     async def lifespan(app):
         with agent_factory() as agent, ThreadPoolExecutor(max_workers=2) as executor:
@@ -77,13 +84,17 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
                 if not database:
                     raise ValueError('邀请登录需要持久化 SQLite 数据库')
                 app.state.accounts = Accounts(database)
-            yield
+            stop = Event()
+            app.state.watch_stop = stop
+            watch.start_scheduler(agent, lock, watch_tools, stop)
+            try:
+                yield
+            finally:
+                stop.set()
 
     app = FastAPI(title="TravelMate", lifespan=lifespan, dependencies=[Depends(require_access)],
                   docs_url=None, redoc_url=None, openapi_url=None)
     install_auth(app)
-    # Serialize checkpoint updates, including concurrent requests for the same session.
-    lock = Lock()
     generating = {}
 
     @contextmanager
@@ -145,6 +156,21 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
             app.state.accounts.throttle('trains:' + user_id, 10, 60)
             app.state.accounts.throttle('trains-day:' + user_id, 100, 86400)
         return search_train_tickets.invoke(request.model_dump())
+
+    @app.post("/asr")
+    async def transcribe(http_request: Request):
+        """语音只转文字，回填到页面等用户确认；不进入对话，也不会直接触发行程生成。"""
+        if auth_enabled:
+            user_id = http_request.state.user['id']
+            app.state.accounts.throttle('asr:' + user_id, 30, 3600)
+            app.state.accounts.throttle('asr-day:' + user_id, 200, 86400)
+        if int(http_request.headers.get('content-length') or 0) > asr.MAX_BYTES:
+            raise HTTPException(413, "录音超过 8MB，请控制在 60 秒以内")
+        audio = await http_request.body()
+        try:
+            return asr.transcribe(audio, http_request.headers.get('content-type'))
+        except asr.VoiceError as error:
+            raise HTTPException(error.status, error.message) from None
 
     @app.get("/sessions")
     def list_sessions(http_request: Request):
@@ -211,6 +237,24 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
     @app.get("/sessions/{session_id}/trip")
     def trip(session_id: SessionId):
         return get_workflow(app.state.agent, session_id)
+
+    @app.get("/sessions/{session_id}/watch")
+    def watch_status(session_id: SessionId):
+        """出发前复核的状态与最近一次 diff；不改行程、不改版本。"""
+        workflow = app.state.agent.get_state({"configurable": {"thread_id": session_id}}).values.get("workflow") or {}
+        return watch.status(workflow)
+
+    @app.post("/sessions/{session_id}/watch/check")
+    def watch_check(session_id: SessionId):
+        if lock.locked():
+            raise HTTPException(409, "正在生成回复或处理其他请求，请稍后再复核")
+        report = watch.check_session(app.state.agent, session_id, watch_tools, lock, force=True)
+        if report is None:
+            if lock.locked():
+                raise HTTPException(409, "正在生成回复或处理其他请求，请稍后再复核")
+            raise HTTPException(409, "当前行程还不需要行前复核：需要已保存行程，且出发日在 "
+                                     f"{watch.lead_days()} 天内")
+        return {"report": report, "markdown": watch.markdown(report)}
 
     def saved_answer(session_id, message_id):
         with trip_lock():

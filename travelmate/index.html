@@ -158,6 +158,23 @@
   .train-results { white-space: pre-wrap; font-size: 13px; max-height: 220px; overflow-y: auto; margin-top: 10px; }
   .trip-note { margin: 8px 0; font-size: 14px; color: var(--muted); }
   @media (max-width: 700px) { .trip-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .voice-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 4px; }
+  #voice-record { background: var(--accent); color: white; border-color: var(--accent); }
+  #voice-text { min-height: 96px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--surface); }
+  #voice-hint { color: var(--accent-hover); }
+  #voice-status[data-tone="error"] { color: #a32d2d; }
+  .watch-panel { margin: 0 auto 12px; max-width: 840px; padding: 14px 18px; background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 16px; box-shadow: var(--shadow); font-size: 14px; }
+  .watch-panel[hidden] { display: none; }
+  .watch-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .watch-head h2 { font-size: 15px; margin: 0; }
+  .watch-head span { flex: 1; color: var(--muted); font-size: 12px; min-width: 120px; }
+  .watch-head button { min-height: 34px; padding: 4px 12px; font-size: 13px; }
+  #watch-body { max-height: 40dvh; overflow-y: auto; }
+  #watch-body h2 { font-size: 15px; margin: 10px 0 6px; }
+  #watch-body p { margin: 6px 0; font-size: 13px; }
+  #watch-body table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 6px 0; }
+  #watch-body th, #watch-body td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
+  #watch-body th { background: var(--tint); }
   .composer { flex-shrink: 0; padding: 16px 36px max(16px, env(safe-area-inset-bottom)); background: var(--bg); }
   form { padding: 18px 22px; border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--shadow); background: var(--surface); }
   form:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px #087f7a12; }
@@ -308,8 +325,29 @@
         <div id="trip-rail" hidden><button type="button" id="train-search">查询铁路车次</button><div id="train-results" class="train-results" role="status" aria-live="polite"></div></div>
       </form>
     </dialog>
+    <dialog class="quick-plan-dialog" id="voice" aria-labelledby="voice-title">
+      <div class="quick-plan-heading"><h2 id="voice-title">语音说需求</h2><button id="voice-close" type="button">关闭</button></div>
+      <p class="trip-note">录音只转成文字，先给你确认或修改；确认后填进输入框，由你自己点发送。</p>
+      <p id="voice-status" role="status" aria-live="polite">点“开始录音”，说完点“停止并转文字”。</p>
+      <div class="voice-actions">
+        <button type="button" id="voice-record">开始录音</button>
+        <button type="button" id="voice-stop" hidden>停止并转文字</button>
+        <button type="button" id="voice-cancel" hidden>取消录音</button>
+      </div>
+      <label class="input-label" for="voice-text">识别结果（可修改）</label>
+      <textarea id="voice-text" maxlength="8000" placeholder="例如：想从厦门去北京玩三天，两个人，预算三千，想吃烤鸭"></textarea>
+      <p class="trip-note" id="voice-hint" hidden></p>
+      <div class="trip-actions"><button type="button" id="voice-fill" disabled>填入输入框</button><button type="button" id="voice-retry">重新录制</button></div>
+    </dialog>
+    <section id="watch-panel" class="watch-panel" hidden aria-labelledby="watch-title">
+      <div class="watch-head">
+        <h2 id="watch-title">行前复核</h2><span id="watch-when"></span>
+        <button type="button" id="watch-run">现在复核</button>
+      </div>
+      <div id="watch-body"></div>
+    </section>
     <form id="form">
-      <div class="entry-tools"><button class="quick-fill" id="quick-fill-open" type="button" aria-haspopup="dialog" aria-controls="quick-fill">快速规划 ↗</button><button id="preset" type="button">试试预设示例 ↗</button></div>
+      <div class="entry-tools"><button class="quick-fill" id="quick-fill-open" type="button" aria-haspopup="dialog" aria-controls="quick-fill">快速规划 ↗</button><button id="voice-open" type="button" aria-haspopup="dialog" aria-controls="voice">语音说需求 ↗</button><button id="preset" type="button">试试预设示例 ↗</button></div>
       <label class="input-label" for="input">你的旅行想法</label>
       <textarea id="input" maxlength="8000" required placeholder="想去哪里？聊聊目的地、天数和预算，或先选一个旅行灵感…"></textarea>
       <div class="actions"><span class="keyboard-hint">Enter 发送 · Ctrl + Enter 换行</span><button id="send" type="submit">发送 ↑</button></div>
@@ -928,6 +966,7 @@
             addExport(progress.answer, data.message_id, data.session_id || session, data.plan_version);
             reply.setAttribute('aria-busy', 'false');
             done = true;
+            loadWatch();
           }
         }
         if (packet.done) break;
@@ -954,6 +993,51 @@
       refreshAccount().catch(() => {});
     }
   });
+  const watchPanel = document.querySelector('#watch-panel');
+  const watchBody = document.querySelector('#watch-body');
+  const watchWhen = document.querySelector('#watch-when');
+  const watchRun = document.querySelector('#watch-run');
+  function renderWatch(data) {
+    if (!watchPanel) return;
+    const report = data?.report;
+    const show = Boolean(report?.markdown || data?.due);
+    watchPanel.hidden = !show;
+    if (!show) { watchBody.replaceChildren(); return; }
+    watchWhen.textContent = data.start_date
+      ? `出发日 ${data.start_date} · 版本 ${data.version ?? '—'} · 出发前 ${data.lead_days} 天自动复核`
+      : '';
+    watchRun.textContent = report?.markdown ? '再复核一次' : '现在复核';
+    if (report?.markdown) showReply(watchBody, report.markdown);
+    else watchBody.textContent = `行程还有 ${data.lead_days} 天出发。点“现在复核”重查票价、开放时间和车次，有变动会列出差额并写进对话。`;
+  }
+  async function loadWatch() {
+    if (!watchPanel) return;
+    try {
+      const response = await fetch('/sessions/' + encodeURIComponent(session) + '/watch');
+      if (!response.ok) { watchPanel.hidden = true; return; }
+      renderWatch(await response.json());
+    } catch { watchPanel.hidden = true; }
+  }
+  watchRun?.addEventListener('click', async () => {
+    if (watchRun.disabled) return;
+    watchRun.disabled = true;
+    watchRun.textContent = '正在复核…';
+    try {
+      const response = await fetch('/sessions/' + encodeURIComponent(session) + '/watch/check', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : '复核没有完成，请稍后再试');
+      showReply(watchBody, data.markdown);
+      watchRun.textContent = '再复核一次';
+      if (!busy) { await loadConversation(session); }
+      status.textContent = (data.report?.summary || '复核完成') + '。';
+      refreshAccount().catch(() => {});
+    } catch (error) {
+      watchRun.textContent = '再复核一次';
+      status.textContent = (error.message || '复核失败') + '。';
+    } finally { watchRun.disabled = false; }
+  });
   async function initialize() {
     busy = true;
     send.disabled = newChat.disabled = historySelect.disabled = true;
@@ -968,6 +1052,7 @@
     busy = false;
     send.disabled = newChat.disabled = historySelect.disabled = false;
     await loadConversation(session);
+    await loadWatch();
   }
   initialize();
 </script>
@@ -1082,6 +1167,93 @@
     } catch {
       trainResults.textContent = '车次查询失败，请检查服务或稍后重试。仍可生成旅行攻略。';
     } finally { trainSearch.disabled = false; }
+  });
+</script>
+<script id="voice-script">
+  const voicePanel = document.querySelector('#voice');
+  const voiceText = document.querySelector('#voice-text');
+  const voiceStatus = document.querySelector('#voice-status');
+  const voiceHint = document.querySelector('#voice-hint');
+  const voiceRecord = document.querySelector('#voice-record');
+  const voiceStop = document.querySelector('#voice-stop');
+  const voiceCancel = document.querySelector('#voice-cancel');
+  const voiceFill = document.querySelector('#voice-fill');
+  const VOICE_MIME = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4']
+    .find(type => window.MediaRecorder && MediaRecorder.isTypeSupported(type)) || '';
+  let recorder = null, chunks = [], stream = null, startedAt = 0, ticker = null, autoStop = null, discard = false;
+  function voiceSay(text, tone = '') { voiceStatus.textContent = text; voiceStatus.dataset.tone = tone; }
+  function releaseMic() {
+    if (stream) stream.getTracks().forEach(track => track.stop());
+    stream = null; recorder = null;
+    clearInterval(ticker); clearTimeout(autoStop); ticker = autoStop = null;
+  }
+  function idleButtons(recording) {
+    voiceRecord.hidden = recording;
+    voiceStop.hidden = !recording;
+    voiceCancel.hidden = !recording;
+  }
+  async function startRecording() {
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+      voiceSay('这个浏览器不支持录音，请直接输入文字。', 'error'); return;
+    }
+    try { stream = await navigator.mediaDevices.getUserMedia({audio: true}); }
+    catch { voiceSay('没有拿到麦克风权限，请在地址栏允许麦克风，或直接输入文字。', 'error'); return; }
+    chunks = []; discard = false;
+    recorder = new MediaRecorder(stream, VOICE_MIME ? {mimeType: VOICE_MIME} : undefined);
+    recorder.addEventListener('dataavailable', event => { if (event.data && event.data.size) chunks.push(event.data); });
+    recorder.addEventListener('stop', uploadRecording);
+    recorder.start();
+    startedAt = Date.now();
+    idleButtons(true);
+    voiceFill.disabled = true;
+    voiceSay('正在录音…');
+    ticker = setInterval(() => voiceSay(`正在录音… ${Math.round((Date.now() - startedAt) / 1000)} 秒（最多 60 秒）`), 500);
+    autoStop = setTimeout(() => { if (recorder?.state === 'recording') recorder.stop(); }, 60000);
+  }
+  async function uploadRecording() {
+    const seconds = Math.round((Date.now() - startedAt) / 1000);
+    const blob = new Blob(chunks, {type: recorder?.mimeType || VOICE_MIME || 'audio/webm'});
+    const skipped = discard;
+    releaseMic();
+    idleButtons(false);
+    if (skipped) { voiceSay('已取消这段录音。'); return; }
+    if (blob.size < 1024 || seconds < 1) { voiceSay('录音太短，请说完一整句再停止。', 'error'); return; }
+    voiceSay('正在转成文字…');
+    try {
+      const response = await fetch('/asr', {method: 'POST', body: blob,
+        headers: {'Content-Type': blob.type, 'X-TravelMate-Request': '1'}});
+      if (response.status === 401) { window.location.replace('/login'); return; }
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : '语音转文字失败，请直接输入文字');
+      voiceText.value = data.text || '';
+      voiceFill.disabled = !voiceText.value.trim();
+      const fixes = (data.corrections || []).map(item => `${item.from} → ${item.to}`);
+      voiceHint.hidden = !fixes.length;
+      voiceHint.textContent = fixes.length ? '按旅行地名词表纠正：' + fixes.join('；') : '';
+      voiceSay(`识别完成（${seconds} 秒）。核对下面的文字，改好再填入输入框。`);
+    } catch (error) {
+      voiceSay(error.message || '语音转文字失败，请直接输入文字。', 'error');
+    }
+  }
+  document.querySelector('#voice-open').addEventListener('click', () => {
+    if (document.querySelector('#send').disabled || voicePanel.open) return;
+    voicePanel.showModal();
+    voiceFill.disabled = !voiceText.value.trim();
+    voiceSay(voiceText.value ? '可以重新录音，也可以直接修改下面的文字。' : '点“开始录音”，说完点“停止并转文字”。');
+  });
+  voiceRecord.addEventListener('click', startRecording);
+  voiceStop.addEventListener('click', () => { if (recorder?.state === 'recording') recorder.stop(); });
+  voiceCancel.addEventListener('click', () => { discard = true; if (recorder?.state === 'recording') recorder.stop(); else releaseMic(); });
+  document.querySelector('#voice-retry').addEventListener('click', () => { voiceText.value = ''; voiceHint.hidden = true; voiceFill.disabled = true; startRecording(); });
+  document.querySelector('#voice-close').addEventListener('click', () => voicePanel.close());
+  voicePanel.addEventListener('close', () => { discard = true; if (recorder?.state === 'recording') recorder.stop(); else releaseMic(); });
+  voiceText.addEventListener('input', () => { voiceFill.disabled = !voiceText.value.trim(); });
+  voiceFill.addEventListener('click', () => {
+    const text = voiceText.value.trim();
+    if (!text) return;
+    voicePanel.close();
+    fillTripDraft(text);
+    if (document.querySelector('#input').value === text) document.querySelector('#status').textContent = '语音已转成文字，确认或修改后点发送。';
   });
 </script>
 <script id="inspiration-script">
