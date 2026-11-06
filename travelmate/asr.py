@@ -46,6 +46,10 @@ def prompt_text():
     return "旅行目的地和景点：" + "、".join(HOTWORDS) + "。"
 
 
+def language_value():
+    return (os.getenv("ASR_LANGUAGE") or "zh").strip() or None
+
+
 def _mismatches(window, word):
     return sum(1 for left, right in zip(window, word) if left != right)
 
@@ -127,19 +131,40 @@ def _openai(audio, suffix):
         raise VoiceError("未配置语音识别：在 .env 填写 ASR_API_KEY（免费额度即可），"
                          "或安装 faster-whisper 后设 ASR_PROVIDER=local 做本地识别。", 503)
     base = (os.getenv("ASR_BASE_URL") or "https://api.openai.com/v1").rstrip("/")
-    form = {"model": os.getenv("ASR_MODEL") or "whisper-1", "language": "zh",
-            "response_format": "json"}
+    model = os.getenv("ASR_MODEL") or "whisper-1"
+    optional = {"response_format": "json"}
+    language = language_value()
+    if language:
+        optional["language"] = language
     if os.getenv("ASR_PROMPT", "1") != "0":
-        form["prompt"] = prompt_text()
-    try:
-        response = httpx.post(base + "/audio/transcriptions",
-                              headers={"Authorization": "Bearer " + key}, data=form,
-                              files={"file": ("voice" + suffix, audio, "application/octet-stream")},
-                              timeout=float(os.getenv("ASR_TIMEOUT") or 30))
-        response.raise_for_status()
-        return (response.json() or {}).get("text", "")
-    except (httpx.HTTPError, ValueError, TypeError):
-        raise VoiceError("语音识别服务暂时不可用，请直接输入文字或稍后重试。", 502) from None
+        # Whisper 系接口支持用 prompt 提示地名；不支持的就靠事后纠错。
+        optional["prompt"] = prompt_text()
+    # 硅基流动 SenseVoice 这类接口只认 file + model，多传参数直接 400，所以带一次降级重试。
+    attempts = [{"model": model, **optional}, {"model": model}]
+    mimetype = next((kind for kind, ext in AUDIO_SUFFIX.items() if ext == suffix),
+                    "application/octet-stream")
+    for index, data in enumerate(attempts):
+        try:
+            response = httpx.post(base + "/audio/transcriptions",
+                                  headers={"Authorization": "Bearer " + key}, data=data,
+                                  files={"file": ("voice" + suffix, audio, mimetype)},
+                                  timeout=float(os.getenv("ASR_TIMEOUT") or 30))
+            response.raise_for_status()
+            return (response.json() or {}).get("text", "")
+        except httpx.HTTPStatusError as error:
+            status = error.response.status_code
+            if status in (401, 403):
+                raise VoiceError("语音识别的 API Key 无效或无权限，请检查 .env 的 ASR_API_KEY。", 502) from None
+            if status in (400, 415, 422) and index == 0:
+                continue
+            if status == 429:
+                raise VoiceError("语音识别触发限流，请稍后重试或改用文字输入。", 503) from None
+            if status in (400, 415, 422):
+                raise VoiceError("识别接口不接受这段音频（浏览器录的是 webm/opus）。"
+                                 "可换支持 webm 的接口，或安装 faster-whisper 设 ASR_PROVIDER=local。", 502) from None
+            raise VoiceError("语音识别服务暂时不可用，请直接输入文字或稍后重试。", 502) from None
+        except (httpx.HTTPError, ValueError, TypeError):
+            raise VoiceError("语音识别服务暂时不可用，请直接输入文字或稍后重试。", 502) from None
 
 
 def _local(audio, suffix):
@@ -157,7 +182,7 @@ def _local(audio, suffix):
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as handle:
             handle.write(audio)
             path = handle.name
-        segments, _ = _local_model.transcribe(path, language="zh", vad_filter=True,
+        segments, _ = _local_model.transcribe(path, language=language_value(), vad_filter=True,
                                              initial_prompt=prompt_text())
         return "".join(segment.text for segment in segments)
     except Exception:

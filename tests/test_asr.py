@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 
 import pytest
+import httpx
 from fastapi.testclient import TestClient
 
 from travelmate import asr
@@ -64,9 +65,51 @@ def test_openai_transcription_sends_hotwords_and_returns_corrected_text(monkeypa
     assert seen["headers"]["Authorization"] == "Bearer test-key"
     assert "鼓浪屿" in seen["data"]["prompt"] and seen["data"]["language"] == "zh"
     assert seen["files"]["file"][0].endswith(".webm")
+    assert seen["files"]["file"][2] == "audio/webm"      # 交给厂商的是真实格式，不是 octet-stream
     assert result["provider"] == "openai"
     assert result["text"] == "想去鼓浪屿和故宫博物院"
     assert {item["to"] for item in result["corrections"]} == {"鼓浪屿", "故宫博物院"}
+
+
+def test_providers_that_only_accept_file_and_model_get_a_retry(monkeypatch):
+    """硅基流动 SenseVoice 这类接口多传 language/prompt 会 400，要能自动去掉可选参数重试一次。"""
+    monkeypatch.setenv("ASR_API_KEY", "test-key")
+    monkeypatch.setenv("ASR_BASE_URL", "https://api.siliconflow.cn/v1")
+    monkeypatch.setenv("ASR_MODEL", "FunAudioLLM/SenseVoiceSmall")
+    calls = []
+
+    def fake_post(url, **kwargs):
+        calls.append(kwargs)
+        status = 400 if len(calls) == 1 else 200
+        return httpx.Response(status, json={"text": "想去鼓浪与"}, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(asr.httpx, "post", fake_post)
+    result = asr.transcribe(b"a" * 4096, "audio/webm")
+    assert len(calls) == 2
+    assert set(calls[0]["data"]) == {"model", "response_format", "language", "prompt"}
+    assert calls[1]["data"] == {"model": "FunAudioLLM/SenseVoiceSmall"}
+    assert calls[0]["files"]["file"][1] == b"a" * 4096   # 重试仍带同一段音频
+    assert result["text"] == "想去鼓浪屿"
+
+
+def test_provider_errors_say_what_to_fix(monkeypatch):
+    monkeypatch.setenv("ASR_API_KEY", "test-key")
+
+    def unauthorized(url, **kwargs):
+        return httpx.Response(401, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(asr.httpx, "post", unauthorized)
+    with pytest.raises(asr.VoiceError) as bad_key:
+        asr.transcribe(b"a" * 4096, "audio/webm")
+    assert "ASR_API_KEY" in bad_key.value.message
+
+    def unsupported(url, **kwargs):
+        return httpx.Response(400, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(asr.httpx, "post", unsupported)
+    with pytest.raises(asr.VoiceError) as bad_format:
+        asr.transcribe(b"a" * 4096, "audio/webm")
+    assert "webm" in bad_format.value.message
 
 
 def test_audio_guardrails(monkeypatch):

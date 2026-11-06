@@ -146,7 +146,32 @@ uv run python -m travelmate.check_amap
 - 响应：`{text, raw, corrections, provider}`；`corrections` 是按热词表改回来的部分，页面会显示“鼓浪与 → 鼓浪屿”这样的提示。
 - 两个免费路径：`ASR_API_KEY` 配任意 OpenAI 兼容 `/audio/transcriptions`（各家免费额度都能用），或设 `ASR_PROVIDER=local` 用 faster-whisper 在本机跑，零调用成本。没配密钥时自动走 local，两者都没有则明确返回 503，不会静默降级成“假装识别”。
 - 热词表在 `travelmate/asr.py`：15 个城市 + 20 个景点共 35 条，既作为识别提示词（`ASR_PROMPT=1`）传给接口，也在识别后做一次纠错。纠错只处理三个字以上的词、且要求同长度错一两个字或多／少一个字，两个字的城市（北京/南京）一律不动——错一个字就是另一个地方，宁可让用户自己改。
+- 兼容性：有的厂商（如硅基流动 SenseVoice）只认 `file` + `model`，多传 `language`/`prompt` 会 400，代码会自动去掉可选参数重试一次；重试仍 400 时按“厂商不接受 webm/opus”报错，提示换接口或改用本地识别。401/403、429 各有独立提示，不会都抛一句“服务不可用”。
 - 频控：每用户每小时 30 次、每天 200 次；不与生成额度混用。
+
+### 配 ASR_API_KEY
+
+三行必须同一家厂商，`.env` 里改这三个：
+
+```ini
+# 方案一：硅基流动（国内可直连，SenseVoiceSmall 目前免费，需实名认证后申请 Key）
+ASR_BASE_URL=https://api.siliconflow.cn/v1
+ASR_MODEL=FunAudioLLM/SenseVoiceSmall
+ASR_API_KEY=sk-你的key
+
+# 方案二：OpenAI / Groq 的 Whisper（支持 webm，按量计费，有免费额度时可用）
+ASR_BASE_URL=https://api.openai.com/v1
+ASR_MODEL=whisper-1
+ASR_API_KEY=sk-你的key
+```
+
+注意：
+
+- 域名是 `api.siliconflow.cn`，旧文档里的 `.com` 会一路 401，跟 Key 是否正确无关。
+- `ASR_BASE_URL` 末尾不要带 `/audio/transcriptions`，代码会自己拼。
+- 改完要重启服务（`uvicorn` 不会热加载 `.env`）；页面上的语音按钮不需要重新登录。
+- 不想申请 Key 就走本地：`pip install faster-whisper`，然后 `ASR_PROVIDER=local`，首次调用会下载模型（`ASR_LOCAL_MODEL=small` 约 480MB），之后零成本、可离线。
+- 自检：`curl -X POST http://127.0.0.1:8000/asr -H "X-TravelMate-Request: 1" -H "Content-Type: audio/webm" --data-binary @sample.webm`，返回 `{"text": ...}` 即通。
 
 ## 行前保鲜（Trip Watch）
 

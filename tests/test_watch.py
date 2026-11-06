@@ -10,14 +10,15 @@ from travelmate.workflow import save_workflow
 from test_travelmate import BudgetModel
 
 NOW = datetime(2026, 11, 6, 4, 0, tzinfo=timezone.utc)  # 北京时间 12:00
+BASE = NOW.astimezone(watch.CHINA).date()               # 与 NOW 同一天的「今天」
 
 
-def iso(days_from_now):
-    return (watch.today() + timedelta(days=days_from_now)).isoformat()
+def iso(days_from_now, base=None):
+    return ((base or watch.today()) + timedelta(days=days_from_now)).isoformat()
 
 
-def trip(days_from_now=2, version=3):
-    start = iso(days_from_now)
+def trip(days_from_now=2, version=3, base=None):
+    start = iso(days_from_now, base)
     return start, {
         "version": version,
         "requirements": {"destination": "北京", "origin": "厦门", "start_date": start, "days": 2,
@@ -70,8 +71,8 @@ def tools():
     }
 
 
-def workflow(days_from_now=2):
-    _, version = trip(days_from_now)
+def workflow(days_from_now=2, base=None):
+    _, version = trip(days_from_now, base=base)
     return {"version": version["version"], "versions": [version],
             "requirements": version["requirements"], "plan": version["plan"],
             "plan_requirements": version["requirements"], "status": "review"}
@@ -85,14 +86,15 @@ def test_price_and_hours_extraction():
 
 
 def test_due_window_and_interval():
-    assert watch.is_due(workflow(2), NOW)
-    assert not watch.is_due(workflow(9), NOW)          # 还早，不复核
-    assert not watch.is_due(workflow(-1), NOW)         # 已经出发
-    checked = {**workflow(2), "watch": {"version": 3, "checked_at": NOW.isoformat(), "items": []}}
+    # 用 NOW 当「今天」，否则这条用例会随真实日期漂移
+    assert watch.is_due(workflow(2, base=BASE), NOW)
+    assert not watch.is_due(workflow(9, base=BASE), NOW)          # 还早，不复核
+    assert not watch.is_due(workflow(-1, base=BASE), NOW)         # 已经出发
+    checked = {**workflow(2, base=BASE), "watch": {"version": 3, "checked_at": NOW.isoformat(), "items": []}}
     assert not watch.is_due(checked, NOW + timedelta(hours=3))
     assert watch.is_due(checked, NOW + timedelta(hours=25))
     # 存了新版本就按新版本重新复核
-    newer = {**checked, "version": 4, "versions": [*workflow(2)["versions"], {**trip()[1], "version": 4}]}
+    newer = {**checked, "version": 4, "versions": [*workflow(2, base=BASE)["versions"], {**trip(base=BASE)[1], "version": 4}]}
     assert watch.is_due(newer, NOW + timedelta(hours=3))
 
 
