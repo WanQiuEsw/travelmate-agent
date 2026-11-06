@@ -179,6 +179,9 @@ def period_plan(plan):
                 hour = int(stop["start"][:2]) if stop.get("start") else None
                 stop["period"] = ("机动安排" if hour is None else "清晨" if hour < 6 else "上午" if hour < 11
                                   else "中午" if hour < 14 else "下午" if hour < 18 else "晚上")
+            # 降级成时段安排时把原来的时刻留成建议窗口，别让"几点到几点"直接消失。
+            if stop.get("start") and stop.get("end") and not stop.get("suggested_window"):
+                stop["suggested_window"] = f"{stop['start']}–{stop['end']}"
             stop["start"] = stop["end"] = None
     return data
 
@@ -202,7 +205,7 @@ def time_label(plan, stop):
         return f"{stop['start']}–{stop['end']}"
     period = stop.get('period') or '机动安排'
     window = stop.get('suggested_window')
-    return f'{period} · {window}（建议）' if window and window[:5] < window[-5:] else period
+    return f'{window}（{period}）' if window else period
 
 
 def cost_label(stop, requirements, evidence, now=None):

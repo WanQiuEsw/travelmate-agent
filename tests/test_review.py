@@ -104,7 +104,7 @@ def test_estimated_timing_warning_does_not_regenerate_or_discard_plan(tmp_path):
         assert '按大致时段安排' in text and '上午' in text
         assert '| 位置 | 待解决问题 | 调整建议 |' not in text
         assert '| 时段 | 顺路安排 |' in text
-        assert '09:00' not in text and '11:00' not in text
+        assert '09:00–11:00（上午）' in text
         assert '106.579027' not in text and 'travel_minutes' not in text
         state = get_workflow(agent, 'trip')
         assert state['status'] == 'review' and len(state['versions']) == 2
@@ -122,3 +122,22 @@ def test_first_blocked_plan_does_not_publish_an_unvalidated_itinerary(tmp_path):
         assert '需要先调整条件' in text
         assert '| 时段 | 顺路安排 |' not in text
         assert 'plan' not in get_workflow(agent, 'new')
+
+
+def test_review_mode_defaults_to_program_and_can_be_switched_back(monkeypatch):
+    from travelmate.planner import review_mode
+    monkeypatch.delenv('REVIEW_MODE', raising=False)
+    assert review_mode() == 'program'
+    monkeypatch.setenv('REVIEW_MODE', 'full')
+    assert review_mode() == 'full'
+
+
+def test_program_mode_skips_the_model_review_but_keeps_the_gate(tmp_path, monkeypatch):
+    monkeypatch.setenv('REVIEW_MODE', 'program')
+    model = Model()
+    with open_test(tmp_path, model) as agent:
+        answer = chat(agent, 'noreview', '规划')
+        state = get_workflow(agent, 'noreview')
+    assert 'ReviewReport' not in model.calls
+    assert state['status'] == 'review' and state['review']['prompt_version'] == 'program-only'
+    assert '第1天' in answer and '未通过检查' not in answer

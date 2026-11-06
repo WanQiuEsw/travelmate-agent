@@ -19,7 +19,7 @@ def test_estimates_show_partial_subtotal_and_advisory_window():
     assert cost_label(stop, REQ, {}) == '约¥100.00（估算）'
     assert total_cost_label([stop, unknown], REQ, {}, 500, other_cost_estimated=True) == '约¥600.00（部分项目待核实）'
     assert time_label({'time_granularity': 'period'}, {
-        'period': '上午', 'suggested_window': '09:00–11:00'}) == '上午 · 09:00–11:00（建议）'
+        'period': '上午', 'suggested_window': '09:00–11:00'}) == '09:00–11:00（上午）'
 
 
 def test_only_matched_current_price_is_displayed_including_a_verified_free_price():

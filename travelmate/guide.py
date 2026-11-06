@@ -249,6 +249,7 @@ def make_guide(version, evidence):
     section('参考来源', sources or ['本版没有可追溯的公开查询结果，不将具体报价或营业状态标为已核实。'], 'sources')
     return public_guide(public_data({'title': f'{route} · {req["days"]}天旅行攻略', 'version': version['version'],
         'saved_at': display_time(version['saved_at']) if version.get('saved_at') else '未记录（历史版本）',
+        'hero': hero_image(req, plan),
         'notice': '这是保存时的方案快照，天气为当时取得的预报；出发前重新确认天气、场馆规则和价格。', 'total': total, 'sections': sections}))
 
 
@@ -290,19 +291,78 @@ def get_version(state, number):
     return make_guide(version, version.get("evidence", {k: v for k, v in state.get("evidence", {}).items() if k in version.get("evidence_ids", [])}))
 
 
-GUIDE_CSS = """*{box-sizing:border-box}body{margin:0;background:#f4f5ef;color:#243b35;font-family:system-ui,'Microsoft YaHei',sans-serif;line-height:1.7}main{max-width:1000px;margin:auto;padding:36px 24px}header{margin-bottom:28px}h1{font-size:clamp(28px,5vw,42px);line-height:1.25}h2{font-size:21px;margin:0 0 16px}p{margin:8px 0}section{background:white;border:1px solid #dce3d9;border-radius:16px;padding:24px;margin:20px 0;min-width:0}ul{list-style:none;margin:0;padding:0}li{white-space:pre-wrap;overflow-wrap:anywhere;min-width:0;margin:12px 0;padding-bottom:12px;border-bottom:1px solid #edf0e9}li:last-child{border:0;padding-bottom:0}.overview ul,.budget ul{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.overview li,.budget li{background:#f1f5ee;border:0;border-radius:10px;padding:14px;margin:0}.day li{border-left:3px solid #67927e;padding-left:16px}a{color:#236d57;overflow-wrap:anywhere}a:focus-visible,summary:focus-visible{outline:3px solid #b05e14;outline-offset:4px}.download{display:inline-block;background:#245b49;color:white;padding:10px 18px;border-radius:10px;text-decoration:none}.muted{color:#53645b}summary{cursor:pointer;font-size:21px;font-weight:600}@media(max-width:600px){main{padding:20px 16px}section{padding:18px 16px}.overview ul,.budget ul{grid-template-columns:minmax(0,1fr)}}"""
-GUIDE_CSS += '.table-scroll{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:14px}th,td{border:1px solid #dce3d9;padding:10px;text-align:left;vertical-align:top;min-width:85px;overflow-wrap:anywhere}th{background:#f1f5ee}'
-GUIDE_CSS += '.pitfalls{background:#fff5f4;border-color:#f0c4c0}.pitfalls h2{color:#a02a20}.verify td:first-child{min-width:120px}'
+GUIDE_CSS = """*{box-sizing:border-box}body{margin:0;background:#f4f7f4;color:#1f2d2a;
+font:16px/1.75 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif}main{max-width:860px;margin:0 auto;padding:20px 16px 56px}
+.hero{position:relative;border-radius:24px;overflow:hidden;color:#fff;margin-bottom:18px;box-shadow:0 12px 32px rgba(16,40,32,.16)}
+.hero img{display:block;width:100%;height:300px;object-fit:cover}
+.hero-body{position:relative;margin-top:-118px;padding:0 26px 26px;
+background:linear-gradient(180deg,rgba(6,26,22,0) 0%,rgba(6,26,22,.55) 40%,rgba(6,26,22,.88) 100%)}
+.eyebrow{margin:0;font-size:12px;letter-spacing:.16em;opacity:.85}
+h1{font-size:clamp(24px,4.6vw,34px);line-height:1.26;margin:6px 0 8px}
+.lede{margin:0 0 12px;font-size:14px;opacity:.92}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px;padding:0}
+.chips span{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3);border-radius:999px;padding:3px 12px;font-size:13px}
+.actions{display:flex;gap:10px;flex-wrap:wrap}
+.btn{background:#fff;color:#0f5d55;text-decoration:none;padding:9px 18px;border-radius:999px;font-size:14px;font-weight:600}
+.btn.ghost{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.5)}
+.card{background:#fff;border:1px solid #e2e8e3;border-radius:18px;padding:20px;margin:16px 0;
+box-shadow:0 1px 2px rgba(16,40,32,.06),0 12px 32px rgba(16,40,32,.06);min-width:0}
+h2{font-size:19px;margin:0 0 14px;padding-left:12px;border-left:4px solid #0f766e;line-height:1.3}
+ul{list-style:none;margin:0;padding:0}
+li{margin:10px 0;padding-bottom:10px;border-bottom:1px dashed #e2e8e3;white-space:pre-wrap;overflow-wrap:anywhere;min-width:0}
+li:last-child{border:0;padding-bottom:0}
+.overview ul,.budget ul{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.overview li,.budget li{background:#f1f5f1;border:0;border-radius:12px;padding:14px;margin:0}
+.table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;width:100%;font-size:14px;margin-top:10px}
+th,td{border:1px solid #e2e8e3;padding:10px;text-align:left;vertical-align:top;min-width:88px;overflow-wrap:anywhere}
+th{background:#eef4f1;font-weight:600}
+tbody tr:nth-child(even){background:#fafbf9}
+a{color:#0f5d55;overflow-wrap:anywhere}
+a:focus-visible,summary:focus-visible{outline:3px solid #b45309;outline-offset:4px}
+.muted{color:#5c6b64}
+.pitfalls{background:#fff6f5;border-color:#f2c9c4}.pitfalls h2{color:#a02a20;border-left-color:#dc2626}
+.verify{background:#fffdf5}.verify h2{border-left-color:#d97706}
+.sources{background:#f7f9f7}
+summary{cursor:pointer;font-size:19px;font-weight:600}
+footer{margin-top:26px;text-align:center;font-size:13px;color:#5c6b64}
+@media(max-width:640px){main{padding:14px 12px 40px}.hero img{height:210px}.hero-body{margin-top:-96px;padding:0 16px 18px}
+.card{padding:16px;border-radius:16px}.overview ul,.budget ul{grid-template-columns:minmax(0,1fr)}}"""
+
+DESTINATION_IMAGES = (
+    ('mountains.webp', ('九寨', '黄龙', '山', '峰', '沟', '雪', '高原', '草原', '峡', '瀑布')),
+    ('coast.webp', ('海', '岛', '沙滩', '厦门', '三亚', '青岛', '大连', '舟山', '鼓浪屿', '湾', '湖')),
+    ('town.webp', ('古镇', '老街', '巷', '城', '寺', '庙', '园林', '村', '胡同')),
+)
+
+
+def hero_image(requirements, plan=None):
+    """按目的地挑一张内置示意图；没匹配就用城镇图，绝不外链图片。"""
+    text = ' '.join(str(value) for value in (
+        requirements.get('destination'), requirements.get('preferences'),
+        requirements.get('interests'), (plan or {}).get('summary')) if value)
+    for name, keywords in DESTINATION_IMAGES:
+        if any(word in text for word in keywords):
+            return '/assets/visual/' + name
+    return '/assets/visual/town.webp'
 
 
 def render_guide(guide, pdf_url):
     guide = public_guide(guide)
     def text(value):
         return escape(str(value), quote=True)
+    hero = guide.get('hero') or '/assets/visual/town.webp'
     parts = [f'<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{text(guide["title"])}</title><style>{GUIDE_CSS}</style></head><body><main>',
-        f'<header><p>TRAVELMATE · 旅行规划</p><h1>{text(guide["title"])}</h1><p class="muted">版本 {guide["version"]} · 保存于 {text(guide["saved_at"])}</p><p>{text(guide["notice"])}</p><a class="download" href="{text(pdf_url)}">下载这版攻略 PDF</a> <a href="{text(pdf_url.removesuffix("/pdf") + "/md")}">下载 Markdown</a></header>']
+        f'<header class="hero"><img src="{text(hero)}" alt="目的地风景示意图"><div class="hero-body">',
+        f'<p class="eyebrow">TRAVELMATE · 图文攻略</p><h1>{text(guide["title"])}</h1>',
+        f'<p class="lede">{text(guide["notice"])}</p>',
+        f'<p class="chips"><span>版本 {text(guide["version"])}</span><span>{text(guide["saved_at"])}</span>'
+        f'<span>合计 {text(guide["total"])}</span></p>',
+        f'<div class="actions"><a class="btn" href="{text(pdf_url)}">下载这版 PDF</a>'
+        f'<a class="btn ghost" href="{text(pdf_url.removesuffix("/pdf") + "/md")}">下载 Markdown</a></div>',
+        '</div></header>']
     for section in guide["sections"]:
-        parts.append(f'<section class="{text(section["kind"])}">')
+        parts.append(f'<section class="card {text(section["kind"])}">')
         if section["kind"] == "sources":
             parts.append(f'<details><summary>{text(section["title"])}</summary>')
         else:
@@ -326,4 +386,5 @@ def render_guide(guide, pdf_url):
         if section["kind"] == "sources":
             parts.append('</details>')
         parts.append('</section>')
+    parts.append('<footer>图为目的地示意图，非实景；价格与开放状态以出行时官方信息为准</footer>')
     return ''.join(parts) + '</main></body></html>'

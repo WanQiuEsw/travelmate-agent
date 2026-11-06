@@ -77,6 +77,11 @@ def cost_mode():
     return "plan" if (os.getenv("COST_MODE") or "research").strip().lower() in ("plan", "plan_only", "none") else "research"
 
 
+def review_mode():
+    """full：程序检查 + 独立模型审查；program（默认）：只跑程序检查，省一次模型往返。"""
+    return "full" if (os.getenv("REVIEW_MODE") or "program").strip().lower() in ("full", "on", "model") else "program"
+
+
 def cost_instruction():
     if cost_mode() == "research":
         return ("\n金额处理：本次开启价格调研，门票、人均餐费、车票等主要花费若已检索到公开价格，"
@@ -264,7 +269,7 @@ def build_planner(model, saver, knowledge, tools, prompt, review_model=None):
         try:
             evidence = model_view({k: v for k, v in state.get("evidence", {}).items() if v["context"] == context_key(w["requirements"])})
             candidate = structured(Itinerary, "填写summary给出简洁玩法判断，lodging给出顺路住宿片区与订房筛选条件，不编造酒店房态或价格。若用户喜欢美食，每个完整游玩日安排合理正餐或小吃停留，stop.activities标food；景点串起用餐而不是另附泛泛美食名单，避免连续多顿重餐，预留排队与消化休息。foods填写day和meal关联每天的用餐，不把吃过的同一餐重复计价。必须填写foods：给出3至5项本目的地特色菜或小吃，逐项介绍口味特点、顺路用餐建议和饮食注意事项，遵守dietary及排除项；不能把景区名称当美食；只有对应地点查询记录支持时才点名门店，没有对应结果时只推荐菜品和片区。地点存在不等于营业或价格已核实，不能编造门店、现价、营业时间或过敏安全保证。正文不输出检查项、待确定事项或内部审查记录。\n生成或按issues修订结构化行程。交通或到离时刻不确定时，time_granularity必须为period；每个活动只填period（上午/中午/下午/晚上等），start/end留空，不生成精确到小时的完整时间表，也不要在notes重复虚构的精确时段。travel_minutes未知可留空，travel_estimate给约30至60分钟等估算范围或待确认说明。只在时间与交通充分确定时用precise。用户已订安排和返程时限必须保留，在对应日notes说明需提前结束、取行李与交通预留，不用估算覆盖已确认时间。费用为全员人民币估算；未知日期为null。fact_refs的值必须逐字复制evidence键，地点名称逐字采用对应value；只引用success且matched的记录，不支持的字段省略引用并标为待核实。铁路查询失败或无结果时rail_segments留空，不编车次或票价，往返费用注明待核实及是否计入预算。未查询的字段不写已核实。遵守已订安排、返程时限及排除项；activities准确标注climbing等活动。高风险安排填写具体备选，补充有用的行前提醒。"
-                "\n在分时段方案中，只有不依赖未确认班次、预约或营业时间的活动才可填写suggested_window（如09:00–11:00），这是可移动的建议窗口。铁路去程与返程分别引用对应方向和日期的记录，某程无有效记录就省略该程具体车次。"
+                "\n在分时段方案中，每个活动都要填 suggested_window（例如 09:00–11:00），当天窗口按顺序递增、不重叠，相邻活动之间留出交通和排队缓冲；只有完全不确定的机动安排可以留空。这是用户要看的“几点到几点做什么”，不要只写上午或下午。铁路去程与返程分别引用对应方向和日期的记录，某程无有效记录就省略该程具体车次。"
                 "\n费用有可解释依据才填写cost_estimated或other_cost_estimated，分别在notes或cost_notes写明全员金额的构成和口径。未知活动费用用cost=0且cost_estimated=false表示，不写成免费。应急方案选本行程最相关的情形，如下雨、餐馆排队、闭馆、约不上或无票；trigger写明影响哪天哪项，action写立即怎么替换、怎么去或在哪里复核，extra_cost只填有依据的全员预计增加额，未知留空。"
                 "\n可交付规则：航班到离时刻未知不等于条件不足，不追问已完整需求；首日仅安排抵达后可选的市区轻量活动，把轮渡上岛等依赖时刻的核心活动放到中间完整日。不假设早班抵达或晚班返程；在首末日notes与reminders写明按实际航班调整及机场交通、值机预留。明确时间仅为估算，用户可以调整顺序、删减或继续细化。"
                 "\n每日步数受限时按片区安排2至3个主要景点，安排午餐及明确休息时段，跨片区乘车；notes给步行量估算范围与临近上限时的删减顺序，不把估算写成保证。不要默认看日出或登高。交通衔接计入候车、换乘和出入口缓冲；渡轮不编确定班次，按当日订票时刻调整。"
@@ -285,13 +290,17 @@ def build_planner(model, saver, knowledge, tools, prompt, review_model=None):
     def review(state):
         w = state["workflow"]
         try:
-            role = (Path(__file__).parent / "prompts/reviewer-v1.txt").read_text(encoding="utf-8")
-            report = structured(ReviewReport, "独立审查当前候选方案。仅报告有依据的问题，不能覆盖程序错误。每轮最多5个最重要的问题；相同根因合并，basis和suggestion简洁。先核对notes、alternatives、reminders中是否已处理，不重复提出已解决的问题。",
-                {"as_of": datetime.now(timezone.utc).isoformat(), "requirements": w["requirements"], "candidate": state["candidate"],
-                 "program_issues": w["program_issues"], "evidence": model_view({k: v for k, v in state.get("evidence", {}).items()
-                    if v["context"] == context_key(w["requirements"])})}, role_prompt=role, client=review_model)
             candidate = state["candidate"]
-            semantic = report.model_dump()["issues"]
+            if review_mode() == "full":
+                role = (Path(__file__).parent / "prompts/reviewer-v1.txt").read_text(encoding="utf-8")
+                report = structured(ReviewReport, "独立审查当前候选方案。仅报告有依据的问题，不能覆盖程序错误。每轮最多5个最重要的问题；相同根因合并，basis和suggestion简洁。先核对notes、alternatives、reminders中是否已处理，不重复提出已解决的问题。",
+                    {"as_of": datetime.now(timezone.utc).isoformat(), "requirements": w["requirements"], "candidate": state["candidate"],
+                     "program_issues": w["program_issues"], "evidence": model_view({k: v for k, v in state.get("evidence", {}).items()
+                        if v["context"] == context_key(w["requirements"])})}, role_prompt=role, client=review_model)
+                semantic = report.model_dump()["issues"]
+            else:
+                # 只跑程序检查：不再调第二个模型复核，硬错误仍由 validate_* 拦住。
+                semantic = []
             program_issues = w["program_issues"]
             if (candidate.get("time_granularity", "precise") == "precise"
                     and not any("时限" in issue["basis"] for issue in program_issues)
@@ -302,7 +311,8 @@ def build_planner(model, saver, knowledge, tools, prompt, review_model=None):
                 get_stream_writer()({"text": "时间衔接需保留弹性，已改用分时段估算，无需反复重排行程。"})
             combined = public_data(timing_warnings([*program_issues, *semantic], w["requirements"], candidate))
             messages = blocking_messages(combined)
-            review_data = {"prompt_version": "reviewer-v1", "candidate_hash": plan_key(candidate),
+            review_data = {"prompt_version": "reviewer-v1" if review_mode() == "full" else "program-only",
+                           "candidate_hash": plan_key(candidate),
                            "attempt": w["attempts"], "issues": public_data(combined)}
             return {"candidate": candidate, "workflow": stage(w, "quality_review", review=review_data, program_issues=program_issues,
                     review_history=[*w.get("review_history", []), review_data], issues=messages,

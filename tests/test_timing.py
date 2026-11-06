@@ -94,7 +94,7 @@ def test_repeated_estimated_time_conflicts_deliver_without_a_generation_loop(tmp
         answer = events[-1][1]['answer']
         assert events[-1][0] == 'done'
         assert '上午' in answer and '可按实际到达时间' in answer
-        assert '09:00' not in answer and '10:30' not in answer
+        assert '（上午）' in answer and '未通过检查' not in answer
         assert '未通过检查' not in answer
 
 
@@ -105,7 +105,7 @@ def test_period_guide_and_both_pdf_exports_share_estimates_and_keep_deadline():
     guide = make_guide(version, {})
     html = render_guide(guide, '/download')
     assert '上午' in html and '18:00' in html
-    assert '09:00' not in html and '11:00' not in html and 'None' not in html
+    assert '09:00–11:00（上午）' in html and 'None' not in html
     assert '细化' in html
     assert guide_pdf(guide).startswith(b'%PDF-')
     assert itinerary_pdf({'requirements': req, 'plan': coarse, 'total': 600}).startswith(b'%PDF-')

@@ -87,7 +87,8 @@ def test_script_and_unsafe_links_never_execute():
     guide = make_guide(v, {})
     guide["sections"][0]["items"].append({"text": "bad link", "link": "javascript:alert(1)"})
     html = render_guide(guide, "/safe")
-    assert "<script>" not in html and "<img" not in html
+    assert "<script>" not in html and "&lt;script&gt;" in html
+    assert "&lt;img src=x onerror=alert(1)&gt;" in html and "<img src=x" not in html
     assert "&lt;script&gt;" in html
     assert 'href="javascript:' not in html
     for value in ["https:", "https://user:pass@example.com", "javascript:alert(1)", "https://example.com/\njavascript:bad", "https://[invalid"]:
@@ -123,3 +124,13 @@ def test_pending_and_failed_answers_have_no_new_guide(tmp_path):
     with open_test(tmp_path, Model(intake={"intent": "plan", "conditions": {"destination": "杭州"}})) as agent:
         chat(agent, "trip", "杭州")
         assert "plan_version" not in conversation(agent, "trip")["messages"][-1]
+
+
+def test_html_guide_uses_a_destination_image_and_states_it_is_a_placeholder():
+    req = {**REQ, 'destination': '九寨沟'}
+    guide = make_guide({'version': 1, 'requirements': req, 'plan': deepcopy(PLAN)}, {})
+    html = render_guide(guide, '/guide.pdf')
+    assert guide['hero'] == '/assets/visual/mountains.webp'
+    assert '<img src="/assets/visual/mountains.webp"' in html
+    assert '<img src="http' not in html and '示意图' in html
+    assert '下载这版 PDF' in html
