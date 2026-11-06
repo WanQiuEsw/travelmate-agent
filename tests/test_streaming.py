@@ -247,7 +247,9 @@ def test_skeleton_streams_before_the_finished_guide_and_is_not_the_answer(tmp_pa
     with open_test(tmp_path, SkeletonModel()) as agent:
         events = list(stream_chat(agent, 'preview', '规划'))
     tokens = ''.join(data['text'] for kind, data in events if kind == 'token')
-    assert '行程骨架（细节正在补全）' in tokens and 'Day1 抵达西湖·老城吃面' in tokens
+    assert '行程骨架（细节正在补全）' in tokens and '| 第1天 | 抵达西湖·老城吃面 |' in tokens
+    # 骨架也用表格：天顺序一行看完，三档量级单独一张表。
+    assert '| Day | 主题 | 当天顺序 |' in tokens and '| 经济档 | 约3000 |' in tokens
     assert events[-1][0] == 'done'
     # 骨架只是过渡内容，最终回答仍是完整攻略，导出和 PDF 不受影响。
     assert '行程骨架' not in events[-1][1]['answer']

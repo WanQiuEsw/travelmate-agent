@@ -107,6 +107,49 @@ def display_time(value):
     return moment.astimezone(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M（北京时间）")
 
 
+def day_span(plan, day):
+    """当天出发与结束的钟点；分时段行程取建议窗口的首尾，不编精确时刻。"""
+    stops = day['stops']
+
+    def edge(stop, index):
+        if index == 0 and stop.get('start'):
+            return stop['start']
+        if index == 1 and stop.get('end'):
+            return stop['end']
+        window = stop.get('suggested_window') or ''
+        parts = window.split('–') if '–' in window else window.split('-')
+        if len(parts) == 2:
+            return parts[index].strip()
+        return ''
+
+    first, last = edge(stops[0], 0), edge(stops[-1], 1)
+    if first and last:
+        return f'{first} 出发 · {last} 结束'
+    if plan.get('time_granularity') == 'period':
+        return f'{time_label(plan, stops[0])}起，{time_label(plan, stops[-1])}结束'
+    return ''
+
+
+def day_travel_note(day):
+    """在途时间合计；有缺值时标明几段待确认，不用 0 顶替。"""
+    values = [stop.get('travel_minutes') for stop in day['stops']]
+    known = [value for value in values if value is not None]
+    if not known:
+        return ''
+    missing = len(values) - len(known)
+    return f'在途约 {sum(known)} 分钟' + (f'（{missing} 段待确认）' if missing else '')
+
+
+def tier_total_label(tier, requirements):
+    """档位总额，能算人均就并进同一格，不加列，PDF 宽度不用跟着改。"""
+    if tier.get('total') is None:
+        return '待核实'
+    amount = tier['total']
+    text = f'约¥{amount:.0f}'
+    travelers = requirements.get('travelers') or 0
+    return text + (f'（人均¥{amount / travelers:.0f}）' if travelers > 1 else '')
+
+
 SOURCE_NAMES = {'search_knowledge': '本地知识库', 'search_web': '网页资料搜索',
                 'search_places': '高德地点查询', 'search_weather': '天气预报', 'search_train_tickets': '铁路车次查询'}
 
@@ -164,13 +207,18 @@ def make_guide(version, evidence):
                        + '\n'.join(f'{index}. {rule}' for index, rule in enumerate(plan['hard_rules'], 1)))
     section('先说结论', [*opening, judgment])
     note = source_note(req, evidence, asof)
-    section('旅行概览', kind='overview', columns=['项目', '安排'], rows=[
+    overview_rows = [
         ['路线', route], ['人数与天数', f'{req["travelers"]}人 · {req["days"]}天'],
         ['日期', req.get('start_date') or '日期未定，按第几天展示'],
         ['预算', f'{scope} {req["budget"]:.2f} {req.get("budget_currency") or "CNY"}；全员预算{budget_total(req):.2f}'],
         ['预算包含', req.get('budget_includes') or '旧方案未记录，请先确认范围'],
         ['旅行偏好', req.get('preferences') or '未说明'],
-        ['行动与饮食', f'{req.get("mobility") or "行动限制未说明，先预留休息"}；{req.get("dietary") or "忌口未说明，点单前确认"}']])
+        ['行动与饮食', f'{req.get("mobility") or "行动限制未说明，先预留休息"}；{req.get("dietary") or "忌口未说明，点单前确认"}']]
+    if req.get('budget') and (req.get('budget_currency') or 'CNY') == 'CNY' and '无法查询' not in displayed_total:
+        balance = round(budget_total(req) - total, 2)
+        overview_rows.append(['预算余量（按已列金额）',
+                              f'约¥{balance:.2f}' if balance >= 0 else f'已超约¥{-balance:.2f}，需减项目或降档'])
+    section('旅行概览', kind='overview', columns=['项目', '安排'], rows=overview_rows)
     budget_rows = [[f'第{i}天已列活动', total_cost_label(day['stops'], req, evidence, now=asof)] for i, day in enumerate(plan['days'], 1)]
     other_label = (f"约¥{plan['other_cost']:.2f}（估算）" if other_estimated else
                    '无法查询' if plan['other_cost'] else '未单列，不能据此判断免费')
@@ -190,21 +238,34 @@ def make_guide(version, evidence):
     tiers = plan.get('budget_tiers') or []
     if tiers:
         rows = [[tier['name'], tier['lodging'], tier['transport'], tier['dining'],
-                 f"约¥{tier['total']:.0f}" if tier.get('total') is not None else '待核实',
+                 tier_total_label(tier, req),
                  tier.get('note') or '按档位替换住宿与餐标，行程不用重做'] for tier in tiers]
         section('预算三档对照', ['三档只换住宿、交通和餐标，行程顺序不变；金额为全员估算，标注待核实的以官方渠道为准。']
                 + ([note] if note else []),
                 'budget', ['档位', '住宿', '交通', '餐饮', '全员总计', '说明'], rows)
+    segments = [segment['ticket'] for segment in plan.get('rail_segments', [])]
+    if segments:
+        rows = []
+        for t in segments:
+            price = t.get('prices') or ''
+            if isinstance(price, (list, dict)):
+                price = str(price)
+            rows.append([f'{t.get("from_station") or ""} → {t.get("to_station") or ""}',
+                         t.get('start_train_code') or '待定',
+                         t.get('start_date') or '待定',
+                         t.get('start_time') or '待核实',
+                         t.get('arrive_time') or '待核实',
+                         price or '待核实'])
+        section('交通班次', ['第三方 MCP 查询的参考班次，余票、票价与是否可购买以 12306 下单页面为准。'],
+                'traffic', ['行程', '车次', '日期', '出发', '到达', '参考票价'], rows)
     traffic = []
-    for segment in plan.get('rail_segments', []):
-        t = segment['ticket']
-        traffic.append(f'{t.get("start_train_code")} {t.get("from_station")} → {t.get("to_station")}，{t.get("start_date")} {t.get("start_time")}出发，{t.get("arrive_time")}到达。第三方MCP查询参考，余票与票价以12306购票时为准。')
-    if not traffic:
+    if not segments:
         traffic.append('未绑定具体车次或航班；日期与交通方式确定后查询，不把历史时刻或价格当作本次可购买方案。')
     traffic += ['已订安排：' + booking['description'] + (f'，第{booking["day"]}天' if booking.get('day') else '') + (f' {booking["departure"]}出发' if booking.get('departure') else '') for booking in req.get('bookings', [])]
     if req.get('return_deadline'):
         traffic.append('最后一天返程时限：' + req['return_deadline'] + '，提前取行李并预留交通与进站时间。')
-    section('交通与已订安排', traffic)
+    if traffic:
+        section('交通与已订安排', traffic)
     section('住哪里更顺路', plan.get('lodging') or ['优先结合当日游玩片区选择交通方便的住宿，核对到站交通、取消条款和房型；未查到房态与价格时不指定可订酒店。'])
     if plan.get('time_granularity') == 'period':
         section('时间安排说明', [TIME_NOTICE])
@@ -212,7 +273,16 @@ def make_guide(version, evidence):
         modes = {'unknown': '方式待定', 'walking': '步行', 'driving': '驾车', 'transit': '公交/地铁', 'rail': '铁路', 'flight': '飞机', 'ferry': '轮渡'}
         rows = [[time_label(plan, stop), stop['place'], stop.get('notes') or '按预约和体力调整', modes[stop.get('transport_mode', 'unknown')] + '，' + travel_label(stop), cost_label(stop, req, evidence, asof)] for stop in day['stops']]
         meals = [f'{food.get("meal", "不限")}：{food["name"]}' for food in plan.get('foods', []) if food.get('day') == i]
-        notes = ['当日美食：' + '；'.join(meals)] if meals else []
+        # 表格里时段列很窄（PDF 只有 44pt），把当天起止与在途时间放到表格下面一行汇总。
+        summary = [f'本日 {len(day["stops"])} 个安排']
+        span = day_span(plan, day)
+        if span:
+            summary.append(span)
+        travel = day_travel_note(day)
+        if travel:
+            summary.append(travel)
+        summary.append('已列费用 ' + total_cost_label(day['stops'], req, evidence, now=asof))
+        notes = [' · '.join(summary)] + (['当日美食：' + '；'.join(meals)] if meals else [])
         section(day_heading(day.get('date'), i, req, evidence, asof), notes, 'day', ['时段', '顺路安排', '吃什么 / 怎么玩', '交通预留', '全员费用'], rows)
     foods = plan.get('foods', [])
     if foods:
@@ -335,8 +405,27 @@ a:focus-visible,summary:focus-visible{outline:3px solid #b45309;outline-offset:4
 .sources{background:#f7f9f7}
 summary{cursor:pointer;font-size:19px;font-weight:600}
 footer{margin-top:26px;text-align:center;font-size:13px;color:#5c6b64}
+.tl{list-style:none;margin:0;padding:0}
+.tl-item{display:grid;grid-template-columns:92px minmax(0,1fr);gap:12px;margin:0;padding:0;border:0}
+.tl-time{margin:0;font-size:13px;font-weight:600;color:#0f5d55;white-space:pre-wrap}
+.tl-body{position:relative;padding:0 0 14px 16px;border-left:2px solid #d7e3dd}
+.tl-body:before{content:"";position:absolute;left:-6px;top:6px;width:10px;height:10px;border-radius:50%;background:#0f766e}
+.tl-item:last-child .tl-body{border-left-color:transparent;padding-bottom:0}
+.tl-place{margin:0 0 4px;font-weight:600}
+.tl-body p{margin:0 0 4px;font-size:14px}
+.tl-meta{color:#5c6b64;font-size:13px}
+.tiers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.tier{background:#f1f5f1;border-radius:14px;padding:14px;min-width:0}
+.tier:first-child{background:#e8f3ee;box-shadow:inset 0 0 0 1px #bcd9cc}
+.tier-name{margin:0;font-size:13px;letter-spacing:.06em;color:#0b4f48}
+.tier-price{margin:2px 0 10px;font-size:20px;font-weight:700;color:#0f5d55}
+.tier dl{margin:0;font-size:13px}
+.tier dt{color:#5c6b64;margin-top:8px}
+.tier dd{margin:0}
+.tier-note{margin:10px 0 0;font-size:12px;color:#5c6b64}
 @media(max-width:640px){main{padding:14px 12px 40px}.hero img{height:210px}.hero-body{margin-top:-96px;padding:0 16px 18px}
-.card{padding:16px;border-radius:16px}.overview ul,.budget ul{grid-template-columns:minmax(0,1fr)}}"""
+.card{padding:16px;border-radius:16px}.overview ul,.budget ul{grid-template-columns:minmax(0,1fr)}
+.tiers{grid-template-columns:minmax(0,1fr)}.tl-item{grid-template-columns:74px minmax(0,1fr);gap:10px}}"""
 
 DESTINATION_IMAGES = (
     ('mountains.webp', ('九寨', '黄龙', '山', '峰', '沟', '雪', '高原', '草原', '峡', '瀑布')),
@@ -354,6 +443,35 @@ def hero_image(requirements, plan=None):
         if any(word in text for word in keywords):
             return '/assets/visual/' + name
     return '/assets/visual/town.webp'
+
+
+def day_timeline(section, text):
+    """日程表在网页里换成时间轴：同一份数据，纵向读比 5 列横表快。PDF 仍用表格。"""
+    out = ['<ol class="tl">']
+    for row in section['rows']:
+        when, place, detail, travel, cost = (list(row) + [''] * 5)[:5]
+        out.append(f'<li class="tl-item"><p class="tl-time">{text(when)}</p><div class="tl-body">'
+                   f'<p class="tl-place">{text(place)}</p>'
+                   + (f'<p>{text(detail).replace(chr(10), "<br>")}</p>' if detail else '')
+                   + f'<p class="tl-meta">{text(travel)} · {text(cost)}</p></div></li>')
+    return ''.join(out) + '</ol>'
+
+
+def tier_cards(section, text):
+    """三档对照在网页里换成并排卡片，价格单独立字号，差额一眼能比。"""
+    out = ['<div class="tiers">']
+    for row in section['rows']:
+        cell = dict(zip(section['columns'], row))
+        out.append('<div class="tier">'
+                   f'<p class="tier-name">{text(cell.get("档位", ""))}</p>'
+                   f'<p class="tier-price">{text(cell.get("全员总计", ""))}</p>'
+                   '<dl>'
+                   + ''.join(f'<dt>{label}</dt><dd>{text(cell.get(label, ""))}</dd>'
+                             for label in ('住宿', '交通', '餐饮'))
+                   + '</dl>'
+                   + (f'<p class="tier-note">{text(cell.get("说明", ""))}</p>' if cell.get('说明') else '')
+                   + '</div>')
+    return ''.join(out) + '</div>'
 
 
 def render_guide(guide, pdf_url):
@@ -380,10 +498,15 @@ def render_guide(guide, pdf_url):
                 title = title.replace(' · 天气', '<br>天气', 1)
             parts.append(f'<h2>{title}</h2>')
         if section.get('columns'):
-            parts.append('<div class="table-scroll"><table><thead><tr>' + ''.join('<th scope="col">' + text(value) + '</th>' for value in section['columns']) + '</tr></thead><tbody>')
-            for row in section['rows']:
-                parts.append('<tr>' + ''.join('<td>' + text(value).replace('\n', '<br>') + '</td>' for value in row) + '</tr>')
-            parts.append('</tbody></table></div>')
+            if section['kind'] == 'day' and section['columns'][0] == '时段':
+                parts.append(day_timeline(section, text))
+            elif section['title'] == '预算三档对照':
+                parts.append(tier_cards(section, text))
+            else:
+                parts.append('<div class="table-scroll"><table><thead><tr>' + ''.join('<th scope="col">' + text(value) + '</th>' for value in section['columns']) + '</tr></thead><tbody>')
+                for row in section['rows']:
+                    parts.append('<tr>' + ''.join('<td>' + text(value).replace('\n', '<br>') + '</td>' for value in row) + '</tr>')
+                parts.append('</tbody></table></div>')
         parts.append('<ul>')
         for item in section["items"]:
             parts.append('<li>' + text(item["text"]))

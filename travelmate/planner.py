@@ -2,6 +2,7 @@
 import json
 import logging
 import os
+import re
 from concurrent.futures import ThreadPoolExecutor
 from time import perf_counter
 from datetime import date, datetime, timedelta, timezone
@@ -62,12 +63,20 @@ def preview_markdown(areas, requirements):
     if areas.key_call:
         lines += [areas.key_call, ""]
     lines += [f"{route} · {requirements['days']}天 · {requirements['travelers']}人", ""]
+    # 骨架阶段还没有准确时刻，用表格只表达顺序，不编时间。
+    lines += ["| Day | 主题 | 当天顺序 |", "| --- | --- | --- |"]
     for index, day in enumerate(areas.days, 1):
-        lines.append(f"**Day{index} {day.title}**")
-        lines += [f"- {item}" for item in day.items]
-        lines.append("")
+        order = " → ".join(item.strip().rstrip("。；;") for item in day.items)
+        lines.append(f"| 第{index}天 | {day.title} | {order} |")
+    lines.append("")
     if areas.tiers:
-        lines += ["**预算量级（待核实）**：" + " / ".join(areas.tiers), ""]
+        rows = []
+        for tier in areas.tiers:
+            matched = re.match(r"^(经济档|舒适档|品质档)\s*[:：]?\s*(.*)$", tier.strip())
+            rows.append(matched.groups() if matched else ("—", tier.strip()))
+        lines += ["| 档位 | 量级（待核实） |", "| --- | --- |"]
+        lines += [f"| {name} | {scale} |" for name, scale in rows]
+        lines.append("")
     lines.append("地点还要逐条核对，价格待查，完整版随后替换这一版。")
     return "\n".join(lines)
 
