@@ -160,14 +160,15 @@ def search_web(query: str) -> dict:
 
 def knowledge_tool(directory: Path):
     @tool
-    def search_knowledge(query: str) -> dict:
-        """检索本地旅游 Markdown 知识，返回片段及文件来源；不代表实时信息。"""
+    def search_knowledge(query: str, city: str = "") -> dict:
+        """检索本地旅游 Markdown 知识，返回片段及文件来源；不代表实时信息。city 仅云知识库用于标签过滤，本地检索按目录过滤。"""
         # shortcut: 字符匹配适合小型中文知识库，文档增多后升级向量检索。
         terms = set(query.lower()) - set(" \n\t，。的了是")
+        targeted = [path for path in sorted(directory.glob("*.md")) if city and city in path.stem]
         if not terms:
             return {"results": []}
         matches = []
-        for path in sorted(directory.glob("*.md")):
+        for path in (targeted or sorted(directory.glob("*.md"))):
             if path.is_symlink() or path.stat().st_size > 100_000:
                 continue
             for paragraph in path.read_text(encoding="utf-8-sig").split("\n\n"):

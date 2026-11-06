@@ -88,3 +88,30 @@ def test_agent_cloud_tool_loop(cloud, tmp_path):
     with open_agent(legacy_tool_loop=True, model=KnowledgeModel(), database=tmp_path / "cloud.sqlite") as agent:
         answer = chat(agent, "cloud", "杭州长辈行程")
         assert "杭州攻略.md" in answer and "西湖适合慢行" in answer
+
+
+def test_city_tag_filter_uses_json_string(cloud, tmp_path):
+    payload, calls, _ = cloud
+    tool = create_knowledge_tool(tmp_path)
+    result = tool.invoke({"query": "故宫怎么预约", "city": "北京"})
+    assert calls[0][1].search_filters == [{"tags": '["北京"]'}]
+    assert result["city_filter"] == "on"
+    assert result["results"][0]["source"] == "杭州攻略.md"
+
+
+def test_city_filter_falls_back_to_whole_index(cloud, tmp_path, monkeypatch):
+    payload, calls, sdk = cloud
+    from alibabacloud_bailian20231229.models import RetrieveResponseBody
+
+    def empty_when_filtered(self, workspace, request, headers, runtime):
+        calls.append((workspace, request, runtime))
+        nodes = [] if request.search_filters else [
+            {"Text": "西湖适合慢行", "Score": 0.9, "Metadata": '{"doc_name":"杭州攻略.md"}'}]
+        return SimpleNamespace(body=RetrieveResponseBody().from_map({"Success": True, "Data": {"Nodes": nodes}}))
+
+    monkeypatch.setattr(sdk.Client, "retrieve_with_options", empty_when_filtered)
+    tool = create_knowledge_tool(tmp_path)
+    result = tool.invoke({"query": "九寨沟三天怎么排", "city": "九寨沟"})
+    assert len(calls) == 2
+    assert calls[0][1].search_filters == [{"tags": '["九寨沟"]'}] and calls[1][1].search_filters is None
+    assert result["city_filter"] == "off" and result["results"]

@@ -236,7 +236,7 @@ def build_planner(model, saver, knowledge, tools, prompt, review_model=None):
         writer({"text": f"已整理：{req['travelers']}人，{req['destination']}{req['days']}天；先查本地知识库。"})
         query_text = f"{req['destination']} {req['days']}天 特色美食 地方小吃 {req.get('dietary') or ''} {req.get('preferences', '')} {req.get('interests', [])} {req.get('exclusions', [])}"
         # 知识库优先：有可用原文就不联网找同类资料，省钱也少一份幻觉来源。
-        knowledge_data, knowledge_records = query("search_knowledge", {"query": query_text}, req)
+        knowledge_data, knowledge_records = query("search_knowledge", {"query": query_text, "city": req["destination"]}, req)
         hit = bool((knowledge_data.get("results") or [])
                    and any(len(str(row.get("content") or "")) >= 120 for row in knowledge_data["results"]
                            if isinstance(row, dict)))
