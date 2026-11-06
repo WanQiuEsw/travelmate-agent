@@ -92,13 +92,12 @@ def test_old_and_new_checkpoint_restart(tmp_path):
 
 def test_prompt_contract_and_formatting():
     rendered = PROMPT.format(today="2026-11-03")
-    assert PROMPT_VERSION == "advisor-v1/tools-v1"
-    assert "行策 · 旅游攻略策划专家" in rendered
+    assert PROMPT_VERSION == "advisor-v2/tools-v2"
+    assert "行策 · TravelMate 预设攻略人格" in rendered
     assert "可靠性 > 完整性 > 华丽度" in rendered
-    assert "等用户确认方案后再生成成品" in rendered
-    assert ":root{" in rendered and "{行程目录}/" in rendered
-    assert '@media(max-width:640px){.grid2,.grid4{grid-template-columns:1fr}}' in rendered
-    assert '{{城市拼音}}' not in rendered
+    for part in ("先说结论", "预算三档对照", "避坑", "待核实清单", "不要输出 HTML"):
+        assert part in rendered
+    assert "{{" not in rendered
     assert "不要求用户审核、保存 JSON 或确认" not in rendered
     assert "不生成行程" not in rendered
 
@@ -123,5 +122,5 @@ def test_document_role_reaches_agent_without_formatting_damage(tmp_path, monkeyp
         assert agent is sentinel
     role = (Path(__file__).parents[1] / 'travelmate/prompts/advisor-v1.txt').read_text(encoding='utf-8')
     assert captured['prompt'].startswith(role + '\n')
-    assert '--brand:#0d9488;' in captured['prompt']
-    assert '{城市拼音}-{N}d{M}n.html' in captured['prompt']
+    assert '先说结论' in captured['prompt'] and '预算三档对照' in captured['prompt']
+    assert '工具规则 v1' in captured['prompt']

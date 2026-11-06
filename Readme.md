@@ -18,7 +18,13 @@ Copy-Item .env.example .env
 uv run travelmate --session demo
 ```
 
-默认使用 DeepSeek 官方兼容接口的 deepseek-flash，并显式关闭思考模式以适配当前通用客户端的工具循环。模型必须支持 tool calling。可以通过 MODEL_NAME / MODEL_BASE_URL / MODEL_API_KEY 切换兼容服务；无密钥不会伪造模型回复。费用以服务商账单为准。
+默认使用 DeepSeek 官方兼容接口的 deepseek-flash，并显式关闭思考模式以适配当前通用客户端的工具循环。模型必须支持 tool calling。deepseek-flash 就是 DeepSeek-V4.1-Flash 的官方模型名；把 `MODEL_NAME` 写成 `deepseek-v4.1-flash`、`deepseek-v4-flash` 或 `deepseek-chat` 会自动映射到它，避免换了名字就调不通。可以通过 MODEL_NAME / MODEL_BASE_URL / MODEL_API_KEY 切换兼容服务；无密钥不会伪造模型回复。费用以服务商账单为准。
+
+## 预设人格（每次新会话自动加载）
+
+`travelmate/prompts/advisor-v1.txt` 是「行策」预设人格，由 `open_agent` 在每个新会话拼进 system prompt，不需要用户每次复述。它规定了两件事：**信息怎么查**（反幻觉、置信度标注 🔎/⏳、多平台情报源）和**正文长什么样**（先说结论+硬规则 → 预算三档 → 交通 → 住宿 → 每日 → 美食 → 费用 → 避坑 → 应急 → 行前 + 待核实清单，语气对齐 `E:\test\北京到上海3天2晚-美食路线.md` 这份样稿）。
+
+正文仍由程序按结构化字段渲染，模型不直接写 Markdown：`key_call`（关键判断）、`hard_rules`（≤3 条硬规则）、`budget_tiers`（三档）、`pitfalls`（≥5 条避坑）、`verify_items`（待核实渠道）这几个字段分别对应上面几个新模块，缺字段就不渲染该模块，不会退化成空标题。改人格只改这一个文件，`PROMPT_VERSION` 在 `travelmate/agent.py` 里同步。
 
 在 https://platform.deepseek.com/ 登录开放平台，在 API Keys 中创建密钥，保存至本地 `.env` 的 `MODEL_API_KEY`，并确认账户有可用 API 余额。不要将密钥发到聊天或提交 Git。模型名称及费用以 https://api-docs.deepseek.com/ 为准。
 
@@ -28,7 +34,7 @@ MODEL_NAME=deepseek-flash
 MODEL_BASE_URL=https://api.deepseek.com
 ```
 
-本地运行的是 Python 程序，模型通过网络调用 DeepSeek 云端。网页检索需要独立的 `TAVILY_API_KEY`。要通过 [Tavily MCP](https://docs.tavily.com/documentation/mcp) 联网，执行 `uv sync --extra rail` 安装 MCP 客户端，在 `.env` 设置 `TAVILY_SEARCH_TRANSPORT=mcp` 后重启。未指定传输方式时沿用 Tavily HTTP API。MCP 查询失败时继续使用其他可用资料，并保留查询失败状态。系统环境变量优先于 `.env`。
+本地运行的是 Python 程序，模型通过网络调用 DeepSeek 云端。网页检索默认走 **DeepSeek 官方 Search API**（`POST https://api.deepseek.com/v1/tools/search`，与模型共用 `MODEL_API_KEY`，返回标题、链接、摘要和正文），不需要额外申请搜索密钥；请求体限制查询 128 字符，超长会被截断。`SEARCH_PROVIDER=auto` 表示有 DeepSeek 密钥就用官方搜索，否则回退 Tavily（`TAVILY_API_KEY`）；设成 `deepseek` 或 `tavily` 可强制指定。Tavily 支持通过 [Tavily MCP](https://docs.tavily.com/documentation/mcp) 联网：执行 `uv sync --extra rail` 安装 MCP 客户端，在 `.env` 设置 `TAVILY_SEARCH_TRANSPORT=mcp` 后重启。MCP 查询失败时继续使用其他可用资料，并保留查询失败状态。系统环境变量优先于 `.env`。
 
 示例：`从上海出发，两个人，杭州三天，预算3000元，喜欢自然风景，帮我规划`。再次使用 `--session demo` 可继续对话。知识文件放在 `knowledge/*.md`，每次检索读取最新文件；示例资料并非实时旅游数据库。
 
@@ -133,4 +139,4 @@ uv run python -m travelmate.check_amap
 
 输出按“结论→概览→预算→交通住宿→每日路线→美食→备选→行前准备→来源”组织，聊天与版本攻略共用内容。全费用人民币预算可展示“预算预留额度（非报价）”，分项合计等于用户总预算；实际费用仍以查询依据显示。美食偏好进入每日路线。首轮先给玩法草案，再确认缺失的预算口径及范围，步数不再必填。
 
-每条回答和版本攻略提供 Markdown 下载：`GET /sessions/{id}/answers/{message_id}/md`、`GET /sessions/{id}/plans/{version}/md`，与 PDF 一样校验归属，按原记录导出，不重新调用模型。配置 `TAVILY_API_KEY` 后每次规划最多增加一次网页资料检索，未配置时继续使用已有资料、铁路和天气工具。参考稿的优缺点与接入状态见[对照分析](docs/reference-output-review.md)。
+每条回答和版本攻略提供 Markdown 下载：`GET /sessions/{id}/answers/{message_id}/md`、`GET /sessions/{id}/plans/{version}/md`，与 PDF 一样校验归属，按原记录导出，不重新调用模型。配置 DeepSeek 密钥（`MODEL_API_KEY`）或 `TAVILY_API_KEY` 后每次规划最多增加一次网页资料检索，未配置时继续使用已有资料、铁路和天气工具。参考稿的优缺点与接入状态见[对照分析](docs/reference-output-review.md)。

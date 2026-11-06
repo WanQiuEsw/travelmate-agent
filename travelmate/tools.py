@@ -5,9 +5,12 @@ import math
 import os
 import re
 from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
 from langchain.tools import tool
+
+DEEPSEEK_SEARCH_PATH = "/v1/tools/search"
 
 
 def amap(path, params):
@@ -97,14 +100,46 @@ async def tavily_mcp_search(key, query):
                     return {"results": [match.groupdict(default="") for match in rows]}
 
 
+def deepseek_search(query, count=5):
+    """DeepSeek 官方 Search API，使用与模型相同的密钥与网关。"""
+    key = os.getenv("MODEL_API_KEY")
+    base = (os.getenv("MODEL_BASE_URL") or "https://api.deepseek.com").rstrip("/")
+    if base.endswith("/v1"):
+        base = base[:-3]
+    response = httpx.post(base + DEEPSEEK_SEARCH_PATH,
+                          headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                          # shortcut: 官方限制查询 128 字符，超长直接截断而不是报错。
+                          json={"query": query[:128], "count": count, "need_content": True}, timeout=20)
+    response.raise_for_status()
+    return {"results": [{"title": row.get("title", ""), "url": row.get("url", ""),
+                         "content": (row.get("summary") or row.get("snippet") or row.get("content") or "")[:2000]}
+                        for row in response.json().get("results", [])[:count]]}
+
+
+def search_provider():
+    """auto：DeepSeek 官方搜索优先，未配置 DeepSeek 密钥或换网关时回退 Tavily。"""
+    name = (os.getenv("SEARCH_PROVIDER") or "auto").strip().lower()
+    base = os.getenv("MODEL_BASE_URL") or "https://api.deepseek.com"
+    if name == "tavily":
+        return "tavily"
+    if name == "deepseek" or (os.getenv("MODEL_API_KEY") and urlparse(base).hostname == "api.deepseek.com"):
+        return "deepseek"
+    return "tavily"
+
+
 @tool
 def search_web(query: str) -> dict:
-    """搜索旅游资料、开放时间等，返回来源链接；服务未配置时明确告知。"""
-    key = os.getenv("TAVILY_API_KEY")
-    if not key:
-        return {"error": "未配置 TAVILY_API_KEY，无法核实实时资料"}
+    """联网搜索旅游资料、开放时间等实时信息，返回来源链接；服务未配置时明确告知。"""
     if not query.strip() or len(query) > 500:
         return {"error": "查询需为 1–500 字符"}
+    if search_provider() == "deepseek":
+        try:
+            return deepseek_search(query)
+        except (httpx.HTTPError, ValueError, TypeError):
+            return {"error": "联网搜索失败，当前资料未核实，请稍后重试"}
+    key = os.getenv("TAVILY_API_KEY")
+    if not key:
+        return {"error": "未配置 MODEL_API_KEY 或 TAVILY_API_KEY，无法核实实时资料"}
     try:
         if os.getenv("TAVILY_SEARCH_TRANSPORT") == "mcp":
             data = asyncio.run(asyncio.wait_for(tavily_mcp_search(key, query), timeout=20))

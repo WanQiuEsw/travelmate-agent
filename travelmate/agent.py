@@ -21,11 +21,21 @@ from travelmate.knowledge import create_knowledge_tool
 from travelmate.workflow import PlanningState, update_trip, submit_itinerary
 from travelmate.public import public_data, public_answer
 
-PROMPT_VERSION = "advisor-v1/tools-v1"
+PROMPT_VERSION = "advisor-v2/tools-v2"
 PROMPT = "\n".join((Path(__file__).parent / "prompts" / name).read_text(encoding="utf-8")
                    .replace("{", "{{").replace("}", "}}") if name == "advisor-v1.txt"
                    else (Path(__file__).parent / "prompts" / name).read_text(encoding="utf-8")
                    for name in ("advisor-v1.txt", "tools-v1.txt"))
+
+# deepseek-flash 就是 DeepSeek-V4.1-Flash；保留常见写法，避免换了名字就调不通。
+MODEL_ALIASES = {"deepseek-v4.1-flash": "deepseek-flash", "deepseek-v4.1-flash-1017": "deepseek-flash",
+                 "deepseek-v4-flash": "deepseek-flash", "deepseek-chat": "deepseek-flash",
+                 "deepseek-reasoner": "deepseek-v4-pro"}
+
+
+def model_name():
+    name = (os.getenv("MODEL_NAME") or "deepseek-flash").strip()
+    return MODEL_ALIASES.get(name.lower(), name)
 
 
 @contextmanager
@@ -38,7 +48,7 @@ def open_agent(*, model=None, database=None, knowledge=None, legacy_tool_loop=Fa
         base_url = os.getenv("MODEL_BASE_URL", "https://api.deepseek.com")
         # ChatOpenAI does not preserve DeepSeek reasoning_content for tool turns.
         extra = {"thinking": {"type": "disabled"}} if urlparse(base_url).hostname == "api.deepseek.com" else None
-        model = ChatOpenAI(api_key=key, model=os.getenv("MODEL_NAME", "deepseek-flash"),
+        model = ChatOpenAI(api_key=key, model=model_name(),
                            base_url=base_url or None, extra_body=extra,
                            timeout=60, max_retries=1, temperature=0.3)
     db = Path(database or os.getenv("DATABASE_PATH", "data/checkpoints.sqlite"))

@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from travelmate.api import create_app
 from travelmate.agent import chat, conversation
 from travelmate.workflow import get_workflow
-from travelmate.guide import make_guide, render_guide, version_snapshot, get_version
+from travelmate.guide import make_guide, render_guide, version_snapshot, get_version, guide_markdown
 from travelmate.pdf_export import guide_pdf
 from travelmate.evidence import normalize, safe_url
 from test_workflow import REQ, PLAN
@@ -15,6 +15,26 @@ from test_planner import Model, open_test
 
 def version(plan=None):
     return {"version": 1, "plan": plan or deepcopy(PLAN), "requirements": REQ, "saved_at": datetime.now(timezone.utc).isoformat()}
+
+
+def test_sample_sections_render_tiers_pitfalls_and_verification_order():
+    plan = deepcopy(PLAN)
+    plan.update(key_call='5000 元两人玩三天够用，但高铁占掉 44%，钱要先认清分配。',
+                hard_rules=['只买 553 元的二等座', '不住外滩，住地铁 2 号线沿线'],
+                budget_tiers=[{'name': '经济档', 'lodging': '连锁快捷 250/晚', 'transport': '动卧 317', 'dining': '人均 165 一天', 'total': 3388},
+                              {'name': '舒适档', 'lodging': '连锁中端 350/晚', 'transport': '二等座 553×4', 'dining': '人均 205 一天', 'total': 4296},
+                              {'name': '品质档', 'lodging': '全季 800/晚', 'transport': '二等座', 'dining': '人均 400 一天'}],
+                pitfalls=[{'level': '严重', 'text': '南翔馒头店二楼堂食价格翻倍'}, {'level': '技巧', 'text': '553 的车次卖得快，定好日期就买'}],
+                verify_items=[{'item': '高铁车次与票价', 'channel': '12306 App'}])
+    guide = make_guide(version(plan), {})
+    titles = [section['title'] for section in guide['sections']]
+    assert titles.index('预算三档对照') > titles.index('先说结论')
+    assert titles.index('避坑') > titles.index('当地特色美食')
+    assert titles.index('待核实清单') < titles.index('参考来源')
+    text = guide_markdown(guide)
+    assert '由此推出的硬规则' in text and '1. 只买 553 元的二等座' in text
+    assert '| 经济档 |' in text and '| 待核实 |' in text
+    assert '❌ 南翔馒头店二楼堂食价格翻倍' in text and '12306 App' in text
 
 
 def test_shared_document_costs_statuses_and_navigation():

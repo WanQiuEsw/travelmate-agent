@@ -129,7 +129,12 @@ def make_guide(version, evidence):
     route = (req.get('origin') + ' → ' if req.get('origin') else '') + req['destination']
     judgment = ('当前报价未齐，不能确认预算是否足够；先落实往返交通和住宿，再安排餐饮及机动资金。'
                 if displayed_total == '无法查询' else f'已列项目合计{displayed_total}；仍需按预算范围核对是否覆盖全部支出。')
-    section('先说结论', [plan.get('summary') or f'建议围绕{req.get("preferences") or "你的旅行偏好"}按相邻片区游玩，首末日保留交通弹性。', judgment])
+    opening = [plan.get('key_call') or plan.get('summary')
+               or f'建议围绕{req.get("preferences") or "你的旅行偏好"}按相邻片区游玩，首末日保留交通弹性。']
+    if plan.get('hard_rules'):
+        opening.append('由此推出的硬规则：\n'
+                       + '\n'.join(f'{index}. {rule}' for index, rule in enumerate(plan['hard_rules'], 1)))
+    section('先说结论', [*opening, judgment])
     section('旅行概览', kind='overview', columns=['项目', '安排'], rows=[
         ['路线', route], ['人数与天数', f'{req["travelers"]}人 · {req["days"]}天'],
         ['日期', req.get('start_date') or '日期未定，按第几天展示'],
@@ -151,6 +156,13 @@ def make_guide(version, evidence):
         budget_notes.append(plan['cost_notes'])
     section('已列费用与报价状态' if allocation else '预算怎么用', budget_notes,
         'budget', ['项目', '全员费用'], budget_rows)
+    tiers = plan.get('budget_tiers') or []
+    if tiers:
+        rows = [[tier['name'], tier['lodging'], tier['transport'], tier['dining'],
+                 f"约¥{tier['total']:.0f}" if tier.get('total') is not None else '待核实',
+                 tier.get('note') or '按档位替换住宿与餐标，行程不用重做'] for tier in tiers]
+        section('预算三档对照', ['三档只换住宿、交通和餐标，行程顺序不变；金额为全员估算，标注待核实的以官方渠道为准。'],
+                'budget', ['档位', '住宿', '交通', '餐饮', '全员总计', '说明'], rows)
     traffic = []
     for segment in plan.get('rail_segments', []):
         t = segment['ticket']
@@ -174,6 +186,11 @@ def make_guide(version, evidence):
     if foods:
         rows = [[food['name'], food['description'], (f'第{food["day"]}天 · ' if food.get('day') else '') + food.get('meal', '不限'), food.get('area') or '结合当日片区顺路选择', food.get('tips') or '点单前确认食材与忌口'] for food in foods]
         section('当地特色美食', ['推荐用于选择菜品与用餐片区，不代表餐厅房态、实时价格或过敏安全保证。'] + ([f'饮食要求：{req["dietary"]}；点单时向商家确认。'] if req.get('dietary') else []), 'food', ['美食', '特色', '安排在哪顿', '顺路建议', '点单提醒'], rows)
+    pitfalls = plan.get('pitfalls') or []
+    if pitfalls:
+        icons = {'严重': '❌', '注意': '⚠️', '技巧': '💡'}
+        section('避坑', [f"{icons.get(item['level'], '⚠️')} {item['text']}" for item in pitfalls]
+                + ['以上涉及营业时间、票价与开放状态的条目，出行前请按下方清单通过官方渠道复核。'], 'pitfalls')
     alternatives = plan.get('alternatives', [])
     if alternatives:
         rows = [[a['trigger'], a['action'],
@@ -183,6 +200,9 @@ def make_guide(version, evidence):
     else:
         section('下雨、排队或约不上时怎么换', ['遇雨可减少室外步行、选择同片区室内活动；餐馆排队时优先换附近同类菜品，是否开放及能否入场以当日公告为准。'])
     section('行前准备', plan.get('reminders', []) or ['确定日期后查询往返交通与天气；确认酒店取消条款、场馆规则、餐馆营业信息和饮食限制。'])
+    if plan.get('verify_items'):
+        section('待核实清单', ['以下内容本次没有取得可核实的实时数据，出发前按对应渠道确认，不要按记忆出发。'], 'verify',
+                ['项目', '核验渠道'], [[item['item'], item['channel']] for item in plan['verify_items']])
     sources, seen = [], set()
     for record in evidence.values():
         if record.get('context') != context_key(req):
@@ -240,6 +260,7 @@ def get_version(state, number):
 
 GUIDE_CSS = """*{box-sizing:border-box}body{margin:0;background:#f4f5ef;color:#243b35;font-family:system-ui,'Microsoft YaHei',sans-serif;line-height:1.7}main{max-width:1000px;margin:auto;padding:36px 24px}header{margin-bottom:28px}h1{font-size:clamp(28px,5vw,42px);line-height:1.25}h2{font-size:21px;margin:0 0 16px}p{margin:8px 0}section{background:white;border:1px solid #dce3d9;border-radius:16px;padding:24px;margin:20px 0;min-width:0}ul{list-style:none;margin:0;padding:0}li{white-space:pre-wrap;overflow-wrap:anywhere;min-width:0;margin:12px 0;padding-bottom:12px;border-bottom:1px solid #edf0e9}li:last-child{border:0;padding-bottom:0}.overview ul,.budget ul{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.overview li,.budget li{background:#f1f5ee;border:0;border-radius:10px;padding:14px;margin:0}.day li{border-left:3px solid #67927e;padding-left:16px}a{color:#236d57;overflow-wrap:anywhere}a:focus-visible,summary:focus-visible{outline:3px solid #b05e14;outline-offset:4px}.download{display:inline-block;background:#245b49;color:white;padding:10px 18px;border-radius:10px;text-decoration:none}.muted{color:#53645b}summary{cursor:pointer;font-size:21px;font-weight:600}@media(max-width:600px){main{padding:20px 16px}section{padding:18px 16px}.overview ul,.budget ul{grid-template-columns:minmax(0,1fr)}}"""
 GUIDE_CSS += '.table-scroll{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:14px}th,td{border:1px solid #dce3d9;padding:10px;text-align:left;vertical-align:top;min-width:85px;overflow-wrap:anywhere}th{background:#f1f5ee}'
+GUIDE_CSS += '.pitfalls{background:#fff5f4;border-color:#f0c4c0}.pitfalls h2{color:#a02a20}.verify td:first-child{min-width:120px}'
 
 
 def render_guide(guide, pdf_url):

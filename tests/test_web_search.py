@@ -6,6 +6,40 @@ import pytest
 from travelmate import tools
 
 
+def test_deepseek_search_is_the_default_and_maps_results(monkeypatch):
+    captured = {}
+
+    class Response:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"results": [{"title": "参观须知", "url": "https://example.org", "snippet": "当日开放",
+                                 "content": "长" * 3000}]}
+
+    def post(url, headers=None, json=None, timeout=None):
+        captured.update(url=url, headers=headers, json=json)
+        return Response()
+
+    monkeypatch.setenv("MODEL_API_KEY", "ds-key")
+    monkeypatch.setenv("MODEL_BASE_URL", "https://api.deepseek.com")
+    monkeypatch.setattr(tools.httpx, "post", post)
+    assert tools.search_web.invoke({"query": "上海博物馆 参观须知"}) == {
+        "results": [{"title": "参观须知", "url": "https://example.org", "content": "当日开放"}]}
+    assert captured["url"] == "https://api.deepseek.com/v1/tools/search"
+    assert captured["headers"]["Authorization"] == "Bearer ds-key"
+    assert captured["json"] == {"query": "上海博物馆 参观须知", "count": 5, "need_content": True}
+
+
+def test_search_provider_falls_back_to_tavily_without_deepseek_key(monkeypatch):
+    monkeypatch.setenv("MODEL_BASE_URL", "https://api.deepseek.com")
+    assert tools.search_provider() == "tavily"
+    monkeypatch.setenv("MODEL_API_KEY", "ds-key")
+    assert tools.search_provider() == "deepseek"
+    monkeypatch.setenv("MODEL_BASE_URL", "https://other.example/v1")
+    assert tools.search_provider() == "tavily"
+
+
 def test_web_search_uses_configured_mcp_and_normalizes_results(monkeypatch):
     monkeypatch.setenv("TAVILY_SEARCH_TRANSPORT", "mcp")
     monkeypatch.setenv("TAVILY_API_KEY", "test-key")

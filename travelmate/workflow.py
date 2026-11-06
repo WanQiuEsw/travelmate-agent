@@ -118,6 +118,28 @@ class Food(BaseModel):
     meal: Literal["早餐", "午餐", "晚餐", "加餐", "不限"] = "不限"
 
 
+class BudgetTier(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    name: Literal["经济档", "舒适档", "品质档"]
+    lodging: str = Field(min_length=1, max_length=120, description="住宿档次与单价区间，例如连锁中端350元/晚")
+    transport: str = Field(min_length=1, max_length=120, description="交通方式与票价，例如高铁二等座553元×4")
+    dining: str = Field(min_length=1, max_length=120, description="餐饮标准，例如人均205元/天")
+    total: float | None = Field(default=None, ge=0, le=1e8, description="该档全员总费用；没有算法依据时留空")
+    note: str = Field(default="", max_length=200)
+
+
+class Pitfall(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    level: Literal["严重", "注意", "技巧"] = "注意"
+    text: str = Field(min_length=1, max_length=300, description="具体到店名、环节或时段的踩坑提醒，写清原因或替代做法")
+
+
+class VerifyItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    item: str = Field(min_length=1, max_length=120)
+    channel: str = Field(min_length=1, max_length=120, description="官方核验渠道，例如12306、景区公众号、大众点评")
+
+
 class Itinerary(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     time_granularity: Literal["precise", "period"] = Field(default="precise", description="交通或到离时刻不确定时用period，按上午/中午/下午等安排；precise兼容已有精确行程。")
@@ -128,6 +150,11 @@ class Itinerary(BaseModel):
     reminders: list[str] = Field(default_factory=list, max_length=30)
     foods: list[Food] = Field(default_factory=list, max_length=8, description="新攻略必须包含3至5项目的地特色美食介绍；空列表仅兼容历史行程。")
     summary: str = Field(default="", max_length=600, description="先给玩法判断，说明如何围绕兴趣顺路安排；没有价格依据不能断言预算够用。")
+    key_call: str = Field(default="", max_length=600, description="开篇关键判断：这笔钱够不够、主要花在哪、必须取舍什么。只能基于已列费用与查询依据，禁止无依据断言预算充足。")
+    hard_rules: list[str] = Field(default_factory=list, max_length=4, description="由预算和路线推出、可直接执行的三条以内硬规则，例如只买某一价位的车次、不住某片区。")
+    budget_tiers: list[BudgetTier] = Field(default_factory=list, max_length=3, description="经济档、舒适档、品质档并列对照；差异要落到具体住宿、交通与餐标。")
+    pitfalls: list[Pitfall] = Field(default_factory=list, max_length=12, description="至少5条真实会踩的坑，分严重、注意、技巧三级；不写注意安全这类空话。")
+    verify_items: list[VerifyItem] = Field(default_factory=list, max_length=10, description="出发前必须复核的项目与官方渠道，对应正文中标注待核实的信息。")
     lodging: list[str] = Field(default_factory=list, max_length=5, description="住宿片区、交通与订房筛选建议；不编造酒店报价、房态或星级。")
     rail_segments: list[RailSegment] = Field(default_factory=list, max_length=30)
     cost_notes: str = Field(min_length=1, max_length=2000)
