@@ -41,6 +41,7 @@ def model_name():
 @contextmanager
 def open_agent(*, model=None, database=None, knowledge=None, legacy_tool_loop=False):
     load_dotenv()
+    review_model = None
     if model is None:
         key = os.getenv("MODEL_API_KEY")
         if not key:
@@ -51,6 +52,12 @@ def open_agent(*, model=None, database=None, knowledge=None, legacy_tool_loop=Fa
         model = ChatOpenAI(api_key=key, model=model_name(),
                            base_url=base_url or None, extra_body=extra,
                            timeout=60, max_retries=1, temperature=0.3)
+        # 审查只判断有没有硬伤，用更快的模型就够，省下的时间留给生成。
+        review_model = model
+        review_name = MODEL_ALIASES.get((os.getenv("REVIEW_MODEL_NAME") or "").strip().lower(), (os.getenv("REVIEW_MODEL_NAME") or "").strip())
+        if review_name and review_name != model_name():
+            review_model = ChatOpenAI(api_key=key, model=review_name, base_url=base_url or None,
+                                      extra_body=extra, timeout=45, max_retries=1, temperature=0.2)
     db = Path(database or os.getenv("DATABASE_PATH", "data/checkpoints.sqlite"))
     db.parent.mkdir(parents=True, exist_ok=True)
     with SqliteSaver.from_conn_string(str(db)) as saver:
@@ -59,7 +66,8 @@ def open_agent(*, model=None, database=None, knowledge=None, legacy_tool_loop=Fa
             from travelmate.planner import build_planner
             yield build_planner(model, saver, knowledge_tool,
                                 {t.name: t for t in (search_train_tickets, search_places, search_route, search_web, search_weather)},
-                                PROMPT.format(today=china_today().isoformat()))
+                                PROMPT.format(today=china_today().isoformat()),
+                                **({"review_model": review_model} if review_model is not None else {}))
             return
         yield create_agent(model=model, state_schema=PlanningState, middleware=[capture_evidence],
                            tools=[search_weather, search_train_tickets, estimate_budget, search_web, search_places, search_route, update_trip, submit_itinerary,
@@ -115,6 +123,7 @@ def tool_progress(item):
 
 def stream_chat(agent, session_id: str, message: str, interaction_response=None):
     config = {"configurable": {"thread_id": session_id}, "recursion_limit": 60}
+    previewed = False
     with closing(agent.stream({"messages": [HumanMessage(content=message, additional_kwargs={"interaction_response": interaction_response} if interaction_response else {})]},
                               config, stream_mode=["messages", "custom", "updates"])) as stream:
         for mode, value in stream:
@@ -123,7 +132,13 @@ def stream_chat(agent, session_id: str, message: str, interaction_response=None)
                 # Emit only the sanitized final answer below, after validation.
                 continue
             elif mode == "custom":
-                yield "status", public_data(value)
+                preview = value.get("preview") if isinstance(value, dict) else None
+                if preview:
+                    previewed = True
+                    for offset in range(0, len(preview), 48):
+                        yield "token", {"text": preview[offset:offset + 48]}
+                else:
+                    yield "status", public_data(value)
             elif mode == "updates":
                 for node, update in value.items():
                     if node in ("intake", "research", "organize", "verify_places", "generate", "check", "review", "save", "present"):
@@ -144,8 +159,9 @@ def stream_chat(agent, session_id: str, message: str, interaction_response=None)
         return
     last = state.values["messages"][-1]
     answer = public_answer(last.text, state.values["messages"])
-    for offset in range(0, len(answer), 48):
-        yield "token", {"text": answer[offset:offset + 48]}
+    if not previewed:
+        for offset in range(0, len(answer), 48):
+            yield "token", {"text": answer[offset:offset + 48]}
     yield "done", {"answer": answer, "session_id": session_id,
                    **({"interaction": last.additional_kwargs["interaction"]} if last.additional_kwargs.get("interaction") else {}),
                    "message_id": answer_id(last, len(state.values["messages"]) - 1),

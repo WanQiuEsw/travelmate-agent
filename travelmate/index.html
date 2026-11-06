@@ -544,7 +544,8 @@
     return {
       append(chunk) { text += chunk; schedule(); },
       finish(answer) {
-        if (!answer.startsWith(text.slice(0, visible))) visible = 0;
+        // 骨架已流式显示过，完成后直接替换成完整版，不清空避免闪一下白屏。
+        visible = Math.min(visible, answer.length);
         text = answer;
         return new Promise(resolve => { finished = resolve; schedule(); });
       },

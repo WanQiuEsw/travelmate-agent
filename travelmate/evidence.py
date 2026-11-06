@@ -15,7 +15,7 @@ def merge_evidence(left, right):
 
 
 MODEL_FIELDS = ("id", "kind", "value", "title", "url", "query_status", "verification",
-                "address", "location", "applicable_date", "query")
+                "address", "location", "applicable_date", "query", "expires_at")
 ALWAYS = ("id", "value")
 
 

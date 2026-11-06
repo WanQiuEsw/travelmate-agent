@@ -40,10 +40,10 @@ def test_budget():
 def test_deepseek_configuration(tmp_path, monkeypatch):
     import travelmate.agent as module
 
-    captured = {}
+    calls = []
 
     def fake_client(**kwargs):
-        captured.update(kwargs)
+        calls.append(kwargs)
         return BudgetModel()
 
     monkeypatch.setattr(module, "ChatOpenAI", fake_client)
@@ -51,11 +51,17 @@ def test_deepseek_configuration(tmp_path, monkeypatch):
     monkeypatch.setenv("MODEL_NAME", "deepseek-flash")
     monkeypatch.setenv("MODEL_BASE_URL", "https://api.deepseek.com")
     with open_agent(legacy_tool_loop=True, database=tmp_path / "config.sqlite"):
-        assert captured["model"] == "deepseek-flash"
-        assert captured["extra_body"] == {"thinking": {"type": "disabled"}}
+        assert calls[-1]["model"] == "deepseek-flash"
+        assert calls[-1]["extra_body"] == {"thinking": {"type": "disabled"}}
+        assert len(calls) == 1
+    monkeypatch.setenv("REVIEW_MODEL_NAME", "deepseek-v4-pro")
+    with open_agent(legacy_tool_loop=True, database=tmp_path / "review.sqlite"):
+        assert [call["model"] for call in calls[-2:]] == ["deepseek-flash", "deepseek-v4-pro"]
+        assert calls[-1]["timeout"] == 45
+    monkeypatch.delenv("REVIEW_MODEL_NAME")
     monkeypatch.setenv("MODEL_BASE_URL", "https://other.example/v1")
     with open_agent(legacy_tool_loop=True, database=tmp_path / "other.sqlite"):
-        assert captured["extra_body"] is None
+        assert calls[-1]["extra_body"] is None
 
 
 def test_knowledge_and_search(tmp_path, monkeypatch):

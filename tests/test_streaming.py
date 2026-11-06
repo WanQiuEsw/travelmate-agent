@@ -4,10 +4,12 @@ from contextlib import contextmanager
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessageChunk, ToolMessage
 from langchain_core.outputs import ChatGenerationChunk
+from langchain_core.runnables import RunnableLambda
 
-from travelmate.agent import open_agent, tool_progress
+from travelmate.agent import open_agent, tool_progress, stream_chat
 from travelmate.api import create_app
 from test_travelmate import BudgetModel
+from test_planner import Model, open_test
 
 
 class StreamingBudgetModel(BudgetModel):
@@ -228,3 +230,25 @@ def test_disconnected_stream_keeps_progress_and_completes(tmp_path, monkeypatch)
         assert history["generating"] is False
         assert history["progress"] is None
         assert history["messages"][-1]["content"] == "预算合计1800元\n供参考"
+
+
+def test_skeleton_streams_before_the_finished_guide_and_is_not_the_answer(tmp_path):
+    class SkeletonModel(Model):
+        def with_structured_output(self, schema, **kwargs):
+            if schema.__name__ != 'Areas':
+                return super().with_structured_output(schema, **kwargs)
+            return RunnableLambda(lambda messages: schema.model_validate({
+                'areas': [{'name': '西湖片区', 'places': ['西湖']}],
+                'key_call': '钱够用，重点放在吃上。',
+                'days': [{'title': '抵达西湖·老城吃面', 'items': ['上午到，先放行李', '中午片儿川']}],
+                'tiers': ['经济档 约3000', '舒适档 约4000'],
+            }))
+
+    with open_test(tmp_path, SkeletonModel()) as agent:
+        events = list(stream_chat(agent, 'preview', '规划'))
+    tokens = ''.join(data['text'] for kind, data in events if kind == 'token')
+    assert '行程骨架（细节正在补全）' in tokens and 'Day1 抵达西湖·老城吃面' in tokens
+    assert events[-1][0] == 'done'
+    # 骨架只是过渡内容，最终回答仍是完整攻略，导出和 PDF 不受影响。
+    assert '行程骨架' not in events[-1][1]['answer']
+    assert events[-1][1]['answer'].startswith('# 上海 → 杭州')
