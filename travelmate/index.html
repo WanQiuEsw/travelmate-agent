@@ -381,8 +381,17 @@
   });
   let sessionStorageKey = 'travelmate-session-pending';
   let session;
+  // crypto.randomUUID 仅在安全上下文(HTTPS/localhost)可用；HTTP 下用 getRandomValues 兜底
+  function newSessionId() {
+    const c = typeof crypto !== 'undefined' ? crypto : null;
+    if (c && typeof c.randomUUID === 'function') return c.randomUUID();
+    const bytes = (c && typeof c.getRandomValues === 'function')
+      ? c.getRandomValues(new Uint8Array(16))
+      : Uint8Array.from({length: 16}, () => Math.floor(Math.random() * 256));
+    return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+  }
   try { session = localStorage.getItem(sessionStorageKey); } catch {}
-  if (!session || !/^[a-zA-Z0-9_-]{1,100}$/.test(session)) session = crypto.randomUUID();
+  if (!session || !/^[a-zA-Z0-9_-]{1,100}$/.test(session)) session = newSessionId();
   let busy = false;
   let activeInteraction = null;
   let pendingResponse = null;
@@ -876,7 +885,7 @@
     stopRecovery();
     send.disabled = false;
     send.textContent = '发送 ↑';
-    session = crypto.randomUUID();
+    session = newSessionId();
     rememberSession();
     input.value = '';
     for (const button of historySelect.querySelectorAll('[aria-current]')) button.setAttribute('aria-current', 'false');
@@ -1044,8 +1053,8 @@
     try {
       const account = await refreshAccount();
       sessionStorageKey = 'travelmate-session-' + account.user.id;
-      try { session = localStorage.getItem(sessionStorageKey) || crypto.randomUUID(); } catch { session = crypto.randomUUID(); }
-      if (!/^[a-zA-Z0-9_-]{1,100}$/.test(session)) session = crypto.randomUUID();
+      try { session = localStorage.getItem(sessionStorageKey) || newSessionId(); } catch { session = newSessionId(); }
+      if (!/^[a-zA-Z0-9_-]{1,100}$/.test(session)) session = newSessionId();
     } catch (error) { status.textContent = error.message; return; }
     try { await refreshSessions(); }
     catch { status.textContent = '历史列表加载失败，仍可尝试恢复当前对话。'; }
