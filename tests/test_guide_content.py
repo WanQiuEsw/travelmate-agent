@@ -93,6 +93,35 @@ def test_all_pdf_paths_filter_internal_sections_and_include_user_food(monkeypatc
     assert 'secret-' not in str(paragraphs) and '星期二' in str(paragraphs) and '片儿川' in str(paragraphs)
 
 
+def test_guide_pdf_tables_fit_page_and_leave_sources_out(monkeypatch):
+    import travelmate.pdf_export as pdf
+    real_table, real_paragraph = pdf.Table, pdf.Paragraph
+    tables, paragraphs = [], []
+
+    def table(data, **kwargs):
+        tables.append((max(map(len, data)), len(kwargs['colWidths']), sum(kwargs['colWidths'])))
+        return real_table(data, **kwargs)
+
+    def paragraph(text, *args, **kwargs):
+        paragraphs.append(text)
+        return real_paragraph(text, *args, **kwargs)
+
+    monkeypatch.setattr(pdf, 'Table', table)
+    monkeypatch.setattr(pdf, 'Paragraph', paragraph)
+    req = {**REQ}
+    guide = make_guide({'version': 1, 'requirements': req, 'plan': deepcopy(PLAN), 'saved_at': NOW.isoformat()},
+                       weather(req))
+    guide['sections'].append({'title': '下雨、排队或约不上时怎么换', 'kind': 'notes', 'items': [],
+                              'columns': ['触发情况', '立即怎么换', '预计增加费用'],
+                              'rows': [['雨天', '改去博物馆或商场暖房，改第二天再抢票', '待核实']]})
+    assert any(section['kind'] == 'sources' for section in guide['sections'])
+    assert guide_pdf(guide).startswith(b'%PDF')
+    # 列宽数量必须与列数一致、总宽不超 A4 正文宽 511pt，否则表格会溢出被裁
+    assert any(columns == 3 for columns, _, _ in tables)
+    assert all(columns == count and width <= 512 for columns, count, width in tables)
+    assert '参考来源' not in str(paragraphs) and '查询时间' not in str(paragraphs)
+
+
 def test_missing_food_retries_once_and_food_survives_history_and_version(tmp_path):
     class FoodModel(Model):
         def with_structured_output(self, schema, **kwargs):
