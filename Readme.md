@@ -75,6 +75,7 @@ uv run python -m travelmate.accounts invite
 | `ASR_PROVIDER` / `ASR_API_KEY` | 语音转文字，支持 OpenAI 兼容接口或 faster-whisper 本地跑 |
 | `COST_MODE` | `research` 联网查票价与人均 / `plan` 只排流程不查价 |
 | `REVIEW_MODE` | `program` 只跑程序检查 / `full` 加一次模型语义审查 |
+| `PLAN_BUDGET_SECONDS` | 规划软时限（默认 55 秒），超时跳过模型复核与剩余重排，先交付方案并提示待核实 |
 
 改完 `.env` 要重启服务，uvicorn 不会热加载。
 
@@ -176,6 +177,7 @@ Try this: `Two of us from Shanghai, three days in Hangzhou, 3,000 CNY, we like n
 | `ASR_PROVIDER` / `ASR_API_KEY` | Speech to text through any OpenAI-compatible endpoint, or faster-whisper locally |
 | `COST_MODE` | `research` looks up fares and per-head prices, `plan` skips pricing |
 | `REVIEW_MODE` | `program` runs the code checks only, `full` adds one model-based review |
+| `PLAN_BUDGET_SECONDS` | Soft planning budget in seconds (default 55); on timeout the model review and remaining revisions are skipped, and the plan ships with a verify-before-you-go notice |
 
 Restart the server after editing `.env`; uvicorn does not reload it.
 

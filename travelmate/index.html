@@ -603,7 +603,7 @@
   function createProgress(reply, started = Date.now()) {
     const box = document.createElement('details');
     box.className = 'progress';
-    box.open = true;
+    box.open = false;
     const summary = document.createElement('summary');
     const steps = document.createElement('ul');
     steps.setAttribute('aria-label', '执行记录');
@@ -612,7 +612,11 @@
     const answer = document.createElement('div');
     reply.append(answer);
     let phase = '正在处理';
-    const tick = () => { summary.textContent = phase + ' · 已用时 ' + Math.floor((Date.now() - started) / 1000) + ' 秒'; };
+    const tick = () => {
+      const seconds = Math.floor((Date.now() - started) / 1000);
+      summary.textContent = phase + ' · 已用时 ' + seconds + ' 秒'
+        + (seconds >= 45 ? ' · 用时偏长，可点开查看已完成的步骤' : '');
+    };
     tick();
     const timer = setInterval(tick, 1000);
     const recorded = new Set();
@@ -644,7 +648,7 @@
     return {answer, add, finish(success) {
       clearInterval(timer);
       phase = success ? '已完成' : '已中断';
-      box.open = !success;
+      box.open = false;
       tick();
     }};
   }
@@ -800,9 +804,9 @@
 
   let recoveryTimer;
   let recoveryProgress;
-  function stopRecovery() {
+  function stopRecovery(success = false) {
     clearTimeout(recoveryTimer);
-    recoveryProgress?.finish(false);
+    recoveryProgress?.finish(success);
     recoveryProgress = null;
   }
   async function loadConversation(id, recovering = false) {
@@ -828,7 +832,7 @@
       rememberSession();
       if (!recovering) input.value = '';
       if (!generating || !recovering || !recoveryProgress) {
-        stopRecovery();
+        stopRecovery(!generating);
         messages.replaceChildren();
         for (const item of data.messages) {
           const body = appendMessage(item.role === 'user' ? '你' : 'TravelMate', item.content, item.role === 'user');
