@@ -112,12 +112,22 @@ def answer_pdf(text):
     return output.getvalue()
 
 
+def guide_widths(columns, rows, total=511.27):
+    """按各列最长文本分配列宽；硬编码宽度一旦对不上列数，表格就会溢出页面。"""
+    lengths = [max([len(str(row[index])) for row in [columns, *rows] if index < len(row)] + [1])
+               for index in range(len(columns))]
+    weights = [min(length, 60) for length in lengths]
+    floor, spare = 52, total - 52 * len(columns)
+    return [floor + spare * weight / sum(weights) for weight in weights]
+
+
 def guide_pdf(guide):
     """Render the exact frozen public document used by the HTML preview."""
     from html import escape as html_escape
     from travelmate.evidence import safe_url
     from travelmate.guide import public_guide
     guide = public_guide(guide)
+    guide["sections"] = [section for section in guide["sections"] if section["kind"] != "sources"]
     pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
     body = ParagraphStyle("GuideBody", fontName="STSong-Light", fontSize=10.5, leading=17,
                           wordWrap="CJK", spaceAfter=8, textColor="#243b35", splitLongWords=1)
@@ -137,7 +147,7 @@ def guide_pdf(guide):
             rows = [section['columns'], *section['rows']]
             cells = [[Paragraph(escape(str(value)).replace('\n', '<br/>'), body) for value in row] for row in rows]
             widths = ([45, 90, 205, 90, 81] if section['kind'] == 'day' else [65, 150, 60, 125, 111]
-                      if section['kind'] == 'food' else [160, 351])
+                      if section['kind'] == 'food' else guide_widths(section['columns'], section['rows']))
             table = Table(cells, colWidths=widths, repeatRows=1, splitByRow=1, splitInRow=1)
             table.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'TOP'),
                 ('BACKGROUND', (0, 0), (-1, 0), '#edf2e9'), ('GRID', (0, 0), (-1, -1), .4, '#dce3d9'),

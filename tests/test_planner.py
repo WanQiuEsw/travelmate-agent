@@ -1,4 +1,5 @@
 from copy import deepcopy
+from datetime import datetime, timezone
 from langchain_core.runnables import RunnableLambda
 from langchain_core.messages import HumanMessage
 from travelmate.agent import open_agent, chat, stream_chat, conversation
@@ -165,6 +166,33 @@ def test_bounded_revision_and_preserve_success(tmp_path):
         assert state["plan"] == previous and len(state["versions"]) == 1
         assert model.calls.count("Itinerary") == 3
         assert "停止" in answer
+
+
+def test_unverifiable_refs_are_cleaned_instead_of_regenerating():
+    from travelmate.evidence import normalize, validate_evidence
+    from travelmate.planner import clean_refs
+    evidence = normalize('search_places', {'keyword': '西湖', 'city': '杭州'},
+                         {'results': [{'name': '西湖', 'location': '120.1,30.2'}]}, 'map', REQ)
+    ref = next(iter(evidence))
+    candidate = deepcopy(PLAN)
+    stop = candidate['days'][0]['stops'][0]
+    stop['place'] = '西湖（断桥入口）'
+    stop['fact_refs'] = {'place': ref, 'cost': ref, 'opening_hours': ref}
+    assert clean_refs(candidate, evidence, REQ) is True
+    assert stop['place'] == '西湖' and stop['fact_refs'] == {'place': ref}
+    assert validate_evidence(REQ, candidate, evidence) == []
+
+
+def test_slow_run_skips_remaining_checks_and_tells_the_user(tmp_path, monkeypatch):
+    import travelmate.planner as planner
+    monkeypatch.setattr(planner, 'run_deadline', lambda workflow: datetime(2000, 1, 1, tzinfo=timezone.utc))
+    model = Model(plans=[{**PLAN, 'other_cost': 90000}])
+    with open_test(tmp_path, model) as agent:
+        answer = chat(agent, 'slow', '规划')
+        state = get_workflow(agent, 'slow')
+    assert state['status'] == 'review' and state['attempts'] == 1
+    assert model.calls.count('Itinerary') == 1
+    assert '跳过部分自动复核' in answer
 
 
 def test_generation_failure_keeps_plan_and_masks_error(tmp_path):

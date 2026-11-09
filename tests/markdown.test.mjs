@@ -320,7 +320,7 @@ for (const success of [true, false]) {
     const completion = elements.form.handlers.submit({preventDefault() {}});
     await new Promise(resolve => setTimeout(resolve, 40));
     assert.ok(elements.messages.textContent.includes('已用时 0 秒'));
-    assert.ok(nodes(elements.messages).find(node => node.className === 'progress').open);
+    assert.equal(nodes(elements.messages).find(node => node.className === 'progress').open, false);
     assert.ok(nodes(elements.messages).some(node => node.tagName === 'H2' && node.textContent === '完整行程'));
     assert.ok(nodes(elements.messages).some(node => node.tagName === 'STRONG' && node.textContent === '西湖'));
     assert.equal(elements.send.disabled, true);
@@ -342,7 +342,7 @@ for (const success of [true, false]) {
       assert.equal(elements.input.value, '规划杭州');
     }
     assert.equal(elements.send.disabled, false);
-    assert.equal(nodes(elements.messages).find(node => node.className === 'progress').open, !success);
+    assert.equal(nodes(elements.messages).find(node => node.className === 'progress').open, false);
     assert.ok(elements.messages.textContent.includes(success ? '已完成 · 已用时' : '已中断 · 已用时'));
   });
 }
@@ -462,6 +462,26 @@ test('pinning persists selection on failure and deletion clears the current conv
   assert.equal(sessions.length, 1);
   assert.equal(vm.runInContext('session', context), 'new-session');
   assert.equal(elements.messages.children.length, 0);
+});
+
+test('progress stays collapsed and flags slow runs in the summary', () => {
+  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history']
+    .map(id => [id, new Node('div')]));
+  const context = vm.createContext({
+    setTimeout, clearTimeout,
+    document: {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []},
+    renderMarkdown, setInterval, clearInterval,
+    localStorage: {getItem: () => 'test', setItem() {}},
+  });
+  vm.runInContext(appSource, context);
+  vm.runInContext(`
+    const replyBody = appendMessage('TravelMate', '');
+    const progress = createProgress(replyBody, Date.now() - 50000);
+    progress.finish(true);
+  `, context);
+  const box = nodes(elements.messages).find(node => node.className === 'progress');
+  assert.equal(box.open, false);
+  assert.match(elements.messages.textContent, /已完成 · 已用时 5\d 秒 · 用时偏长/);
 });
 
 test('progress hides intermediate errors, deduplicates updates, and has no numbered steps', () => {
