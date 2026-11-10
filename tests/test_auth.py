@@ -141,7 +141,8 @@ def test_isolation_covers_history_mutation_export_and_bulk(protected):
     bob = TestClient(app, headers=HEADERS)
     register(app, bob, 'bob')
     assert bob.get('/sessions').json() == {'sessions': []}
-    for path in ('', '/trip', '/trip/pdf', f'/answers/{answer_id}/pdf', f'/answers/{answer_id}/md', '/plans/1', '/plans/1/pdf', '/plans/1/md'):
+    for path in ('', '/trip', '/trip/pdf', f'/answers/{answer_id}/pdf', f'/answers/{answer_id}/md',
+                 '/plans/1', '/plans/1/pdf', '/plans/1/md', '/plans/1/html'):
         assert bob.get('/sessions/alice-trip' + path).status_code == 404
     assert bob.delete('/sessions/alice-trip').status_code == 404
     assert bob.patch('/sessions/alice-trip/title', json={'title': 'stolen'}).status_code == 404

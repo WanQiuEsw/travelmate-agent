@@ -341,6 +341,12 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
         return Response(guide_markdown(load_guide(session_id, version)), media_type='text/markdown',
                         headers={'Content-Disposition': f'attachment; filename="travelmate-v{version}.md"'})
 
+    @app.get('/sessions/{session_id}/plans/{version}/html')
+    def export_guide_html(session_id: SessionId, version: Annotated[int, PathParam(ge=1)]):
+        return HTMLResponse(render_guide(load_guide(session_id, version)),
+                            headers={'Cache-Control': 'no-store',
+                                     'Content-Disposition': f'attachment; filename="travelmate-v{version}.html"'})
+
     @app.get("/sessions/{session_id}/trip/pdf")
     def export_trip(session_id: SessionId):
         state = get_workflow(app.state.agent, session_id)

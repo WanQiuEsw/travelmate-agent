@@ -102,9 +102,9 @@
   @media (prefers-reduced-motion: reduce) { .content[aria-busy="true"] .progress summary::after { animation: none; } }
   .references { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 10px; color: var(--muted); font-size: 13px; }
   summary { cursor: pointer; }
-  .export-pdf, .export-md { display: inline-block; margin-top: 18px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
+  .export-pdf, .export-md, .export-html { display: inline-block; margin-top: 18px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
   .content .guide-link { background: var(--accent-hover); color: white; text-decoration: none; font-weight: 600; }
-  .guide-link + .export-pdf, .export-md { margin-left: 12px; }
+  .guide-link + .export-pdf, .export-md, .export-html { margin-left: 12px; }
   .table-scroll { overflow-x: auto; margin: 16px 0; }
   table { border-collapse: collapse; width: 100%; font-size: 14px; }
   th, td { border: 1px solid var(--line); padding: 10px 12px; text-align: left; min-width: 80px; }
@@ -582,6 +582,13 @@
     markdown.textContent = '下载 Markdown';
     markdown.href = path + '/md';
     body.append(markdown);
+    if (hasGuide) {
+      const html = document.createElement('a');
+      html.className = 'export-html';
+      html.textContent = '下载 HTML';
+      html.href = path + '/html';
+      body.append(html);
+    }
   }
   function showReply(body, text) { body.classList.remove('plain'); renderMarkdown(body, text); }
   function createTypewriter(body) {

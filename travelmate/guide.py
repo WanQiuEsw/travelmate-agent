@@ -1,7 +1,9 @@
-"""One frozen public document shared by the preview and PDF."""
+"""One frozen public document shared by the preview and exports."""
+from base64 import b64encode
 from copy import deepcopy
 from datetime import date, datetime, timezone, timedelta
 from html import escape
+from pathlib import Path
 
 from travelmate.evidence import safe_url, context_key
 from travelmate.public import public_data, public_answer, internal_title
@@ -404,6 +406,9 @@ a:focus-visible,summary:focus-visible{outline:3px solid #b45309;outline-offset:4
 .verify{background:#fffdf5}.verify h2{border-left-color:#d97706}
 .sources{background:#f7f9f7}
 summary{cursor:pointer;font-size:19px;font-weight:600}
+.section-notes{margin-top:12px}
+.section-notes summary{font-size:14px;color:#0f5d55;padding:8px 0}
+.section-notes[open] summary{margin-bottom:6px}
 footer{margin-top:26px;text-align:center;font-size:13px;color:#5c6b64}
 .tl{list-style:none;margin:0;padding:0}
 .tl-item{display:grid;grid-template-columns:92px minmax(0,1fr);gap:12px;margin:0;padding:0;border:0}
@@ -474,20 +479,27 @@ def tier_cards(section, text):
     return ''.join(out) + '</div>'
 
 
-def render_guide(guide, pdf_url):
+def render_guide(guide, pdf_url=None):
     guide = public_guide(guide)
     def text(value):
         return escape(str(value), quote=True)
     hero = guide.get('hero') or '/assets/visual/town.webp'
+    actions = ''
+    if pdf_url is None:
+        image = Path(__file__).with_name('images') / Path(hero).name
+        hero = 'data:image/webp;base64,' + b64encode(image.read_bytes()).decode('ascii')
+    else:
+        path = pdf_url.removesuffix('/pdf')
+        actions = (f'<div class="actions"><a class="btn" href="{text(pdf_url)}">下载这版 PDF</a>'
+                   f'<a class="btn ghost" href="{text(path)}/md">下载 Markdown</a>'
+                   f'<a class="btn ghost" href="{text(path)}/html">下载 HTML</a></div>')
     parts = [f'<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{text(guide["title"])}</title><style>{GUIDE_CSS}</style></head><body><main>',
         f'<header class="hero"><img src="{text(hero)}" alt="目的地风景示意图"><div class="hero-body">',
         f'<p class="eyebrow">TRAVELMATE · 图文攻略</p><h1>{text(guide["title"])}</h1>',
         f'<p class="lede">{text(guide["notice"])}</p>',
         f'<p class="chips"><span>版本 {text(guide["version"])}</span><span>{text(guide["saved_at"])}</span>'
         f'<span>合计 {text(guide["total"])}</span></p>',
-        f'<div class="actions"><a class="btn" href="{text(pdf_url)}">下载这版 PDF</a>'
-        f'<a class="btn ghost" href="{text(pdf_url.removesuffix("/pdf") + "/md")}">下载 Markdown</a></div>',
-        '</div></header>']
+        actions, '</div></header>']
     for section in guide["sections"]:
         parts.append(f'<section class="card {text(section["kind"])}">')
         if section["kind"] == "sources":
@@ -507,6 +519,9 @@ def render_guide(guide, pdf_url):
                 for row in section['rows']:
                     parts.append('<tr>' + ''.join('<td>' + text(value).replace('\n', '<br>') + '</td>' for value in row) + '</tr>')
                 parts.append('</tbody></table></div>')
+        fold_notes = section['kind'] == 'budget' and section['items']
+        if fold_notes:
+            parts.append('<details class="section-notes"><summary>注意事项</summary>')
         parts.append('<ul>')
         for item in section["items"]:
             parts.append('<li>' + text(item["text"]))
@@ -515,7 +530,7 @@ def render_guide(guide, pdf_url):
                 parts.append(f'<br><a href="{text(url)}" target="_blank" rel="noopener noreferrer">{text(item.get("link_label", "公开来源"))}</a>')
             parts.append('</li>')
         parts.append('</ul>')
-        if section["kind"] == "sources":
+        if fold_notes or section["kind"] == "sources":
             parts.append('</details>')
         parts.append('</section>')
     parts.append('<footer>图为目的地示意图，非实景；价格与开放状态以出行时官方信息为准</footer>')

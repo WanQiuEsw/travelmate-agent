@@ -251,5 +251,5 @@ def test_planning_streams_progress_then_a_completed_guide_reference(tmp_path):
     kind, done = events[-1]
     assert kind == 'done' and done['plan_version'] == 1
     assert '上海 → 杭州 · 1天旅行攻略已整理完成' in done['answer']
-    assert '图文攻略' in done['answer'] and '导出 PDF 和 Markdown' in done['answer']
+    assert '图文攻略' in done['answer'] and '导出 PDF、Markdown 和 HTML' in done['answer']
     assert '\n' not in done['answer']

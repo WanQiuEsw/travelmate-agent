@@ -348,7 +348,7 @@ for (const outcome of ['answer', 'guide', 'error', 'generation failure']) {
     if (guide) {
       assert.ok(elements.messages.textContent.includes('旅行攻略已整理完成'));
       assert.deepEqual(nodes(elements.messages).map(node => node.href).filter(href => href?.startsWith('/sessions/')),
-        ['/sessions/trip/plans/2', '/sessions/trip/plans/2/pdf', '/sessions/trip/plans/2/md']);
+        ['/sessions/trip/plans/2', '/sessions/trip/plans/2/pdf', '/sessions/trip/plans/2/md', '/sessions/trip/plans/2/html']);
       assert.equal(elements.input.value, '');
     } else if (success) {
       assert.equal(nodes(elements.messages).filter(node => node.className === 'export-pdf').length, 1);
@@ -356,7 +356,7 @@ for (const outcome of ['answer', 'guide', 'error', 'generation failure']) {
       assert.ok(nodes(elements.messages).some(node => node.tagName === 'STRONG' && node.textContent === '西湖'));
       assert.equal(elements.input.value, '');
     } else {
-      assert.equal(nodes(elements.messages).filter(node => ['export-pdf', 'export-md'].includes(node.className)).length, 0);
+      assert.equal(nodes(elements.messages).filter(node => ['export-pdf', 'export-md', 'export-html'].includes(node.className)).length, 0);
       assert.ok(elements.messages.textContent.includes(generationFailed ? '规划失败，请重试。' : '本次回复未完成'));
       assert.equal(elements.input.value, '规划杭州');
     }
@@ -609,8 +609,8 @@ test('guide links bind to completed answer version and original session', async 
     addExport(appendMessage('TravelMate', '新攻略'), 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', session, 2);`, context);
   const links = nodes(elements.messages).filter(node => node.tagName === 'A');
   assert.deepEqual(links.map(node => node.href), [
-    '/sessions/trip-old/plans/1', '/sessions/trip-old/plans/1/pdf', '/sessions/trip-old/plans/1/md',
-    '/sessions/trip-new/plans/2', '/sessions/trip-new/plans/2/pdf', '/sessions/trip-new/plans/2/md',
+    '/sessions/trip-old/plans/1', '/sessions/trip-old/plans/1/pdf', '/sessions/trip-old/plans/1/md', '/sessions/trip-old/plans/1/html',
+    '/sessions/trip-new/plans/2', '/sessions/trip-new/plans/2/pdf', '/sessions/trip-new/plans/2/md', '/sessions/trip-new/plans/2/html',
   ]);
   assert.equal(links[0].textContent, '查看图文攻略');
   assert.equal(links[0].target, '_blank');
