@@ -225,12 +225,15 @@ test('history restores latest scroll position without opening a dialog or interr
     renderMarkdown, localStorage: {getItem: () => 'test', setItem() {}},
     fetch: async () => ({ok: true, json: async () => ({messages: [
       {role: 'user', content: '最早的问题'},
+      {role: 'assistant', content: '规划失败，请重试。', generation_failed: true, message_id: 'b'.repeat(32)},
       {role: 'assistant', content: '最新的回答', interaction: {id: 'a'.repeat(32), title: '补充条件', fields: [{key: 'days', label: '天数', type: 'number'}]}}
     ]})}),
   });
   vm.runInContext(appSource, context);
   await vm.runInContext('loadConversation("test")', context);
   assert.equal(viewport.scrollTop, 2000);
+  assert.ok(elements.messages.textContent.includes('规划失败，请重试。'));
+  assert.equal(nodes(elements.messages).filter(node => node.tagName === 'A').length, 0);
   assert.ok(!elements.interaction.open);
   assert.equal(elements['interaction-open'].hidden, false);
   viewport.scrollTop = 100;
@@ -288,10 +291,11 @@ test('Enter sends, Ctrl/Command+Enter inserts a newline, and IME confirmation st
   assert.equal(submissions, 1);
 });
 
-for (const outcome of ['answer', 'guide', 'error']) {
+for (const outcome of ['answer', 'guide', 'error', 'generation failure']) {
   test(`renders SSE progress and handles a completed ${outcome} event`, async () => {
     const guide = outcome === 'guide';
-    const success = outcome !== 'error';
+    const generationFailed = outcome === 'generation failure';
+    const success = outcome === 'answer' || guide;
     const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history',
       'trip-panel', 'trip-data', 'trip-status', 'trip-confirm', 'trip-save', 'trip-pdf', 'trip-preview']
       .map(id => [id, new Node('div')]));
@@ -313,6 +317,7 @@ for (const outcome of ['answer', 'guide', 'error']) {
         await gate;
         const frame = guide ? 'event: done\ndata: {"answer":"杭州 1 天旅行攻略已整理完成","plan_version":2,"session_id":"trip","message_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}\n\n'
           : success ? 'event: done\ndata: {"answer":"## 完整行程\\n**西湖**","message_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}\n\n'
+          : generationFailed ? 'event: error\ndata: {"text":"规划失败，请重试。","generation_failed":true}\n\n'
           : 'event: error\ndata: {"text":"失败"}\n\n';
         return {value: encoder.encode(frame), done: false};
       }
@@ -351,8 +356,8 @@ for (const outcome of ['answer', 'guide', 'error']) {
       assert.ok(nodes(elements.messages).some(node => node.tagName === 'STRONG' && node.textContent === '西湖'));
       assert.equal(elements.input.value, '');
     } else {
-      assert.equal(nodes(elements.messages).filter(node => node.className === 'export-pdf').length, 0);
-      assert.ok(elements.messages.textContent.includes('本次回复未完成'));
+      assert.equal(nodes(elements.messages).filter(node => ['export-pdf', 'export-md'].includes(node.className)).length, 0);
+      assert.ok(elements.messages.textContent.includes(generationFailed ? '规划失败，请重试。' : '本次回复未完成'));
       assert.equal(elements.input.value, '规划杭州');
     }
     assert.equal(elements.send.disabled, false);

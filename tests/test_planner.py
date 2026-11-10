@@ -76,8 +76,43 @@ def test_schema_format_repair_is_bounded_and_streams_progress(tmp_path, monkeypa
         assert model.calls.count('Itinerary') == 2
         assert sum(event == 'status' and '正在修正回答的数据格式' in data['text'] for event, data in events) == 1
         assert get_workflow(agent, 'format')['status'] == ('failed' if always_invalid else 'review')
-        assert events[-1][0] == 'done'
-        assert 'unsupported-mode' not in events[-1][1]['answer']
+        kind, payload = events[-1]
+        assert kind == ('error' if always_invalid else 'done')
+        assert 'unsupported-mode' not in (payload.get('text') or payload['answer'])
+
+
+@pytest.mark.parametrize('always_empty', [False, True])
+def test_preset_intake_retries_when_the_model_omits_the_structured_result(tmp_path, always_empty):
+    class EmptyIntakeModel(Model):
+        def with_structured_output(self, schema, **kwargs):
+            assert schema.__name__ == 'Intake'
+
+            def run(messages):
+                self.calls.append(schema.__name__)
+                if len(self.calls) == 1 or always_empty:
+                    return None
+                assert '未返回结构化结果' in messages[-1].content
+                return schema.model_validate({'intent': 'plan', 'conditions': {
+                    'origin': '厦门', 'destination': '北京', 'days': 3, 'travelers': 2,
+                    'budget': 3000, 'budget_scope': 'total', 'budget_currency': 'CNY', 'transport': '高铁',
+                }})
+
+            return RunnableLambda(run)
+
+    model = EmptyIntakeModel()
+    preset = '我们【2人】从【厦门】出发到【北京】玩【3天】，总预算【3000元】，交通方式【高铁】，请帮我们规划行程。'
+    with open_test(tmp_path, model) as agent:
+        events = list(stream_chat(agent, 'preset', preset))
+        message = conversation(agent, 'preset')['messages'][-1]
+        assert model.calls == ['Intake', 'Intake']
+        assert any('正在修正回答的数据格式' in data['text'] for kind, data in events if kind == 'status')
+        kind, payload = events[-1]
+        if always_empty:
+            assert kind == 'error' and payload['generation_failed'] and payload['text'] == message['content']
+            assert message['generation_failed'] and 'plan_version' not in message
+        else:
+            assert kind == 'done' and not message.get('generation_failed')
+            assert [field['key'] for field in payload['interaction']['fields']] == ['budget_includes']
 
 
 def test_real_evidence_ids_reach_model_and_places_query_concurrently(tmp_path, monkeypatch):

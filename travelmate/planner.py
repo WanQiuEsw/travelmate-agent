@@ -174,13 +174,15 @@ def build_planner(model, saver, knowledge, tools, prompt, review_model=None):
             for attempt in range(2):
                 try:
                     result = runnable.invoke(messages)
+                    if result is None:
+                        raise ValueError('未返回结构化结果，请使用指定的输出结构')
                     if schema is Itinerary and not result.foods:
                         raise ValueError('foods 必须包含目的地特色美食介绍，不能只输出景点')
                     return result
                 except ValueError as exc:
                     errors = ([{"field": list(error["loc"]), "type": error["type"], "message": error["msg"]}
                                for error in exc.errors(include_input=False, include_url=False)] if isinstance(exc, ValidationError)
-                              else [{"field": ['foods'], "message": str(exc)}])
+                              else [{"field": [], "message": str(exc)}])
                     logging.getLogger(__name__).warning("Model stage %s returned invalid fields: %s", schema.__name__, errors)
                     if attempt or (deadline and datetime.now(timezone.utc) > deadline):
                         raise
@@ -193,8 +195,11 @@ def build_planner(model, saver, knowledge, tools, prompt, review_model=None):
             logging.getLogger(__name__).info("Model stage %s took %.2fs", schema.__name__, perf_counter() - started)
 
     def fail(workflow, name):
+        text = "本轮规划遇到错误。请稍后重试或补充条件。"
+        if workflow.get("plan"):
+            text = "此前保存的攻略仍可查看。" + text
         return {"workflow": stage(workflow, name, status="failed"),
-                "messages": [AIMessage(content="本次生成未完成，已保留此前可用方案。请稍后重试或补充条件。") ]}
+                "messages": [AIMessage(content=text, additional_kwargs={"generation_failed": True})]}
 
     def intake(state):
         old = state.get("workflow", {})
@@ -238,7 +243,8 @@ def build_planner(model, saver, knowledge, tools, prompt, review_model=None):
                     "此时direction简短比较候选，等用户选定再排按天路线。其他规划请求的direction先给玩法判断、按天骨架和预算取舍，"
                     "不因缺失日期或步数而只返回表单。预算口径不明时明确写待确认，不擅自当作人均或全员金额。"
                     "direction用Markdown给有用答复或暂定方向，不在正文追问缺失字段，系统会显示表单。"
-                    "任务含糊、操作范围不明确或涉及更改已订安排需先确认时，填写confirmation的问题及2至5个具体选项。"
+                    "只缺少旅行条件时由系统追问，confirmation留空。任务含糊、操作范围不明确或涉及更改已订安排需先确认时，"
+                    "填写confirmation的问题及2至5个具体选项。"
                     "等待选择后才继续，不能代替用户确认，也不能重复确认已选事项。",
                     {"history": history, "requirements": old.get("requirements", {}), "form_answers": answers,
                      "current_plan": old.get("plan")},

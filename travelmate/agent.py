@@ -162,6 +162,9 @@ def stream_chat(agent, session_id: str, message: str, interaction_response=None)
         return
     last = state.values["messages"][-1]
     reply = reply_content(state.values["messages"])
+    if last.additional_kwargs.get("generation_failed"):
+        yield "error", {"text": reply["answer"], "generation_failed": True}
+        return
     if not reply.get("plan_version"):
         answer = reply["answer"]
         for offset in range(0, len(answer), 48):
@@ -185,6 +188,7 @@ def conversation(agent, session_id: str) -> dict:
         elif isinstance(message, AIMessage) and not message.tool_calls and message.text:
             messages.append({"role": "assistant", "content": public_answer(message.text, stored),
                              **({"interaction": message.additional_kwargs["interaction"]} if message.additional_kwargs.get("interaction") else {}),
+                             **({"generation_failed": True} if message.additional_kwargs.get("generation_failed") else {}),
                              "message_id": answer_id(message, index) if index < len(stored) - 1 or not state.next else None,
                              **({"plan_version": message.additional_kwargs["plan_version"]} if message.additional_kwargs.get("plan_version") else {})})
     return {"session_id": session_id, "messages": messages, "interrupted": bool(state.next)}

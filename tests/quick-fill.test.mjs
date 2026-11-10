@@ -108,6 +108,7 @@ test('preset fills an editable bracketed draft without submitting', () => {
   e.preset.handlers.click();
   assert.match(e.input.value, /我们【2人】准备【\d{4}年\d{1,2}月\d{1,2}日】从【厦门】出发到【北京】/);
   assert.match(e.input.value, /交通方式【高铁】/);
+  assert.match(e.input.value, /全员总预算【3000元】人民币（CNY），预算包含【住宿、餐饮、门票和市内交通，不含往返高铁】/);
   assert.equal(e.input.focused, true);
 });
 test('quick fields close the dialog and submit a complete travel request once', () => {
