@@ -288,8 +288,10 @@ test('Enter sends, Ctrl/Command+Enter inserts a newline, and IME confirmation st
   assert.equal(submissions, 1);
 });
 
-for (const success of [true, false]) {
-  test(`renders SSE text before done and handles ${success ? 'success' : 'failure'}`, async () => {
+for (const outcome of ['answer', 'guide', 'error']) {
+  test(`renders SSE progress and handles a completed ${outcome} event`, async () => {
+    const guide = outcome === 'guide';
+    const success = outcome !== 'error';
     const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history',
       'trip-panel', 'trip-data', 'trip-status', 'trip-confirm', 'trip-save', 'trip-pdf', 'trip-preview']
       .map(id => [id, new Node('div')]));
@@ -302,10 +304,15 @@ for (const success of [true, false]) {
     let reads = 0;
     const reader = {async read() {
       reads++;
-      if (reads === 1) return {value: encoder.encode('event: status\ndata: {"text":"找到参考资料","sources":[{"title":"官方攻略","url":"https://example.com/guide"},{"title":"危险链接","url":"javascript:alert(1)"}]}\n\nevent: token\ndata: {"text":"## 完整行程\\n**西湖**"}\n\n'), done: false};
+      if (reads === 1) {
+        const status = 'event: status\ndata: {"text":"找到参考资料","sources":[{"title":"官方攻略","url":"https://example.com/guide"},{"title":"危险链接","url":"javascript:alert(1)"}]}\n\n';
+        const token = 'event: token\ndata: {"text":"## 完整行程\\n**西湖**"}\n\n';
+        return {value: encoder.encode(guide ? status : status + token), done: false};
+      }
       if (reads === 2) {
         await gate;
-        const frame = success ? 'event: done\ndata: {"answer":"## 完整行程\\n**西湖**","message_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}\n\n'
+        const frame = guide ? 'event: done\ndata: {"answer":"杭州 1 天旅行攻略已整理完成","plan_version":2,"session_id":"trip","message_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}\n\n'
+          : success ? 'event: done\ndata: {"answer":"## 完整行程\\n**西湖**","message_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}\n\n'
           : 'event: error\ndata: {"text":"失败"}\n\n';
         return {value: encoder.encode(frame), done: false};
       }
@@ -324,8 +331,7 @@ for (const success of [true, false]) {
     await new Promise(resolve => setTimeout(resolve, 40));
     assert.ok(elements.messages.textContent.includes('已用时 0 秒'));
     assert.equal(nodes(elements.messages).find(node => node.className === 'progress').open, false);
-    assert.ok(nodes(elements.messages).some(node => node.tagName === 'H2' && node.textContent === '完整行程'));
-    assert.ok(nodes(elements.messages).some(node => node.tagName === 'STRONG' && node.textContent === '西湖'));
+    assert.equal(nodes(elements.messages).some(node => node.tagName === 'H2' && node.textContent === '完整行程'), !guide);
     assert.equal(elements.send.disabled, true);
     assert.equal(elements.input.value, '');
     assert.equal(elements.input.disabled, true);
@@ -334,7 +340,12 @@ for (const success of [true, false]) {
     assert.equal(nodes(elements.messages).filter(node => node.tagName === 'A').length, 1);
     release();
     await completion;
-    if (success) {
+    if (guide) {
+      assert.ok(elements.messages.textContent.includes('旅行攻略已整理完成'));
+      assert.deepEqual(nodes(elements.messages).map(node => node.href).filter(href => href?.startsWith('/sessions/')),
+        ['/sessions/trip/plans/2', '/sessions/trip/plans/2/pdf', '/sessions/trip/plans/2/md']);
+      assert.equal(elements.input.value, '');
+    } else if (success) {
       assert.equal(nodes(elements.messages).filter(node => node.className === 'export-pdf').length, 1);
       assert.ok(nodes(elements.messages).some(node => node.tagName === 'H2' && node.textContent === '完整行程'));
       assert.ok(nodes(elements.messages).some(node => node.tagName === 'STRONG' && node.textContent === '西湖'));
@@ -591,9 +602,13 @@ test('guide links bind to completed answer version and original session', async 
     addExport(appendMessage('TravelMate', '旧攻略'), 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', session, 1);
     session = 'trip-new';
     addExport(appendMessage('TravelMate', '新攻略'), 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', session, 2);`, context);
-  const links = nodes(elements.messages).filter(node => node.className === 'export-pdf guide-link');
-  assert.equal(links[0].href, '/sessions/trip-old/plans/1');
-  assert.equal(links[1].href, '/sessions/trip-new/plans/2');
+  const links = nodes(elements.messages).filter(node => node.tagName === 'A');
+  assert.deepEqual(links.map(node => node.href), [
+    '/sessions/trip-old/plans/1', '/sessions/trip-old/plans/1/pdf', '/sessions/trip-old/plans/1/md',
+    '/sessions/trip-new/plans/2', '/sessions/trip-new/plans/2/pdf', '/sessions/trip-new/plans/2/md',
+  ]);
+  assert.equal(links[0].textContent, '查看图文攻略');
+  assert.equal(links[0].target, '_blank');
 });
 
 test('reload polls an active session even before it appears in history', async () => {

@@ -102,9 +102,9 @@
   @media (prefers-reduced-motion: reduce) { .content[aria-busy="true"] .progress summary::after { animation: none; } }
   .references { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 10px; color: var(--muted); font-size: 13px; }
   summary { cursor: pointer; }
-  .guide-link { margin-left: 10px; }
   .export-pdf, .export-md { display: inline-block; margin-top: 18px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
-  .export-md { margin-left: 12px; }
+  .content .guide-link { background: var(--accent-hover); color: white; text-decoration: none; font-weight: 600; }
+  .guide-link + .export-pdf, .export-md { margin-left: 12px; }
   .table-scroll { overflow-x: auto; margin: 16px 0; }
   table { border-collapse: collapse; width: 100%; font-size: 14px; }
   th, td { border: 1px solid var(--line); padding: 10px 12px; text-align: left; min-width: 80px; }
@@ -558,27 +558,30 @@
   });
   function addExport(body, messageId, sessionId = session, planVersion = null) {
     if (!/^[a-f0-9]{32}$/.test(messageId || '')) return;
+    const base = '/sessions/' + encodeURIComponent(sessionId);
+    const hasGuide = Number.isInteger(planVersion) && planVersion > 0;
+    const path = hasGuide ? base + '/plans/' + planVersion : base + '/answers/' + messageId;
+    if (hasGuide) {
+      const guide = document.createElement('a');
+      guide.className = 'export-pdf guide-link';
+      guide.textContent = '查看图文攻略';
+      guide.href = path;
+      guide.target = '_blank';
+      guide.rel = 'noopener';
+      body.append(guide);
+    }
     const link = document.createElement('a');
     link.className = 'export-pdf';
-    link.textContent = '导出这份回答为 PDF';
-    link.href = '/sessions/' + encodeURIComponent(sessionId) + '/answers/' + messageId + '/pdf';
+    link.textContent = hasGuide ? '导出 PDF' : '导出这份回答为 PDF';
+    link.href = path + '/pdf';
     link.target = '_blank';
     link.rel = 'noopener';
     body.append(link);
     const markdown = document.createElement('a');
     markdown.className = 'export-md';
     markdown.textContent = '下载 Markdown';
-    markdown.href = '/sessions/' + encodeURIComponent(sessionId) + '/answers/' + messageId + '/md';
+    markdown.href = path + '/md';
     body.append(markdown);
-    if (Number.isInteger(planVersion) && planVersion > 0) {
-      const guide = document.createElement('a');
-      guide.className = 'export-pdf guide-link';
-      guide.textContent = '查看图文攻略';
-      guide.href = '/sessions/' + encodeURIComponent(sessionId) + '/plans/' + planVersion;
-      guide.target = '_blank';
-      guide.rel = 'noopener';
-      body.append(guide);
-    }
   }
   function showReply(body, text) { body.classList.remove('plain'); renderMarkdown(body, text); }
   function createTypewriter(body) {
@@ -595,7 +598,6 @@
     return {
       append(chunk) { text += chunk; schedule(); },
       finish(answer) {
-        // 骨架已流式显示过，完成后直接替换成完整版，不清空避免闪一下白屏。
         visible = Math.min(visible, answer.length);
         text = answer;
         return new Promise(resolve => { finished = resolve; schedule(); });
@@ -978,7 +980,12 @@
           }
           if (event === 'done') {
             showInteraction(data.interaction, data.interaction?.id === interactionResponse?.id ? interactionResponse?.answers : {});
-            await writer.finish(data.answer);
+            if (data.plan_version) {
+              writer.cancel();
+              showReply(progress.answer, data.answer);
+            } else {
+              await writer.finish(data.answer);
+            }
             reply.scrollIntoView?.({block: 'start'});
             addExport(progress.answer, data.message_id, data.session_id || session, data.plan_version);
             reply.setAttribute('aria-busy', 'false');

@@ -49,7 +49,7 @@ def test_flight_and_ferry_plans_can_be_validated_saved_and_presented(tmp_path, m
         assert state['status'] == 'review'
         guide = get_version(state, 1)
         assert ('飞机' if mode == 'flight' else '轮渡') in render_guide(guide, '/guide.pdf')
-        assert events[-1][0] == 'done' and '第1天' in events[-1][1]['answer']
+        assert events[-1][0] == 'done' and events[-1][1]['plan_version'] == 1
 
 
 @pytest.mark.parametrize('always_invalid', [False, True])
@@ -130,7 +130,7 @@ def test_required_order_versions_and_restart(tmp_path, monkeypatch):
         assert state["status"] == "review" and state["version"] == 1
         assert [row["node"] for row in state["trace"]] == ["requirements", "ready", "research", "organize_places", "verify_places", "generate", "check", "quality_review", "save_version", "present"]
         assert state["versions"][0]["plan"] == state["plan"]
-        assert "估算" in text and "无法查询" in text
+        assert "1天旅行攻略已整理完成" in text
     with open_test(tmp_path, Model(intake={"intent": "modify", "conditions": {"budget": 2000}})) as agent:
         chat(agent, "trip", "预算改成2000")
         state = get_workflow(agent, "trip")
@@ -166,6 +166,8 @@ def test_bounded_revision_and_preserve_success(tmp_path):
         assert state["plan"] == previous and len(state["versions"]) == 1
         assert model.calls.count("Itinerary") == 3
         assert "停止" in answer
+        assert "上一版可用攻略已保留" in answer
+        assert conversation(agent, "trip")["messages"][-1]["plan_version"] == 1
 
 
 def test_unverifiable_refs_are_cleaned_instead_of_regenerating():
@@ -226,7 +228,9 @@ def test_interrupt_checkpoint_resume_and_stream_status(tmp_path):
         agent.invoke(None, config)
         assert not agent.get_state(config).next
         assert get_workflow(agent, "trip")["status"] == "review"
-        events = list(stream_chat(agent, "stream", "规划"))
+    model = Model(intake={"intent": "question", "direction": "可以按兴趣选择片区。" * 8})
+    with open_test(tmp_path, model) as agent:
+        events = list(stream_chat(agent, "stream", "怎么选景点"))
         assert events[-1][0] == "done"
         assert any(event == "status" for event, _ in events)
         tokens = [data['text'] for event, data in events if event == 'token']

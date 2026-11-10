@@ -1,7 +1,9 @@
 import argparse
 from uuid import uuid4
 
-from travelmate.agent import chat, open_agent
+from travelmate.agent import chat_reply, open_agent
+from travelmate.guide import get_version, guide_markdown
+from travelmate.workflow import get_workflow
 
 
 def main():
@@ -22,7 +24,10 @@ def main():
                     print("消息最多 8000 字符")
                     continue
                 try:
-                    print("TravelMate：", chat(agent, session, message))
+                    reply = chat_reply(agent, session, message)
+                    print("TravelMate：", reply["answer"])
+                    if version := reply.get("plan_version"):
+                        print(guide_markdown(get_version(get_workflow(agent, session), version)))
                 except Exception:
                     print("请求失败，请检查模型配置或网络。可使用同一会话重试。")
     except ValueError as exc:

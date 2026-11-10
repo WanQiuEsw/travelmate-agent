@@ -27,8 +27,9 @@ def test_missing_fields_roundtrip_is_structured_and_survives_restart(tmp_path):
             "id": interaction["id"], "answers": {key: REQ[key] for key in keys}})
         assert "Intake" not in model.calls
         assert get_workflow(agent, "form")["requirements"]["destination"] == "杭州"
-        assert '| 时段 |' in answer and '## 预算怎么用' in answer
-        assert "interaction" not in conversation(agent, "form")["messages"][-1]
+        message = conversation(agent, "form")["messages"][-1]
+        assert '杭州 · 1天旅行攻略已整理完成' in answer
+        assert message["plan_version"] == 1 and "interaction" not in message
 
 
 def test_destination_suggestions_wait_for_the_users_choice(tmp_path):
@@ -118,5 +119,11 @@ def test_api_stream_transports_form_answers(tmp_path):
         response = client.post('/chat/stream', json={"session_id": "api-form", "message": "提交条件",
             "interaction_response": {"id": interaction['id'], "answers": answers}})
         assert 'event: done' in response.text
-        assert '预算怎么用' in response.text
+        assert '旅行攻略已整理完成' in response.text and 'event: token' not in response.text
+        saved = client.get('/sessions/api-form').json()['messages'][-1]
+        assert saved['plan_version'] == 1 and '预算怎么用' not in saved['content']
+        path = f'/sessions/api-form/plans/{saved["plan_version"]}'
+        assert '预算怎么用' in client.get(path).text
+        assert client.get(path + '/pdf').content.startswith(b'%PDF-')
+        assert '预算怎么用' in client.get(path + '/md').text
         assert client.get('/sessions/api-form/trip').json()['status'] == 'review'

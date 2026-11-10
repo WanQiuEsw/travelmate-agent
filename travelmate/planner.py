@@ -2,7 +2,6 @@
 import json
 import logging
 import os
-import re
 from concurrent.futures import ThreadPoolExecutor
 from time import perf_counter
 from datetime import date, datetime, timedelta, timezone
@@ -19,8 +18,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from travelmate.workflow import (PlanningState, update_trip, Itinerary, PartialRequirements, adapt_timing,
                                  period_plan, time_label, travel_label, cost_label, total_cost_label, TIME_NOTICE)
 from travelmate.evidence import normalize, validate_evidence, context_key, model_view, check_reference
-from travelmate.public import public_data, public_answer
-from travelmate.guide import version_snapshot, get_version, guide_markdown, preliminary_brief
+from travelmate.public import public_data
+from travelmate.guide import version_snapshot, preliminary_brief
 from travelmate.review import ReviewReport, program_review, blocking_messages, plan_key, timing_warnings
 from travelmate.interaction import Decision, requirements_interaction, decision_interaction
 
@@ -55,33 +54,6 @@ class Areas(BaseModel):
     key_call: str = Field(default="", max_length=300, description="一句话关键判断，例如钱够不够、最该花在哪")
     days: list[SkeletonDay] = Field(default_factory=list, max_length=30, description="按天骨架；地点仍是候选，未核实")
     tiers: list[str] = Field(default_factory=list, max_length=3, description="三档预算的一句话量级，例如 经济档 约3400")
-
-
-def preview_markdown(areas, requirements):
-    """先给用户看的骨架：只说去哪、什么顺序，不写价格细节。"""
-    if not areas.days:
-        return ""
-    route = (requirements.get("origin") + " → " if requirements.get("origin") else "") + requirements["destination"]
-    lines = ["## 行程骨架（细节正在补全）", ""]
-    if areas.key_call:
-        lines += [areas.key_call, ""]
-    lines += [f"{route} · {requirements['days']}天 · {requirements['travelers']}人", ""]
-    # 骨架阶段还没有准确时刻，用表格只表达顺序，不编时间。
-    lines += ["| Day | 主题 | 当天顺序 |", "| --- | --- | --- |"]
-    for index, day in enumerate(areas.days, 1):
-        order = " → ".join(item.strip().rstrip("。；;") for item in day.items)
-        lines.append(f"| 第{index}天 | {day.title} | {order} |")
-    lines.append("")
-    if areas.tiers:
-        rows = []
-        for tier in areas.tiers:
-            matched = re.match(r"^(经济档|舒适档|品质档)\s*[:：]?\s*(.*)$", tier.strip())
-            rows.append(matched.groups() if matched else ("—", tier.strip()))
-        lines += ["| 档位 | 量级（待核实） |", "| --- | --- |"]
-        lines += [f"| {name} | {scale} |" for name, scale in rows]
-        lines.append("")
-    lines.append("地点还要逐条核对，价格待查，完整版随后替换这一版。")
-    return "\n".join(lines)
 
 
 def cost_mode():
@@ -268,7 +240,8 @@ def build_planner(model, saver, knowledge, tools, prompt, review_model=None):
                     "direction用Markdown给有用答复或暂定方向，不在正文追问缺失字段，系统会显示表单。"
                     "任务含糊、操作范围不明确或涉及更改已订安排需先确认时，填写confirmation的问题及2至5个具体选项。"
                     "等待选择后才继续，不能代替用户确认，也不能重复确认已选事项。",
-                    {"history": history, "requirements": old.get("requirements", {}), "form_answers": answers},
+                    {"history": history, "requirements": old.get("requirements", {}), "form_answers": answers,
+                     "current_plan": old.get("plan")},
                 )
             if data.confirmation:
                 return {"workflow": stage(old, "clarify", status="collecting"), "intake_result": {"intent": "clarify"},
@@ -380,11 +353,6 @@ def build_planner(model, saver, knowledge, tools, prompt, review_model=None):
                     "areas": {"areas": [], "key_call": "", "days": [], "tiers": []}}
         try:
             areas = structured(Areas, "根据资料和约束按片区组织候选地点，每天优先同片区；用户喜欢美食时，每个片区兼顾用餐地点或餐饮街区，不能只列景区。候选名称尚不代表已核实，后续用高德地点查询核对；地点匹配也不代表营业时间和价格已核实。最多3个片区、每区4个地点。同时给出按天骨架：每天一个主题化标题和2至4条要点，只用候选片区里的地点，顺序要顺路；tiers 用一句话给出经济、舒适、品质三档的量级；key_call 一句话说清钱够不够、最该花在哪。骨架不写价位细节，不编门店。", {"requirements": w["requirements"], "research": state.get("research_data", [])}, deadline=run_deadline(w))
-            text = preview_markdown(areas, w["requirements"])
-            if text:
-                writer = get_stream_writer()
-                writer({"text": "已生成行程骨架，正在核对地点并补全细节。"})
-                writer({"preview": text})
             return {"workflow": stage(w, "organize_places"), "areas": areas.model_dump()}
         except Exception:
             return fail(w, "organize_failed")
@@ -490,25 +458,26 @@ def build_planner(model, saver, knowledge, tools, prompt, review_model=None):
     def present(state):
         w = state["workflow"]
 
-        text = ""
+        version = w.get("version")
+        saved = next((item for item in w.get("versions", []) if item["version"] == version), None)
         if w["status"] == "blocked":
             text = "## 本次行程调整未通过检查\n\n已尝试修订三次并停止自动修订，以下问题仍需解决；本次草案尚不可作为可用行程。\n\n"
             for issue in [i for i in w.get("review", {}).get("issues", []) if i["blocking"]][:3]:
                 head = "" if issue["location"] in issue["basis"] else f"**{issue['location']}**："
                 text += f"- {head}{issue['basis']}\n  - 建议：{issue['suggestion']}\n"
-            if w.get("plan"):
-                text += "\n以下保留上一版可用行程，本次修改尚未应用。\n\n"
+            if saved:
+                text += "\n上一版可用攻略已保留，可通过下方按钮查看。"
             else:
                 text += ("\n这类问题通常不是换一种排法能解决的，需要先调整条件：直接回复要改的部分"
                          "（预算金额或包含范围、天数、目的地、出发地、交通方式）即可重新规划，也可以稍后重试。\n\n")
-        if w.get("plan"):
-            guide = get_version(w, w['version'])
-            if guide is not None:
-                text += guide_markdown(guide)
+        else:
+            title = " ".join(saved["guide"]["title"].splitlines())
+            text = f"{title}已整理完成。点击下方按钮查看图文攻略，支持导出 PDF 和 Markdown。"
         if w.get("degraded"):
             text = ("> 本次生成用时较长，已跳过部分自动复核，先给出当前方案；地点、票价、车次与营业时间请按官方渠道确认。\n\n"
                     + text)
-        return {"workflow": stage(w, "present"), "messages": [AIMessage(content=text, additional_kwargs={"plan_version": w["version"]} if w["status"] == "review" else {})]}
+        return {"workflow": stage(w, "present"),
+                "messages": [AIMessage(content=text, additional_kwargs={"plan_version": version} if saved else {})]}
 
     graph = StateGraph(PlanningState)
     def with_progress(name, fn):

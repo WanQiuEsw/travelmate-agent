@@ -133,9 +133,9 @@ def test_trip_save_busy_returns_prompt_error(monkeypatch):
     def slow_chat(*args):
         started.set()
         release.wait(5)
-        return '完成'
+        return {'answer': '完成'}
 
-    monkeypatch.setattr(api, 'chat', slow_chat)
+    monkeypatch.setattr(api, 'chat_reply', slow_chat)
 
     @contextmanager
     def factory():

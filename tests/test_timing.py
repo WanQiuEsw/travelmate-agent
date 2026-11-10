@@ -5,7 +5,7 @@ from pydantic import ValidationError
 
 from travelmate.workflow import Itinerary, adapt_timing, period_plan, validate_plan
 from travelmate.review import timing_warnings, blocking_messages
-from travelmate.guide import make_guide, render_guide
+from travelmate.guide import get_version, guide_markdown, make_guide, render_guide
 from travelmate.pdf_export import itinerary_pdf, guide_pdf
 from test_workflow import REQ, PLAN
 from test_review import PROBLEM, ReviewedModel
@@ -91,11 +91,10 @@ def test_repeated_estimated_time_conflicts_deliver_without_a_generation_loop(tmp
         assert state['status'] == 'review' and state['attempts'] == 1
         assert model.calls.count('Itinerary') == model.calls.count('ReviewReport') == 1
         assert state['plan']['time_granularity'] == 'period'
-        answer = events[-1][1]['answer']
-        assert events[-1][0] == 'done'
-        assert '上午' in answer and '可按实际到达时间' in answer
-        assert '（上午）' in answer and '未通过检查' not in answer
-        assert '未通过检查' not in answer
+        kind, reply = events[-1]
+        assert kind == 'done' and '未通过检查' not in reply['answer']
+        markdown = guide_markdown(get_version(state, reply['plan_version']))
+        assert '（上午）' in markdown and '可按实际到达时间' in markdown
 
 
 def test_period_guide_and_both_pdf_exports_share_estimates_and_keep_deadline():

@@ -77,9 +77,19 @@ def open_agent(*, model=None, database=None, knowledge=None, legacy_tool_loop=Fa
 
 
 def chat(agent, session_id: str, message: str, interaction_response=None) -> str:
+    return chat_reply(agent, session_id, message, interaction_response)["answer"]
+
+
+def chat_reply(agent, session_id: str, message: str, interaction_response=None) -> dict:
     result = agent.invoke({"messages": [HumanMessage(content=message, additional_kwargs={"interaction_response": interaction_response} if interaction_response else {})]},
                           {"configurable": {"thread_id": session_id}, "recursion_limit": 60})
-    return public_answer(result["messages"][-1].text, result["messages"])
+    return reply_content(result["messages"])
+
+
+def reply_content(messages):
+    last = messages[-1]
+    version = last.additional_kwargs.get("plan_version")
+    return {"answer": public_answer(last.text, messages), **({"plan_version": version} if version else {})}
 
 
 TOOL_LABELS = {
@@ -123,7 +133,6 @@ def tool_progress(item):
 
 def stream_chat(agent, session_id: str, message: str, interaction_response=None):
     config = {"configurable": {"thread_id": session_id}, "recursion_limit": 60}
-    previewed = False
     with closing(agent.stream({"messages": [HumanMessage(content=message, additional_kwargs={"interaction_response": interaction_response} if interaction_response else {})]},
                               config, stream_mode=["messages", "custom", "updates"])) as stream:
         for mode, value in stream:
@@ -132,13 +141,7 @@ def stream_chat(agent, session_id: str, message: str, interaction_response=None)
                 # Emit only the sanitized final answer below, after validation.
                 continue
             elif mode == "custom":
-                preview = value.get("preview") if isinstance(value, dict) else None
-                if preview:
-                    previewed = True
-                    for offset in range(0, len(preview), 48):
-                        yield "token", {"text": preview[offset:offset + 48]}
-                else:
-                    yield "status", public_data(value)
+                yield "status", public_data(value)
             elif mode == "updates":
                 for node, update in value.items():
                     if node in ("intake", "research", "organize", "verify_places", "generate", "check", "review", "save", "present"):
@@ -158,14 +161,14 @@ def stream_chat(agent, session_id: str, message: str, interaction_response=None)
         yield "error", {"text": "运行尚未完成，可继续对话恢复；此前方案已保留。"}
         return
     last = state.values["messages"][-1]
-    answer = public_answer(last.text, state.values["messages"])
-    if not previewed:
+    reply = reply_content(state.values["messages"])
+    if not reply.get("plan_version"):
+        answer = reply["answer"]
         for offset in range(0, len(answer), 48):
             yield "token", {"text": answer[offset:offset + 48]}
-    yield "done", {"answer": answer, "session_id": session_id,
+    yield "done", {**reply, "session_id": session_id,
                    **({"interaction": last.additional_kwargs["interaction"]} if last.additional_kwargs.get("interaction") else {}),
-                   "message_id": answer_id(last, len(state.values["messages"]) - 1),
-                   **({"plan_version": last.additional_kwargs["plan_version"]} if last.additional_kwargs.get("plan_version") else {})}
+                   "message_id": answer_id(last, len(state.values["messages"]) - 1)}
 
 
 def answer_id(message, index):

@@ -6,7 +6,7 @@ from langchain_core.runnables import RunnableLambda
 
 from travelmate.agent import chat, conversation
 from travelmate.evidence import normalize
-from travelmate.guide import day_heading, make_guide, render_guide, get_version, version_snapshot
+from travelmate.guide import day_heading, make_guide, render_guide, get_version, version_snapshot, guide_markdown
 from travelmate.pdf_export import answer_pdf, guide_pdf, itinerary_pdf
 from travelmate.public import public_answer
 from travelmate.workflow import get_workflow
@@ -139,12 +139,15 @@ def test_missing_food_retries_once_and_food_survives_history_and_version(tmp_pat
 
     model = FoodModel()
     with open_test(tmp_path, model) as agent:
-        answer = chat(agent, 'food', '安排杭州一日游')
+        chat(agent, 'food', '安排杭州一日游')
         assert model.calls.count('Itinerary') == 2
-        assert '当地特色美食' in answer and '片儿川' in answer
-        assert '星期二' in answer and '超出预报范围' in answer
         state = get_workflow(agent, 'food')
+        guide = get_version(state, 1)
+        markdown = guide_markdown(guide)
+        assert '当地特色美食' in markdown and '片儿川' in markdown
+        assert '星期二' in markdown and '超出预报范围' in markdown
         assert state['plan']['foods'][0]['name'] == '片儿川'
-        assert '片儿川' in render_guide(get_version(state, 1), '/guide.pdf')
+        assert '片儿川' in render_guide(guide, '/guide.pdf')
     with open_test(tmp_path, Model()) as agent:
-        assert '片儿川' in conversation(agent, 'food')['messages'][-1]['content']
+        message = conversation(agent, 'food')['messages'][-1]
+        assert '片儿川' in guide_markdown(get_version(get_workflow(agent, 'food'), message['plan_version']))

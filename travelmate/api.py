@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field, field_validator, StringConstraints
 
 from travelmate.rail import search_train_tickets
 from travelmate.interaction import InteractionResponse
-from travelmate.agent import chat, conversation, conversations, open_agent, stream_chat, pin_sessions, delete_sessions, rename_session
+from travelmate.agent import chat_reply, conversation, conversations, open_agent, stream_chat, pin_sessions, delete_sessions, rename_session
 from travelmate.evidence import validate_evidence
 from travelmate.workflow import Itinerary, get_workflow, save_workflow, validate_plan
 from travelmate.pdf_export import itinerary_pdf, answer_pdf, guide_pdf
@@ -43,6 +43,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     session_id: str
     answer: str
+    plan_version: int | None = None
 
 
 SessionKey = Annotated[str, StringConstraints(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_-]+$")]
@@ -186,13 +187,13 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
         return {**history, "generating": run is not None,
                 "progress": {**run, "steps": list(run["steps"])} if run else None}
 
-    @app.post("/chat", response_model=ChatResponse)
+    @app.post("/chat", response_model=ChatResponse, response_model_exclude_none=True)
     def respond(request: ChatRequest, http_request: Request):
         try:
             with generation_lock(request.session_id, request.message, http_request.state.user):
-                answer = chat(app.state.agent, request.session_id, request.message,
-                              **({"interaction_response": request.interaction_response.model_dump()} if request.interaction_response else {}))
-            return ChatResponse(session_id=request.session_id, answer=answer)
+                reply = chat_reply(app.state.agent, request.session_id, request.message,
+                                   **({"interaction_response": request.interaction_response.model_dump()} if request.interaction_response else {}))
+            return ChatResponse(session_id=request.session_id, **reply)
         except HTTPException:
             raise
         except Exception:

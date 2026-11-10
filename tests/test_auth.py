@@ -218,7 +218,7 @@ def test_busy_and_invalid_requests_do_not_charge_but_started_failure_does(protec
     def broken(*args, **kwargs):
         raise RuntimeError('secret-should-not-leak')
 
-    monkeypatch.setattr('travelmate.api.chat', broken)
+    monkeypatch.setattr('travelmate.api.chat_reply', broken)
     response = client.post('/chat', json={'session_id': 'two', 'message': '预算'})
     assert response.status_code == 502 and 'secret-should-not-leak' not in response.text
     assert client.get('/auth/me').json()['quota']['used'] == 2
