@@ -3,13 +3,28 @@ import {readFile} from 'node:fs/promises';
 import {test} from 'node:test';
 import vm from 'node:vm';
 const html = await readFile(new URL('../travelmate/index.html', import.meta.url), 'utf8');
-const source = html.match(/<script id="quick-fill-script">([\s\S]*?)<\/script>/)[1]
+const source = html.match(/<script id="city-picker-script">([\s\S]*?)<\/script>/)[1]
+  + html.match(/<script id="quick-fill-script">([\s\S]*?)<\/script>/)[1]
   + html.match(/<script id="inspiration-script">([\s\S]*?)<\/script>/)[1];
+function element() {
+  return {
+    value: '', handlers: {}, children: [],
+    addEventListener(name, handler) { this.handlers[name] = handler; },
+    dispatchEvent(event) { this.handlers[event.type]?.(event); },
+    append(...children) { this.children.push(...children); },
+    setAttribute(name, value) { this[name] = value; },
+    focus() { this.focused = true; },
+    setCustomValidity(message) { this.validationMessage = message; },
+    reportValidity() { return !this.validationMessage; },
+  };
+}
 function setup(fetch = async () => ({ok: true, json: async () => ({results: [], notice: "以12306为准"})})) {
-  const elements = Object.fromEntries(['trip-form', 'form', 'input', 'quick-fill', 'quick-fill-open', 'quick-fill-close', 'quick-fill-cancel', 'send', 'preset', 'status', 'train-search', 'train-results', 'trip-step-label', 'trip-progress', 'trip-back', 'trip-skip', 'trip-submit', 'trip-rail', 'trip-review'].map(id => [id, {
-    handlers: {}, addEventListener(name, handler) { this.handlers[name] = handler; },
-    focus() { this.focused = true; }, dispatchEvent() {},
-  }]));
+  const ids = ['trip-form', 'form', 'input', 'quick-fill', 'quick-fill-open', 'quick-fill-close', 'quick-fill-cancel',
+    'send', 'preset', 'status', 'train-search', 'train-results', 'trip-step-label', 'trip-progress', 'trip-back',
+    'trip-skip', 'trip-submit', 'trip-rail', 'trip-review', 'trip-city-cards', 'preset-plan', 'preset-title',
+    'preset-form', 'preset-city', 'preset-city-step', 'preset-city-cards', 'preset-review', 'preset-draft',
+    'preset-back', 'preset-step', 'preset-submit', 'preset-close', 'preset-review-title'];
+  const elements = Object.fromEntries(ids.map(id => [id, element()]));
   const reportValidity = () => {
     const invalid = Object.values(elements['trip-form'].elements).find(field => !field.disabled && (field.validationMessage || (field.required && !field.value)));
     invalid?.focus();
@@ -19,10 +34,12 @@ function setup(fetch = async () => ({ok: true, json: async () => ({results: [], 
   elements['trip-form'].checkFields = reportValidity;
   elements.form.submissions = [];
   elements.form.requestSubmit = () => { elements.form.submissions.push(elements.input.value); elements.send.disabled = true; };
-  elements['quick-fill'].open = false;
-  elements['quick-fill'].showModal = function () { this.open = true; };
-  elements['quick-fill'].close = function () { this.open = false; };
-  elements['trip-form'].elements = Object.fromEntries(Object.entries({people: '2', date: '2026-12-10', origin: ' 福建厦门 ', destination: '北京', budget: '3000', days: '3', transport: '高铁', budgetIncludes: '交通、住宿、餐饮、门票全部费用', mobility: '每天10000步以内'}).map(([key, value]) => [key, {value, focus() { this.focused = true; }, setCustomValidity(message) { this.validationMessage = message; }}]));
+  for (const dialog of [elements['quick-fill'], elements['preset-plan']]) {
+    dialog.open = false;
+    dialog.showModal = function () { this.open = true; };
+    dialog.close = function () { this.open = false; };
+  }
+  elements['trip-form'].elements = Object.fromEntries(Object.entries({people: '2', date: '2026-12-10', origin: ' 福建厦门 ', destination: '北京', budget: '3000', days: '3', transport: '高铁', budgetIncludes: '交通、住宿、餐饮、门票全部费用', mobility: '每天10000步以内'}).map(([key, value]) => [key, {...element(), value}]));
   const fields = elements['trip-form'].elements;
   for (const key of ['destination', 'days', 'people', 'budget', 'budgetIncludes', 'mobility']) fields[key].required = true;
   elements.steps = [['destination'], ['date'], ['days', 'people'], ['budget', 'budgetIncludes'], ['origin'], ['transport'], ['mobility'], []].map((keys, index) => ({
@@ -39,7 +56,7 @@ function setup(fetch = async () => ({ok: true, json: async () => ({results: [], 
     dataset: {tripIdea: match[1]}, handlers: {},
     addEventListener(name, handler) { this.handlers[name] = handler; },
   }));
-  vm.runInNewContext(source, {document: {querySelector: id => elements[id.slice(1)], querySelectorAll: () => elements.cards}, Event, fetch});
+  vm.runInNewContext(source, {document: {querySelector: id => elements[id.slice(1)], querySelectorAll: () => elements.cards, createElement: element}, Event, fetch});
   return elements;
 }
 function next(e) { e['trip-form'].handlers.submit({preventDefault() {}}); }
@@ -105,11 +122,49 @@ test('skip clears optional answers and back preserves required selections', () =
 });
 test('preset fills an editable bracketed draft without submitting', () => {
   const e = setup();
+  e.input.value = '尚未发送';
   e.preset.handlers.click();
-  assert.match(e.input.value, /我们【2人】准备【\d{4}年\d{1,2}月\d{1,2}日】从【厦门】出发到【北京】/);
+  const submit = () => e['preset-form'].handlers.submit({preventDefault() {}});
+  const cards = e['preset-city-cards'].children[0].children;
+  assert.equal(cards.length, 7);
+  submit();
+  assert.equal(e['preset-review'].hidden, true);
+  const shanghai = cards.find(card => card.children[0].children[0].src.endsWith('/shanghai.webp'));
+  shanghai.handlers.click();
+  assert.equal(shanghai['aria-pressed'], 'true');
+  assert.equal(e['preset-city'].value, '上海');
+  assert.equal(e['preset-review'].hidden, true);
+  submit();
+  assert.equal(e['preset-submit'].textContent, '填入对话');
+  assert.equal(e.input.value, '尚未发送');
+  e['preset-draft'].value += '想逛外滩。';
+  e['preset-back'].handlers.click();
+  assert.equal(shanghai['aria-pressed'], 'true');
+  submit(); submit();
+  assert.match(e.input.value, /我们【2人】准备【\d{4}年\d{1,2}月\d{1,2}日】从【厦门】出发到【上海】/);
   assert.match(e.input.value, /交通方式【高铁】/);
   assert.match(e.input.value, /全员总预算【3000元】人民币（CNY），预算包含【住宿、餐饮、门票和市内交通，不含往返高铁】/);
+  assert.match(e.input.value, /想逛外滩/);
   assert.equal(e.input.focused, true);
+  assert.equal(e['preset-plan'].open, false);
+  assert.equal(e.form.submissions.length, 0);
+});
+
+test('city search filters covers and supports a destination outside the list', () => {
+  const e = setup(); e['quick-fill-open'].handlers.click();
+  const field = e['trip-form'].elements.destination;
+  const cards = e['trip-city-cards'].children[0].children;
+  field.value = '杭'; field.dispatchEvent(new Event('input'));
+  const visible = cards.filter(card => !card.hidden);
+  assert.equal(visible.length, 1);
+  visible[0].handlers.click();
+  assert.equal(field.value, '杭州');
+  assert.equal(e.steps[0].hidden, false);
+  field.value = '泉州'; field.dispatchEvent(new Event('input'));
+  assert.ok(cards.every(card => card.hidden));
+  next(e);
+  e['trip-back'].handlers.click();
+  assert.equal(field.value, '泉州');
 });
 test('quick fields close the dialog and submit a complete travel request once', () => {
   const e = setup();

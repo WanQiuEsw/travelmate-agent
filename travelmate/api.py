@@ -22,7 +22,7 @@ from travelmate.workflow import Itinerary, get_workflow, save_workflow, validate
 from travelmate.pdf_export import itinerary_pdf, answer_pdf, guide_pdf
 from travelmate.guide import get_version, render_guide, guide_markdown
 from travelmate.accounts import Accounts
-from travelmate.auth import install_auth, require_access
+from travelmate.auth import CITY_VISUALS, install_auth, require_access
 from travelmate import asr, watch
 from travelmate.tools import search_places, search_web
 
@@ -145,6 +145,12 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
     @app.get("/assets/visual/{filename}", include_in_schema=False)
     def visual_asset(filename: Literal["companion.webp", "coast.webp", "mountains.webp", "town.webp", "icon.webp"]):
         return FileResponse(Path(__file__).with_name("images") / filename, media_type="image/webp")
+
+    @app.get('/assets/visual/cities/{city}.webp', include_in_schema=False)
+    def city_visual(city: str):
+        if city not in CITY_VISUALS:
+            raise HTTPException(404, '城市图片不存在')
+        return FileResponse(Path(__file__).with_name('images') / 'cities' / f'{city}.webp', media_type='image/webp')
 
     @app.get("/health")
     def health():

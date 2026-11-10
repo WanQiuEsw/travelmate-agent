@@ -62,12 +62,19 @@ def test_brand_assets_are_public_but_do_not_expose_other_files(protected):
         assert response.status_code == 200
         assert response.headers['content-type'] == 'image/webp'
         assert response.content[:4] == b'RIFF'
+    for city in ('xiamen', 'beijing', 'shanghai', 'hangzhou', 'chengdu', 'guangzhou', 'xian'):
+        response = client.get(f'/assets/visual/cities/{city}.webp')
+        assert response.status_code == 200
+        assert response.headers['content-type'] == 'image/webp'
+        assert response.content[:4] == b'RIFF'
+    assert client.get('/assets/visual/cities/unknown.webp').status_code == 401
     stylesheet = client.get('/assets/theme.css')
     assert stylesheet.status_code == 200
     assert stylesheet.headers['content-type'].startswith('text/css')
     assert client.get('/assets/visual/.env').status_code == 401
     assert client.get('/assets/visual/auth.py').status_code == 401
     register(*protected)
+    assert client.get('/assets/visual/cities/unknown.webp').status_code == 404
     assert client.get('/assets/visual/auth.py').status_code == 422
 
 

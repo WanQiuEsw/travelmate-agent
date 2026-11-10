@@ -14,6 +14,7 @@ class Node {
   replaceChildren(...children) { this.children = children; }
   setAttribute(name, value) { this[name] = value; }
   addEventListener(event, handler) { this.handlers[event] = handler; }
+  dispatchEvent(event) { this.handlers[event.type]?.(event); }
   querySelectorAll(selector) {
     const descendants = this.children.flatMap(nodes);
     if (selector === '[aria-current]') return descendants.filter(node => node['aria-current'] !== undefined);
@@ -83,7 +84,8 @@ test('sources are collapsed with safe readable links', () => {
 });
 
 const html = await readFile(new URL('../travelmate/index.html', import.meta.url), 'utf8');
-const appSource = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
+const appSource = html.match(/<script id="city-picker-script">([\s\S]*?)<\/script>/)[1]
+  + html.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
   .replace(/import \{renderMarkdown\} from '[^']+';/, '')
   .replace(/import \{apiFetch[^;]+;/, 'const refreshAccount = async () => ({user: {id: "test"}});')
   .replace('  send.disabled = newChat.disabled = historySelect.disabled = true;', '')
@@ -135,7 +137,7 @@ test('question wizard opens on demand, keeps closed drafts, validates steps and 
   let submits = 0;
   elements.form.requestSubmit = () => submits++;
   const context = vm.createContext({
-    setTimeout, clearTimeout,
+    setTimeout, clearTimeout, Event,
     document: {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []},
     renderMarkdown, crypto: {randomUUID: () => 'new'}, localStorage: {getItem: () => 'test', setItem() {}},
   });
@@ -158,10 +160,13 @@ test('question wizard opens on demand, keeps closed drafts, validates steps and 
   const steps = all.filter(node => node.className === 'interaction-step');
   const next = () => questionForm.handlers.submit({preventDefault() {}});
   const destinations = nodes(steps[0]).filter(node => node.tagName === 'BUTTON');
-  assert.deepEqual(destinations.map(button => button.textContent), ['青岛', '威海', '厦门']);
+  assert.deepEqual(destinations.map(button => nodes(button).find(node => node.tagName === 'STRONG').textContent), ['青岛', '威海', '厦门']);
+  assert.equal(nodes(destinations[2]).find(node => node.tagName === 'IMG').src, '/assets/visual/cities/xiamen.webp');
+  assert.equal(nodes(destinations[1]).some(node => node.tagName === 'IMG'), false);
   assert.deepEqual(steps.map(step => step.hidden), [false, true, true, true]);
   destinations[1].handlers.click();
-  assert.deepEqual(steps.map(step => step.hidden), [true, false, true, true]);
+  assert.equal(destinations[1]['aria-pressed'], 'true');
+  assert.deepEqual(steps.map(step => step.hidden), [false, true, true, true]);
   next();
   assert.equal(steps[1].hidden, false);
   assert.equal(submits, 0);
