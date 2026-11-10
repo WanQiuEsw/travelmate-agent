@@ -8,7 +8,7 @@ from time import perf_counter
 from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 from uuid import uuid4
-from typing import Literal
+from typing import Annotated, Literal
 from pathlib import Path
 
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage
@@ -32,6 +32,9 @@ class Intake(BaseModel):
     assumptions: PartialRequirements = Field(default_factory=PartialRequirements)
     allow_booking_change: bool = False
     direction: str = Field(default="", max_length=3000)
+    destination_suggestions: list[Annotated[str, Field(min_length=1, max_length=100)]] = Field(
+        default_factory=list, max_length=5,
+        description="目的地未定时，结合旅行主题和已知出发地、天数及偏好，给 2 至 5 个具体目的地名称供用户选择。")
     questions: list[str] = Field(default_factory=list, max_length=3)
     confirmation: Decision | None = None
 
@@ -254,7 +257,19 @@ def build_planner(model, saver, knowledge, tools, prompt, review_model=None):
                 except ValueError:
                     return {"intake_result": {"intent": "clarify"}, "messages": [AIMessage(content="填写内容不符合要求，请检查数值范围和必填项。", additional_kwargs={"interaction": previous})]}
             else:
-                data = structured(Intake, "分类普通问答、初步规划或修改；conditions只含用户本轮明确给出的字段，未知字段省略，绝不能填写待确认等占位符，不能猜测。两个人/我们等明确人数语义需提取travelers；喜欢吃需提取preferences或interests。direction先给玩法判断、按天骨架和预算取舍，不因缺失日期或步数而只返回表单；预算口径不明时明确写待确认，不擅自当作人均或全员金额。普通问答不要清除旅行条件。direction用Markdown给有用答复或暂定方向，不在正文追问缺失字段，系统会显示表单。任务含糊、操作范围不明确或涉及更改已订安排需先确认时，填写confirmation的问题及2至5个具体选项，等待选择后才继续；不能自行代替用户确认，也不能重复确认已选事项。", {"history": history, "requirements": old.get("requirements", {}), "form_answers": answers})
+                data = structured(
+                    Intake,
+                    "分类普通问答、初步规划或修改。conditions只含用户本轮明确给出的字段，未知字段省略，不能猜测或填写待确认等占位符。"
+                    "明确的同行人数填入travelers，美食偏好填入preferences或interests。普通问答不要清除旅行条件。"
+                    "目的地已明确时提取或沿用已确认的具体地点。想去海边等主题属于偏好。目的地未定的规划请求填写destination_suggestions，"
+                    "用户提到的候选优先。不要把候选写入conditions.destination，也不要为选目的地另设confirmation。"
+                    "此时direction简短比较候选，等用户选定再排按天路线。其他规划请求的direction先给玩法判断、按天骨架和预算取舍，"
+                    "不因缺失日期或步数而只返回表单。预算口径不明时明确写待确认，不擅自当作人均或全员金额。"
+                    "direction用Markdown给有用答复或暂定方向，不在正文追问缺失字段，系统会显示表单。"
+                    "任务含糊、操作范围不明确或涉及更改已订安排需先确认时，填写confirmation的问题及2至5个具体选项。"
+                    "等待选择后才继续，不能代替用户确认，也不能重复确认已选事项。",
+                    {"history": history, "requirements": old.get("requirements", {}), "form_answers": answers},
+                )
             if data.confirmation:
                 return {"workflow": stage(old, "clarify", status="collecting"), "intake_result": {"intent": "clarify"},
                         "messages": [AIMessage(content="请在下方选择确认后继续。", additional_kwargs={"interaction": decision_interaction(data.confirmation)})]}
@@ -271,9 +286,13 @@ def build_planner(model, saver, knowledge, tools, prompt, review_model=None):
                         "messages": [AIMessage(content="旅行条件存在冲突，原有条件与方案已保留。", additional_kwargs={"interaction": decision_interaction(Decision(question=result.get("error", "请确认修改范围"), options=["保留原有安排", "调整条件后重新规划"]))})]}
             workflow = stage(result.update["workflow"], "requirements")
             if workflow.get("missing"):
-                text = (data.direction if len(data.direction) >= 80 else preliminary_brief(workflow['requirements']) + ('\n\n' + data.direction if data.direction else '')).replace("\\n", "\n")
+                requirements = workflow["requirements"]
+                text = data.direction
+                if not text or (requirements.get("destination") and len(text) < 80):
+                    text = preliminary_brief(requirements) + ('\n\n' + text if text else '')
+                interaction = requirements_interaction(workflow["missing"], requirements, data.destination_suggestions)
                 return {"workflow": stage(workflow, "clarify"), "intake_result": {"intent": "clarify"},
-                        "messages": [AIMessage(content=text + "\n\n请在下方填写旅行条件后继续。", additional_kwargs={"interaction": requirements_interaction(workflow["missing"])})]}
+                        "messages": [AIMessage(content=text.replace("\\n", "\n") + "\n\n点下方「补充旅行条件」继续。", additional_kwargs={"interaction": interaction})]}
             return {"workflow": stage(workflow, "ready", status="researching", issues=[], review_history=[]), "intake_result": data.model_dump(),
                     "candidate": None, "areas": {}, "research_data": []}
         except Exception:

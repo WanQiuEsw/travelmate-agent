@@ -31,9 +31,15 @@ FIELDS = {
 }
 
 
-def requirements_interaction(missing):
-    return {"id": uuid4().hex, "title": "补充旅行条件", "description": "填写后继续规划，已提供的条件会保留。",
-            "fields": [{"key": key, **FIELDS[key]} for key in missing if key in FIELDS]}
+def requirements_interaction(missing, requirements, destination_suggestions):
+    fields = [{"key": key, **FIELDS[key]} for key in missing if key in FIELDS]
+    description = "点击选项即可继续，也可以自定义。"
+    if "destination" in missing:
+        field = next(field for field in fields if field["key"] == "destination")
+        field["suggestions"] = list(dict.fromkeys(city.strip() for city in destination_suggestions if city.strip()))
+    elif requirements.get("destination"):
+        description = f"已选目的地：{requirements['destination']}。{description}"
+    return {"id": uuid4().hex, "title": "补充旅行条件", "description": description, "fields": fields}
 
 
 def decision_interaction(decision):

@@ -358,9 +358,9 @@
   <section class="inspiration" aria-labelledby="inspiration-title"><div class="chat-width">
     <div class="inspiration-heading"><h2 id="inspiration-title">从一个旅行灵感开始</h2><p>山野、海岸，或一座慢下来的城</p></div>
     <div class="inspiration-grid">
-      <button class="inspiration-card" type="button" data-trip-idea="想找一个适合轻徒步、亲近山野的目的地，安排一段放松的旅行。请先和我确认出发地、天数、人数及预算。"><img src="/assets/visual/mountains.webp" alt="云雾间的青山与草甸步道" width="1536" height="1024" loading="lazy"><span class="inspiration-copy"><strong>去山野，深呼吸</strong><small>走进自然，让脚步慢一点</small></span></button>
-      <button class="inspiration-card" type="button" data-trip-idea="想去海边放松，沿着海岸散步，探索当地美食。请先和我确认出发地、天数、人数及预算。"><img src="/assets/visual/coast.webp" alt="碧蓝海水与阳光下的海岸" width="1536" height="1024" loading="lazy"><span class="inspiration-copy"><strong>沿着海岸慢慢走</strong><small>把时间交给海风与日落</small></span></button>
-      <button class="inspiration-card" type="button" data-trip-idea="想去一座有历史文化的古城，逛老街、看建筑、吃当地小吃。请先和我确认出发地、天数、人数及预算。"><img src="/assets/visual/town.webp" alt="石桥、绿水与白墙黛瓦的古镇" width="1536" height="1024" loading="lazy"><span class="inspiration-copy"><strong>在古城里闲逛</strong><small>在街巷中，遇见当地生活</small></span></button>
+      <button class="inspiration-card" type="button" data-trip-idea="想找一个适合轻徒步、亲近山野的目的地，安排一段放松的旅行。目的地还没定，想先看看候选。"><img src="/assets/visual/mountains.webp" alt="云雾间的青山与草甸步道" width="1536" height="1024" loading="lazy"><span class="inspiration-copy"><strong>去山野，深呼吸</strong><small>走进自然，让脚步慢一点</small></span></button>
+      <button class="inspiration-card" type="button" data-trip-idea="想去海边放松，沿着海岸散步，探索当地美食。目的地还没定，想先看看候选。"><img src="/assets/visual/coast.webp" alt="碧蓝海水与阳光下的海岸" width="1536" height="1024" loading="lazy"><span class="inspiration-copy"><strong>沿着海岸慢慢走</strong><small>把时间交给海风与日落</small></span></button>
+      <button class="inspiration-card" type="button" data-trip-idea="想去一座有历史文化的古城，逛老街、看建筑、吃当地小吃。目的地还没定，想先看看候选。"><img src="/assets/visual/town.webp" alt="石桥、绿水与白墙黛瓦的古镇" width="1536" height="1024" loading="lazy"><span class="inspiration-copy"><strong>在古城里闲逛</strong><small>在街巷中，遇见当地生活</small></span></button>
     </div><p class="inspiration-note">AI 生成的旅行意境图 · 点击仅填写灵感，编辑后发送即可开始规划</p>
   </div></section>
 </main>
@@ -422,7 +422,6 @@
     const progress = document.createElement('progress'); progress.max = interaction.fields.length + 1;
     progress.className = 'interaction-progress'; progress.setAttribute('aria-label', '补充条件进度');
     const presets = {
-      destination: ['北京', '上海', '杭州', '成都', '厦门', '西安'],
       days: ['1', '2', '3', '5', '7', '10'], travelers: ['1', '2', '3', '4', '6'],
       budget: ['1000', '3000', '5000', '10000'],
       budget_currency: ['CNY', 'USD', 'EUR', 'HKD', 'JPY'],
@@ -431,7 +430,8 @@
     const controls = [];
     for (const field of interaction.fields) {
       const step = document.createElement('fieldset'); step.className = 'interaction-step';
-      const legend = document.createElement('legend'); legend.textContent = field.label; legend.tabIndex = -1;
+      const legend = document.createElement('legend'); legend.tabIndex = -1;
+      legend.textContent = field.key === 'destination' ? '这次想去哪里？' : field.label;
       step.append(legend);
       const control = document.createElement(field.type === 'select' ? 'select' : 'input');
       control.name = field.key; control.required = true;
@@ -459,6 +459,10 @@
         button.addEventListener('click', () => {
           if (busy || send.disabled) return;
           control.value = String(choice.value); updateChoices(); error.textContent = '';
+          if (field.key !== 'decision' && valid(index)) {
+            if (custom) custom.open = false;
+            showStep(index + 1);
+          }
         });
         group.append(button); return button;
       });

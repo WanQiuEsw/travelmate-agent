@@ -141,6 +141,7 @@ test('question wizard opens on demand, keeps closed drafts, validates steps and 
   });
   vm.runInContext(appSource, context);
   vm.runInContext(`showInteraction({id: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', title: '补充条件', description: '继续规划', fields: [
+    {key: 'destination', label: '目的地', type: 'text', suggestions: ['青岛', '威海', '厦门']},
     {key: 'days', label: '游玩天数', type: 'number', min: 1, max: 30},
     {key: 'mobility', label: '可接受步数', type: 'text', suggestions: ['每天5000步']},
     {key: 'budget_scope', label: '预算口径', type: 'select', options: [{value: 'total', label: '全员预算'}]}
@@ -156,37 +157,39 @@ test('question wizard opens on demand, keeps closed drafts, validates steps and 
   assert.equal(days.min, 1); assert.equal(days.max, 30); assert.equal(days.required, true);
   const steps = all.filter(node => node.className === 'interaction-step');
   const next = () => questionForm.handlers.submit({preventDefault() {}});
-  assert.deepEqual(steps.map(step => step.hidden), [false, true, true]);
+  const destinations = nodes(steps[0]).filter(node => node.tagName === 'BUTTON');
+  assert.deepEqual(destinations.map(button => button.textContent), ['青岛', '威海', '厦门']);
+  assert.deepEqual(steps.map(step => step.hidden), [false, true, true, true]);
+  destinations[1].handlers.click();
+  assert.deepEqual(steps.map(step => step.hidden), [true, false, true, true]);
   next();
-  assert.equal(steps[0].hidden, false);
+  assert.equal(steps[1].hidden, false);
   assert.equal(submits, 0);
   days.value = '31'; next();
-  assert.equal(steps[0].hidden, false);
-  const pick = nodes(steps[0]).find(node => node.tagName === 'BUTTON' && node.textContent === '3 天');
+  assert.equal(steps[1].hidden, false);
+  const pick = nodes(steps[1]).find(node => node.tagName === 'BUTTON' && node.textContent === '3 天');
   pick.handlers.click();
   assert.equal(days.value, '3');
   assert.equal(pick['aria-pressed'], 'true');
+  assert.deepEqual(steps.map(step => step.hidden), [true, true, false, true]);
   all.find(node => node.tagName === 'BUTTON' && node.textContent === '稍后再选').handlers.click();
   assert.equal(elements.interaction.open, false);
   elements['interaction-open'].handlers.click();
   assert.equal(elements.interaction.open, true);
   assert.equal(days.value, '3');
-  next();
-  assert.deepEqual(steps.map(step => step.hidden), [true, false, true]);
   all.find(node => node.name === 'mobility').value = '每天8000步'; next();
-  nodes(steps[2]).find(node => node.tagName === 'BUTTON' && node.textContent === '全员预算').handlers.click();
-  next();
+  nodes(steps[3]).find(node => node.tagName === 'BUTTON' && node.textContent === '全员预算').handlers.click();
   assert.equal(submits, 0);
   const review = all.find(node => node.className === 'trip-review');
   assert.equal(review.hidden, false);
   assert.ok(review.textContent.includes('可接受步数：每天8000步'));
   all.find(node => node.tagName === 'BUTTON' && node.textContent === '上一步').handlers.click();
-  assert.equal(steps[2].hidden, false);
+  assert.equal(steps[3].hidden, false);
   assert.equal(all.find(node => node.name === 'budget_scope').value, 'total');
   next(); next();
   assert.equal(submits, 1);
   const reply = JSON.parse(vm.runInContext('JSON.stringify(pendingResponse)', context));
-  assert.deepEqual(reply.answers, {days: 3, mobility: '每天8000步', budget_scope: 'total'});
+  assert.deepEqual(reply.answers, {destination: '威海', days: 3, mobility: '每天8000步', budget_scope: 'total'});
   assert.ok(elements.input.value.includes('预算口径：全员预算'));
   vm.runInContext('busy = true', context);
   questionForm.handlers.submit({preventDefault() {}});
