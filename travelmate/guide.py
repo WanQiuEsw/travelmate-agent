@@ -331,6 +331,26 @@ def make_guide(version, evidence):
     return public_guide(public_data({'title': f'{route} · {req["days"]}天旅行攻略', 'version': version['version'],
         'saved_at': display_time(version['saved_at']) if version.get('saved_at') else '未记录（历史版本）',
         'hero': hero_image(req, plan),
+        'result': {
+            'travelers': req['travelers'],
+            'start_date': req.get('start_date'),
+            'ledger': [dict(category=stop.get('cost_category', '活动费用'), day=i,
+                            name=stop['place'], amount=stop['cost'] if cost_label(stop, req, evidence, asof) != '无法查询' else None,
+                            status=cost_label(stop, req, evidence, asof))
+                       for i, day in enumerate(plan['days'], 1) for stop in day['stops']]
+                      + [dict(category='综合费用', day=None, name=plan.get('cost_notes') or '其他费用',
+                              amount=plan['other_cost'] if other_estimated else None, status=other_label)],
+            'cost': displayed_total,
+            'per_person': (('约' if '约' in displayed_total else '')
+                           + f"¥{(sum(stop['cost'] for stop in stops if cost_label(stop, req, evidence, asof) != '无法查询') + (plan['other_cost'] if other_estimated else 0)) / req['travelers']:.2f}"
+                           + ('（部分项目待核实）' if '部分项目' in displayed_total else '（估算）' if '估算' in displayed_total else '')) if displayed_total != '无法查询' else '无法查询',
+            'places': [[{'name': stop['place'],
+                         'location': evidence.get(stop.get('fact_refs', {}).get('place'), {}).get('location')}
+                        for stop in day['stops']] for day in plan['days']],
+            'weather_times': [display_time(r['queried_at']) for r in evidence.values()
+                              if r.get('kind') == 'weather_forecast' and r.get('context') == context_key(req)
+                              and r.get('query_status') == 'success' and r.get('queried_at')],
+        },
         'notice': '这是保存时的方案快照，天气为当时取得的预报；出发前重新确认天气、场馆规则和价格。', 'total': total, 'sections': sections}))
 
 
@@ -493,14 +513,18 @@ def render_guide(guide, pdf_url=None):
         actions = (f'<div class="actions"><a class="btn" href="{text(pdf_url)}">下载这版 PDF</a>'
                    f'<a class="btn ghost" href="{text(path)}/md">下载 Markdown</a>'
                    f'<a class="btn ghost" href="{text(path)}/html">下载 HTML</a></div>')
-    parts = [f'<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{text(guide["title"])}</title><style>{GUIDE_CSS}</style></head><body><main>',
+    from travelmate.result import RESULT_CSS, RESULT_JS, result_panels
+    parts = [f'<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{text(guide["title"])}</title><style>{GUIDE_CSS}{RESULT_CSS}</style></head><body><main>',
         f'<header class="hero"><img src="{text(hero)}" alt="目的地风景示意图"><div class="hero-body">',
         f'<p class="eyebrow">TRAVELMATE · 图文攻略</p><h1>{text(guide["title"])}</h1>',
         f'<p class="lede">{text(guide["notice"])}</p>',
         f'<p class="chips"><span>版本 {text(guide["version"])}</span><span>{text(guide["saved_at"])}</span>'
-        f'<span>合计 {text(guide["total"])}</span></p>',
+        f'<span>合计 {text((guide.get("result") or {}).get("cost", "请参见费用表"))}</span></p>',
         actions, '</div></header>']
+    rendered_sections = []
+    section_parts = []
     for section in guide["sections"]:
+        parts, outer_parts = section_parts, parts
         parts.append(f'<section class="card {text(section["kind"])}">')
         if section["kind"] == "sources":
             parts.append(f'<details><summary>{text(section["title"])}</summary>')
@@ -533,5 +557,9 @@ def render_guide(guide, pdf_url=None):
         if fold_notes or section["kind"] == "sources":
             parts.append('</details>')
         parts.append('</section>')
+        rendered_sections.append((section, ''.join(section_parts)))
+        parts = outer_parts
+        section_parts = []
+    parts.append(result_panels(guide, rendered_sections, text))
     parts.append('<footer>图为目的地示意图，非实景；价格与开放状态以出行时官方信息为准</footer>')
-    return ''.join(parts) + '</main></body></html>'
+    return ''.join(parts) + '</main><script type="module">' + RESULT_JS + '</script></body></html>'

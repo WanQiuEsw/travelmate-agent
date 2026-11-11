@@ -81,6 +81,7 @@ class Stop(BaseModel):
     travel_minutes: int | None = Field(default=None, ge=0, le=1440, description="活动开始前的交通分钟数；未知时留空，不编造精确值。分时段安排仅作估算，不用于硬时间校验。")
     travel_estimate: str | None = Field(default=None, max_length=200, description="交通耗时估算范围或待确认说明，例如约30至60分钟，含候车缓冲。")
     cost: float = Field(ge=0, le=1e8, description="全员费用，人民币")
+    cost_category: Literal["景点门票", "酒店住宿", "餐饮费用", "交通费用", "活动费用"] = Field(default="活动费用", description="仅分类该活动自身的cost，不重复计入其他费用；混合或无法细分时用活动费用。")
     cost_estimated: bool = Field(default=False, description="有合理估算依据时为true，并在notes写明口径；金额未知时为false且cost填0。")
     notes: str = Field(default="", max_length=1000)
     activities: list[Literal["walking", "climbing", "museum", "food", "rest", "other"]] = Field(default_factory=list, max_length=10)

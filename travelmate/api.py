@@ -21,6 +21,7 @@ from travelmate.evidence import validate_evidence
 from travelmate.workflow import Itinerary, get_workflow, save_workflow, validate_plan
 from travelmate.pdf_export import itinerary_pdf, answer_pdf, guide_pdf
 from travelmate.guide import get_version, render_guide, guide_markdown
+from travelmate.result import RESULT_SCRIPT_HASH
 from travelmate.accounts import Accounts
 from travelmate.auth import CITY_VISUALS, install_auth, require_access
 from travelmate import asr, watch
@@ -333,7 +334,7 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
     def preview(session_id: SessionId, version: Annotated[int, PathParam(ge=1)]):
         guide = load_guide(session_id, version)
         return HTMLResponse(render_guide(guide, f"/sessions/{session_id}/plans/{version}/pdf"),
-            headers={"Cache-Control": "no-store", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+            headers={"Cache-Control": "no-store", "Content-Security-Policy": f"default-src 'none'; script-src 'sha256-{RESULT_SCRIPT_HASH}'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'",
                      "X-Content-Type-Options": "nosniff"})
 
     @app.get("/sessions/{session_id}/plans/{version}/pdf")
