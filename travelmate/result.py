@@ -4,6 +4,8 @@ from math import isfinite
 from decimal import Decimal, ROUND_HALF_UP
 from urllib.parse import urlencode
 
+from travelmate.weather_ui import WEATHER_CSS, weather_panel
+
 RESULT_CSS = """
 .result-nav a{text-decoration:none;white-space:nowrap;padding:12px 4px;border-bottom:3px solid transparent;color:#63736c}
 .result:not(:has(:target)) a[href="#panel-overview"],.result:has(#panel-overview:target) a[href="#panel-overview"],.result:has(#panel-budget:target) a[href="#panel-budget"],.result:has(#panel-map:target) a[href="#panel-map"],.result:has(#panel-days:target,.day-anchor:target) a[href="#panel-days"],.result:has(#panel-weather:target) a[href="#panel-weather"]{border-color:#b94d2a;color:#193c38;font-weight:700}
@@ -22,6 +24,9 @@ body{background:#faf8f3;color:#193c38}main{max-width:1240px;padding:28px 28px 60
 @media(max-width:700px){main{padding:12px}.result{padding:14px;border-radius:18px}.result-nav{gap:20px}.highlights,.weather-grid{grid-template-columns:1fr}.hero img{height:230px}.budget-summary{gap:18px}.place-art{height:80px}}
 @media print{.result-nav,.result>input{display:none}.panel,.result:has(.day-anchor:target) .panel{display:block!important}.result{padding:0;border:0}.highlight,.weather-day,.card{break-inside:avoid}}
 """
+
+
+RESULT_CSS += WEATHER_CSS
 
 
 def coordinates(value):
@@ -87,14 +92,10 @@ def result_panels(guide, sections, text):
                 groups['map'].append(f'<a href="{text(url)}" target="_blank" rel="noopener noreferrer">高德地图 ↗</a>')
         groups['map'].append('</div></section>')
     selected_date = meta.get('start_date') if 'start_date' in meta else next((r[1] for r in overview.get('rows', []) if r[0] == '日期' and '未定' not in r[1]), None)
-    groups['weather'].append('<h2>出行天气</h2>')
     if not selected_date:
         groups['weather'].append('<div class="weather-day" role="status"><h3>尚未选择出行日期</h3><p>请先在快速规划中选择出发日期，或在对话中补充具体日期。确认并保存新方案后，才能查看对应日期的天气。</p><p>当前按第几天展示行程，不提供具体日期的天气预报。</p></div>')
     else:
-        groups['weather'].append('<p class="result-intro">出发日期：' + text(selected_date) + '。以下为保存时取得的天气信息。</p><div class="weather-grid">')
-        for i, day in enumerate(days, 1):
-            groups['weather'].append(f'<article class="weather-day"><span>第 {i} 天</span><h3>{text(day["title"])}</h3><p>出发前复查预报；遇雨可选择室内备选，户外活动预留调整时间。</p></article>')
-        groups['weather'].append('</div><p class="muted">预报查询时间：' + text('；'.join(meta.get('weather_times', [])) or '本版未记录可用查询时间；缺失的温度、降水和风力不作推测。') + '</p>')
+        groups['weather'].append(weather_panel(meta, days, selected_date, text))
     for key, title in views:
         out.append(f'<section id="panel-{key}" class="panel panel-{key}" aria-label="{title}">' + ''.join(groups[key]) + '</section>')
     return ''.join(out) + '</div>'

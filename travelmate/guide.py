@@ -10,6 +10,25 @@ from travelmate.public import public_data, public_answer, internal_title
 from travelmate.workflow import budget_total, time_label, travel_label, cost_label, total_cost_label, TIME_NOTICE
 
 
+def daily_forecast(value, requirements, evidence, asof=None):
+    asof = asof or datetime.now(timezone.utc)
+    if asof.tzinfo is None:
+        asof = asof.replace(tzinfo=timezone.utc)
+    forecasts = []
+    for record in evidence.values():
+        if (record.get('kind') != 'weather_forecast' or record.get('context') != context_key(requirements)
+                or record.get('query_status') != 'success' or record.get('applicable_date') != value):
+            continue
+        try:
+            queried = datetime.fromisoformat(record['queried_at'])
+            expires = datetime.fromisoformat(record['expires_at'])
+            if queried <= asof <= expires and record.get('value', {}).get('date') == value:
+                forecasts.append(record)
+        except (KeyError, TypeError, ValueError):
+            continue
+    return max(forecasts, key=lambda item: datetime.fromisoformat(item['queried_at']))['value'] if forecasts else {}
+
+
 def day_heading(value, index, requirements, evidence, asof=None):
     if not value:
         return f"第{index}天 · 天气：出发日期未定"
@@ -18,20 +37,8 @@ def day_heading(value, index, requirements, evidence, asof=None):
     asof = asof or datetime.now(timezone.utc)
     if asof.tzinfo is None:
         asof = asof.replace(tzinfo=timezone.utc)
-    forecasts = []
-    for record in evidence.values():
-        if (record.get('kind') != 'weather_forecast' or record.get('context') != context_key(requirements)
-                or record.get('query_status') != 'success' or record.get('applicable_date') != day.isoformat()):
-            continue
-        try:
-            queried = datetime.fromisoformat(record['queried_at'])
-            expires = datetime.fromisoformat(record['expires_at'])
-            if queried <= asof <= expires and record.get('value', {}).get('date') == day.isoformat():
-                forecasts.append(record)
-        except (KeyError, TypeError, ValueError):
-            continue
-    if forecasts:
-        row = max(forecasts, key=lambda item: datetime.fromisoformat(item['queried_at']))['value']
+    row = daily_forecast(value, requirements, evidence, asof)
+    if row:
         weather = f"白天{row.get('dayweather') or '未提供'}，夜间{row.get('nightweather') or '未提供'}"
         if row.get('nighttemp') is not None and row.get('daytemp') is not None:
             weather += f"，{row['nighttemp']}至{row['daytemp']}℃"
@@ -337,6 +344,8 @@ def make_guide(version, evidence):
         'result': {
             'travelers': req['travelers'],
             'start_date': req.get('start_date'),
+            'weather': [dict(daily_forecast(day.get('date'), req, evidence, asof),
+                             date=day.get('date'), city=req['destination']) for day in plan['days']],
             'ledger': [dict(category=stop.get('cost_category', '活动费用'), day=i,
                             name=stop['place'], amount=stop['cost'] if cost_label(stop, req, evidence, asof) != '无法查询' else None,
                             status=cost_label(stop, req, evidence, asof))
