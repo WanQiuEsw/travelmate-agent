@@ -341,8 +341,12 @@ def make_guide(version, evidence):
                             name=stop['place'], amount=stop['cost'] if cost_label(stop, req, evidence, asof) != '无法查询' else None,
                             status=cost_label(stop, req, evidence, asof))
                        for i, day in enumerate(plan['days'], 1) for stop in day['stops']]
-                      + [dict(category='综合费用', day=None, name=plan.get('cost_notes') or '其他费用',
-                              amount=plan['other_cost'] if other_estimated else None, status=other_label)],
+                      + ([dict(category=item['category'], day=None, name=item['name'], detail=item.get('note', ''), split=True,
+                               amount=item['amount'] if other_estimated else None, status='估算' if other_estimated else '待核实')
+                          for item in plan['other_cost_items']]
+                         if plan.get('other_cost_items') and round(sum(item['amount'] for item in plan['other_cost_items']), 2) == round(plan['other_cost'], 2)
+                         else [dict(category='综合费用', day=None, name=plan.get('cost_notes') or '其他费用',
+                                    amount=plan['other_cost'] if other_estimated else None, status=other_label)]),
             'cost': displayed_total,
             'per_person': (('约' if '约' in displayed_total else '')
                            + f"¥{(sum(stop['cost'] for stop in stops if cost_label(stop, req, evidence, asof) != '无法查询') + (plan['other_cost'] if other_estimated else 0)) / req['travelers']:.2f}"

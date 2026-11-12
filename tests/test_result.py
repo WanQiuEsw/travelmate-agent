@@ -99,7 +99,9 @@ const total = {}, person = {}, notice = {}, filter = {value:''}, sort = {value:'
 const categories = ['景点门票','综合费用','餐饮费用'].map(c=>({dataset:{categoryTotal:c}}));
 let update, reset;
 const body = {append:()=>{}};
-const nodes = {'[data-total]':total,'[data-person]':person,'[data-budget-notice]':notice,'[data-budget-filter]':filter,'[data-budget-sort]':sort,'[data-ledger]':body,'[data-budget-reset]':{addEventListener:(_,fn)=>reset=fn}};
+const pager = () => ({addEventListener:function(_, fn){this.click=fn;}});
+const prev=pager(), next=pager(), pageStatus={};
+const nodes = {'[data-page-prev]':prev,'[data-page-next]':next,'[data-page-status]':pageStatus,'[data-total]':total,'[data-person]':person,'[data-budget-notice]':notice,'[data-budget-filter]':filter,'[data-budget-sort]':sort,'[data-ledger]':body,'[data-budget-reset]':{addEventListener:(_,fn)=>reset=fn}};
 const fakeWorkspace = {dataset:{travelers:'2'},querySelector:s=>nodes[s],querySelectorAll:s=>s.includes('tr')?rows:categories,addEventListener:(_,fn)=>update=fn};
 global.document = {querySelector:()=>fakeWorkspace,querySelectorAll:()=>[]};
 '''
@@ -112,6 +114,14 @@ rows[0].input.value='12.34';sort.value='desc';update();assert.equal(total.textCo
 reset();assert.equal(total.textContent,'¥0.30');assert.equal(filter.value,'');
 '''
     subprocess.run(['node', '-e', stub + RESULT_JS + checks], check=True, capture_output=True, text=True)
+    pagination = r'''
+update();const before=total.textContent;
+assert.equal(rows.filter(r=>!r.hidden).length,8);assert.equal(prev.disabled,true);
+next.click();assert.equal(rows.filter(r=>!r.hidden).length,4);assert.equal(total.textContent,before);assert.equal(next.disabled,true);
+filter.value='景点门票';update();assert.equal(rows.filter(r=>!r.hidden).length,1);assert.equal(total.textContent,before);
+
+'''
+    subprocess.run(['node', '-e', stub + "for(let i=3;i<12;i++) rows.push(row('交通费用',String(i),i));" + RESULT_JS + pagination], check=True, capture_output=True, text=True)
 
 
 def test_carousel_controls_and_compact_expense_description():
@@ -126,3 +136,37 @@ def test_carousel_controls_and_compact_expense_description():
     assert 'data-total>¥600.00' in html
     assert 'clip-path:inset(50%)' in RESULT_CSS
     assert '.carousel-controls button:focus-visible' in RESULT_CSS
+
+
+def test_legacy_expense_breakdown_requires_matching_total():
+    from travelmate.result import split_expenses
+    row = dict(category='综合费用', day=None, amount=2200, status='估算',
+               name='其他费用2200元构成：厦门—成都往返机票按1600元估算（单程700–900元）；住宿1晚按350元估算；市内交通（机场地铁约20元+打车约40元）按60元；机动/小吃/水按190元。合计1600+350+60+190=2200元。')
+    parts = split_expenses([row])
+    assert [r['amount'] for r in parts] == [1600, 350, 60, 190]
+    assert sum(r['amount'] for r in parts) == 2200
+    assert parts[0]['category'] == '交通费用'
+    assert parts[1]['category'] == '酒店住宿'
+    assert split_expenses([{**row, 'amount': 2300}]) == [{**row, 'amount': 2300}]
+    assert split_expenses([{**row, 'amount': None}]) == [{**row, 'amount': None}]
+
+
+def test_structured_other_expenses_validation_and_display():
+    import pytest
+    from travelmate.workflow import Itinerary
+    plan = deepcopy(PLAN)
+    plan.update(other_cost=2200, other_cost_estimated=True, other_cost_items=[
+        dict(name='往返机票', category='交通费用', amount=1600),
+        dict(name='住宿', category='酒店住宿', amount=600)])
+    Itinerary.model_validate(plan)
+    guide = make_guide(dict(version=1, plan=plan, requirements=REQ,
+                            saved_at=datetime.now(timezone.utc).isoformat()), {})
+    ledger = guide['result']['ledger']
+    assert [r['amount'] for r in ledger[1:]] == [1600,600]
+    assert sum(r['amount'] or 0 for r in ledger) == 2200
+    html = render_guide(guide)
+    assert html.index('data-order="1"') < html.index('data-order="2"') < html.index('data-order="0"')
+    assert 'value="desc" selected' in html and '费用明细分页' in html
+    plan['other_cost_items'][0]['amount'] = 1700
+    with pytest.raises(ValueError, match='分项之和'):
+        Itinerary.model_validate(plan)

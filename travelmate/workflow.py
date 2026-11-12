@@ -141,11 +141,20 @@ class VerifyItem(BaseModel):
     channel: str = Field(min_length=1, max_length=120, description="官方核验渠道，例如12306、景区公众号、大众点评")
 
 
+class OtherExpense(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    name: str = Field(min_length=1, max_length=120)
+    category: Literal["景点门票", "酒店住宿", "餐饮费用", "交通费用", "综合费用"]
+    amount: float = Field(ge=0, le=1e8, description="全员人民币金额，仅拆分other_cost，不含days中已列活动。")
+    note: str = Field(default="", max_length=600)
+
+
 class Itinerary(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     time_granularity: Literal["precise", "period"] = Field(default="precise", description="交通或到离时刻不确定时用period，按上午/中午/下午等安排；precise兼容已有精确行程。")
     days: list[Day] = Field(min_length=1, max_length=30)
     other_cost: float = Field(ge=0, le=1e8, description="仅用户预算包含范围内、尚未计入活动的全员费用；明确排除的住宿或往返交通不计入，没有额外项目时为0。cost_notes说明构成及合计算式。")
+    other_cost_items: list[OtherExpense] = Field(default_factory=list, max_length=100, description="将other_cost拆为往返交通、住宿、市内交通等独立费用行；金额之和必须等于other_cost，已计入活动的餐饮门票不得重复。")
     other_cost_estimated: bool = Field(default=False, description="有依据且已在cost_notes列明费用构成和算式时为true。")
     alternatives: list[Alternative] = Field(default_factory=list, max_length=30)
     reminders: list[str] = Field(default_factory=list, max_length=30)
@@ -162,6 +171,10 @@ class Itinerary(BaseModel):
 
     @model_validator(mode="after")
     def consistent_timing(self):
+        from decimal import Decimal, ROUND_HALF_UP
+        cents = lambda n: (Decimal(str(n)) * 100).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+        if self.other_cost_items and sum(cents(item.amount) for item in self.other_cost_items) != cents(self.other_cost):
+            raise ValueError("其他费用分项之和必须等于other_cost，不能重复计入活动费用")
         for day in self.days:
             for stop in day.stops:
                 if self.time_granularity == "precise" and (stop.start is None or stop.end is None):

@@ -1,4 +1,5 @@
 """Accessible result navigation over the frozen guide; no scripts or remote assets."""
+import re
 from math import isfinite
 from decimal import Decimal, ROUND_HALF_UP
 from urllib.parse import urlencode
@@ -14,7 +15,7 @@ body{background:#faf8f3;color:#193c38}main{max-width:1240px;padding:28px 28px 60
 .highlights{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.highlight{display:block;text-decoration:none;background:#fff;border:1px solid #dedfd5;border-radius:18px;overflow:hidden;color:#193c38}.highlight-body{padding:18px}.highlight strong{font-size:20px;display:block}.highlight small{color:#b94d2a}.place-art{height:110px;background:linear-gradient(135deg,#dbece2,#eff2df);display:flex;align-items:center;padding:24px;font-size:36px;color:#087f7a}.highlight p{font-size:14px;margin:8px 0 0}.result-intro{color:#63736c}.day-anchor{scroll-margin-top:20px}.budget-summary{background:#193c38;color:#fff;border-radius:18px;padding:24px;display:flex;gap:36px;flex-wrap:wrap}.budget-summary strong{display:block;font-size:26px}.budget-summary p{margin:0}.weather-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.weather-day{background:#eaf3ee;border:1px solid #cadbd1;padding:24px;border-radius:18px}.weather-day h3{font-size:20px}.route-map{width:100%;height:300px;background:#eaf3ee;border-radius:18px;border:1px solid #cadbd1}.route-map text{font:16px sans-serif;fill:#fff}.route-map circle{fill:#087f7a}.route-map polyline{stroke:#b94d2a;stroke-width:3;fill:none;stroke-dasharray:8 6}.map-stops{display:flex;flex-wrap:wrap;gap:12px;margin:18px 0}.map-stops a{background:#fff;border:1px solid #dedfd5;padding:8px 14px;border-radius:12px}.result .card:first-child{margin-top:0}
 .carousel{max-width:780px;margin:0 auto 24px;text-align:center}.carousel>input{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}.carousel:has(>input:focus-visible){outline:3px solid #b94d2a;outline-offset:4px}.carousel-slide{display:none;text-align:left}.carousel .place-art{height:180px}.carousel .highlight-body{padding:24px}.carousel .highlight strong{font-size:26px}.carousel-controls{display:flex;justify-content:space-between;align-items:center;padding:16px 0;color:#63736c}.carousel-controls button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;cursor:pointer;border:1px solid #a8c9bd;border-radius:999px;padding:10px 18px;background:#fff;color:#087f7a;font:inherit;font-size:14px;font-weight:600;box-shadow:0 3px 8px #193c3808;transition:background .15s,color .15s}.carousel-controls button:hover{background:#087f7a;border-color:#087f7a;color:#fff}.carousel-controls button:focus-visible{outline:3px solid #b94d2a;outline-offset:3px}.carousel-controls button:active{transform:translateY(1px)}.day-picker{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}.day-picker a{padding:8px 18px;border:1px solid #cadbd1;border-radius:999px;background:#fff;text-decoration:none}.day-detail{margin-bottom:18px}.day-detail>summary{background:#eaf3ee;padding:16px 20px;border:1px solid #cadbd1;border-radius:16px}.day-detail .card{margin-top:10px}.day-anchor:target>.day-detail>summary{border-color:#b94d2a}.result a:focus-visible,.carousel input:focus-visible{outline:3px solid #b94d2a;outline-offset:4px}
 @media print{.carousel-slide{display:block!important}.carousel-controls,.carousel>input,.day-picker{display:none}}
-.carousel{max-width:none;overflow:hidden;padding:10px 20px 24px;background:#eaf3ee;border:1px solid #cadbd1;border-radius:22px}.carousel-stage{position:relative;height:540px;margin:30px 0 0 20%;perspective:1200px}.carousel-slide{position:absolute;top:0;left:0;width:48%;transform-origin:left center;transition:transform .45s ease;}.carousel-slide .highlight{box-shadow:0 18px 36px #193c3826}.carousel .place-art{height:240px;display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;background:linear-gradient(145deg,#adcfc2,#e5edcd);position:relative;overflow:hidden}.place-art:after{content:"";position:absolute;width:220px;height:220px;border:1px solid #ffffff70;border-radius:50%;right:-70px;top:-60px}.place-art span{font-size:14px;letter-spacing:.16em}.place-art b{font-size:32px;line-height:1.3}.place-art small{font-size:12px}.carousel .highlight-body{background:#fff;min-height:180px}.carousel .highlight-body p:first-of-type{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.carousel-controls{display:none}.budget-workspace{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:20px;align-items:start;margin-bottom:20px}.budget-table,.budget-totals{background:#fff;border:1px solid #dedfd5;border-radius:18px;padding:20px}.budget-toolbar{display:flex;gap:14px;flex-wrap:wrap;border-bottom:1px solid #dedfd5;padding-bottom:16px}.budget-toolbar select{max-width:170px;border:1px solid #ccd4cb;border-radius:8px;padding:6px;color:#193c38;background:#faf8f3}.budget-table td,.budget-table th{border:0;border-bottom:1px solid #dedfd5}.budget-table input[type=number]{width:108px;max-width:100%;border:1px solid #ccd4cb;border-radius:7px;padding:6px;color:#193c38;background:#faf8f3}.budget-totals{position:sticky;top:20px;background:#193c38;color:#fff}.budget-totals h3{font-size:24px;font-weight:400;margin:0}.ledger-total{font-size:42px;overflow-wrap:anywhere;line-height:1.3;margin:18px 0}.category-totals{display:grid;grid-template-columns:1fr 1fr;gap:16px}.category-totals p{margin:0;border-top:1px solid #ffffff30;padding-top:12px;font-size:13px}.category-totals strong{display:block;font-size:22px;color:#f1c5a7}.budget-totals .muted{color:#d3dfd8}.budget-status{font-size:12px;color:#63736c}.expense-explanation{margin-top:8px;max-width:420px}.expense-explanation summary{font-size:13px;font-weight:500;color:#087f7a;cursor:pointer}.expense-explanation p{margin:8px 0 0;padding:12px;background:#eaf3ee;border-radius:10px;font-size:13px;line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere}.budget-table td:nth-child(3){min-width:180px;width:100%}.budget-table td:not(:nth-child(3)){white-space:nowrap}.budget-table tr:has(input[type=checkbox]:not(:checked)){opacity:.55}
+.carousel{max-width:none;overflow:hidden;padding:10px 20px 24px;background:#eaf3ee;border:1px solid #cadbd1;border-radius:22px}.carousel-stage{position:relative;height:540px;margin:30px 0 0 20%;perspective:1200px}.carousel-slide{position:absolute;top:0;left:0;width:48%;transform-origin:left center;transition:transform .45s ease;}.carousel-slide .highlight{box-shadow:0 18px 36px #193c3826}.carousel .place-art{height:240px;display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;background:linear-gradient(145deg,#adcfc2,#e5edcd);position:relative;overflow:hidden}.place-art:after{content:"";position:absolute;width:220px;height:220px;border:1px solid #ffffff70;border-radius:50%;right:-70px;top:-60px}.place-art span{font-size:14px;letter-spacing:.16em}.place-art b{font-size:32px;line-height:1.3}.place-art small{font-size:12px}.carousel .highlight-body{background:#fff;min-height:180px}.carousel .highlight-body p:first-of-type{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.carousel-controls{display:none}.budget-workspace{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:20px;align-items:start;margin-bottom:20px}.budget-table,.budget-totals{background:#fff;border:1px solid #dedfd5;border-radius:18px;padding:20px}.budget-toolbar{display:flex;gap:14px;flex-wrap:wrap;border-bottom:1px solid #dedfd5;padding-bottom:16px}.budget-toolbar select{max-width:170px;border:1px solid #ccd4cb;border-radius:8px;padding:6px;color:#193c38;background:#faf8f3}.budget-table td,.budget-table th{border:0;border-bottom:1px solid #dedfd5}.budget-table input[type=number]{width:108px;max-width:100%;border:1px solid #ccd4cb;border-radius:7px;padding:6px;color:#193c38;background:#faf8f3}.budget-totals{position:sticky;top:20px;background:#193c38;color:#fff}.budget-totals h3{font-size:24px;font-weight:400;margin:0}.ledger-total{font-size:42px;overflow-wrap:anywhere;line-height:1.3;margin:18px 0}.category-totals{display:grid;grid-template-columns:1fr 1fr;gap:16px}.category-totals p{margin:0;border-top:1px solid #ffffff30;padding-top:12px;font-size:13px}.category-totals strong{display:block;font-size:22px;color:#f1c5a7}.budget-totals .muted{color:#d3dfd8}.budget-pagination{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:18px;font-size:13px}.budget-pagination button{padding:8px 16px;border:1px solid #a8c9bd;border-radius:999px;background:#eaf3ee;color:#087f7a;cursor:pointer}.budget-pagination button:disabled{opacity:.4;cursor:default}@media print{.budget-pagination{display:none}.budget-table tr[hidden]{display:table-row!important}}.budget-status{font-size:12px;color:#63736c}.expense-explanation{margin-top:8px;max-width:420px}.expense-explanation summary{font-size:13px;font-weight:500;color:#087f7a;cursor:pointer}.expense-explanation p{margin:8px 0 0;padding:12px;background:#eaf3ee;border-radius:10px;font-size:13px;line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere}.budget-table td:nth-child(3){min-width:180px;width:100%}.budget-table td:not(:nth-child(3)){white-space:nowrap}.budget-table tr:has(input[type=checkbox]:not(:checked)){opacity:.55}
 @media(prefers-reduced-motion:reduce){.carousel-slide{transition:none}}
 @media(max-width:700px){.carousel-stage{height:510px;margin-left:4%}.carousel-slide{width:80%}.carousel .place-art{height:200px}.budget-workspace{grid-template-columns:1fr}.budget-totals{position:static}}
 @media print{.carousel-stage{height:auto;margin:0}.carousel-slide{position:static;transform:none!important;width:100%;margin-bottom:20px}.budget-workspace{display:block}.budget-totals{position:static}}
@@ -99,30 +100,57 @@ def result_panels(guide, sections, text):
     return ''.join(out) + '</div>'
 
 
+def split_expenses(ledger):
+    """旧版只拆明确的构成段，分项之和必须与综合费用完全一致。"""
+    result = []
+    for row in ledger:
+        parts = []
+        if row['category'] == '综合费用' and row['amount'] is not None:
+            match = re.search(r'构成[：:](.+?)(?:合计|总计|$)', row['name'], re.S)
+            if match:
+                for section in re.split(r'[；;]', match[1]):
+                    price = re.search(r'按\s*(\d+(?:\.\d{1,2})?)\s*元', section)
+                    if not price:
+                        parts = []
+                        break
+                    name = section[:price.start()].strip(' ，。:：')
+                    category = ('酒店住宿' if '住宿' in name else '交通费用' if any(w in name for w in ('机票', '交通', '高铁', '车票')) else '餐饮费用' if any(w in name for w in ('餐', '小吃')) and '机动' not in name else '综合费用')
+                    parts.append(dict(row, name=name or '其他支出', category=category,
+                                      amount=float(price[1]), detail=section.strip(), split=True))
+        if parts and sum(Decimal(str(p['amount'])) for p in parts) == Decimal(str(row['amount'])):
+            result.extend(parts)
+        else:
+            result.append(row)
+    return result
+
+
 def budget_panel(meta, days, text):
     ledger = meta.get('ledger')
     if ledger is None:
         return '<section class="card"><h2>逐项费用</h2><p>历史方案未保存可计算的费用分项，以下保留原有费用表；重新保存方案后可使用分类试算。</p></section>'
+    ledger = split_expenses(ledger)
+    ledger = [dict(row, original_order=i) for i, row in enumerate(ledger)]
+    ledger = sorted(ledger, key=lambda r: (r['amount'] is None, -(r['amount'] or 0)))
     categories = list(dict.fromkeys(['景点门票', '酒店住宿', '餐饮费用', '交通费用', '活动费用', '综合费用'] + [r['category'] for r in ledger]))
     cents = lambda value: int((Decimal(str(value)) * 100).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
     totals = {category: sum(cents(r['amount']) for r in ledger if r['category'] == category and r['amount'] is not None) for category in categories}
     unknown = sum(r['amount'] is None for r in ledger)
     amount = sum(totals.values())
     travelers = meta.get('travelers') or 1
-    out = [f'<div class="budget-workspace" data-travelers="{travelers}"><section class="budget-table"><h2>逐项费用</h2><div class="budget-toolbar"><label>筛选 <select data-budget-filter aria-label="筛选费用类型"><option value="">全部类型</option>' + ''.join(f'<option>{text(c)}</option>' for c in categories) + '</select></label><label>排序 <select data-budget-sort aria-label="排序费用"><option value="original">日程顺序</option><option value="desc">金额从高到低</option><option value="asc">金额从低到高</option></select></label></div><p class="budget-status">金额为全员人民币费用。可修改金额、取消勾选进行本页试算；筛选不改变总额。试算不保存到方案或导出文件。</p><div class="table-scroll"><table><thead><tr><th scope="col">类型</th><th scope="col">天数</th><th scope="col">项目</th><th scope="col">金额（元）</th><th scope="col">计入</th></tr></thead><tbody data-ledger>']
+    out = [f'<div class="budget-workspace" data-travelers="{travelers}"><section class="budget-table"><h2>逐项费用</h2><div class="budget-toolbar"><label>筛选 <select data-budget-filter aria-label="筛选费用类型"><option value="">全部类型</option>' + ''.join(f'<option>{text(c)}</option>' for c in categories) + '</select></label><label>排序 <select data-budget-sort aria-label="排序费用"><option value="desc" selected>金额从高到低</option><option value="original">日程顺序</option><option value="asc">金额从低到高</option></select></label></div><p class="budget-status">金额为全员人民币费用。可修改金额、取消勾选进行本页试算；筛选不改变总额。试算不保存到方案或导出文件。</p><div class="table-scroll"><table><thead><tr><th scope="col">类型</th><th scope="col">天数</th><th scope="col">项目</th><th scope="col">金额（元）</th><th scope="col">计入</th></tr></thead><tbody data-ledger>']
     for index, row in enumerate(ledger):
-        description = row['name'].replace('other_cost', '其他费用')
-        name = '其他综合费用' if row['category'] == '综合费用' else description
+        description = row.get('detail', row['name']).replace('other_cost', '其他费用')
+        name = row['name'] if row.get('split') else '其他综合费用' if row['category'] == '综合费用' else row['name']
         explanation = (f'<details class="expense-explanation"><summary>费用说明</summary><p>{text(description)}</p></details>'
-                       if row['category'] == '综合费用' or len(description) > 80 else '')
+                       if row.get('detail') or row['category'] == '综合费用' or len(description) > 80 else '')
         if len(name) > 80:
             name = name[:60] + '…'
 
         value = f'{cents(row["amount"])/100:.2f}' if row['amount'] is not None else ''
         day = f'第 {row["day"]} 天' if row.get('day') else '全程'
-        out.append(f'<tr data-category="{text(row["category"])}" data-order="{index}"><td>{text(row["category"])}</td><td>{day}</td><td>{text(name)}{explanation}<div class="budget-status">{text(row["status"])}</div></td><td><input type="number" min="0" max="100000000" step="0.01" value="{value}" placeholder="待核实" aria-label="{text(name)}全员费用"></td><td><input type="checkbox" checked aria-label="计入{text(name)}"></td></tr>')
+        out.append(f'<tr data-category="{text(row["category"])}" data-order="{row["original_order"]}"><td>{text(row["category"])}</td><td>{day}</td><td>{text(name)}{explanation}<div class="budget-status">{text(row["status"])}</div></td><td><input type="number" min="0" max="100000000" step="0.01" value="{value}" placeholder="待核实" aria-label="{text(name)}全员费用"></td><td><input type="checkbox" checked aria-label="计入{text(name)}"></td></tr>')
     label = f'¥{amount/100:.2f}' if amount or not unknown else '待核实'
-    out.append('</tbody></table></div><noscript>启用 JavaScript 后可筛选、排序和试算；当前显示保存时金额。</noscript></section><aside class="budget-totals" aria-label="费用汇总"><h3>预算明细</h3><p class="ledger-total" data-total>' + label + '</p><p>人均已列费用 <strong data-person>' + (f'¥{(Decimal(amount) / travelers / 100).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP):.2f}' if amount or not unknown else '待核实') + '</strong></p><p class="muted" data-budget-notice role="status">已列金额小计；' + str(unknown) + ' 项金额待核实</p><div class="category-totals">')
+    out.append('</tbody></table></div><nav class="budget-pagination" aria-label="费用明细分页"><button type="button" data-page-prev>上一页</button><span data-page-status role="status"></span><button type="button" data-page-next>下一页</button></nav><noscript>启用 JavaScript 后可筛选、排序和试算；当前显示保存时金额。</noscript></section><aside class="budget-totals" aria-label="费用汇总"><h3>预算明细</h3><p class="ledger-total" data-total>' + label + '</p><p>人均已列费用 <strong data-person>' + (f'¥{(Decimal(amount) / travelers / 100).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP):.2f}' if amount or not unknown else '待核实') + '</strong></p><p class="muted" data-budget-notice role="status">已列金额小计；' + str(unknown) + ' 项金额待核实</p><div class="category-totals">')
     for category in categories:
         present = any(r['category'] == category for r in ledger)
         category_unknown = any(r['category'] == category and r['amount'] is None for r in ledger)
@@ -142,6 +170,8 @@ if (workspace) {
   const rows = [...workspace.querySelectorAll('[data-ledger] tr')];
   const filter = workspace.querySelector('[data-budget-filter]');
   const sort = workspace.querySelector('[data-budget-sort]');
+  let page = 1;
+  const pageSize = 8;
   const money = cents => '¥' + (cents / 100).toFixed(2);
   const amount = row => {
     const input = row.querySelector('input[type=number]');
@@ -175,16 +205,26 @@ if (workspace) {
       return sort.value === 'asc' ? x-y : y-x;
     });
     const body = workspace.querySelector('[data-ledger]');
-    for (const row of ordered) body.append(row);
+    const visible = ordered.filter(row => !filter.value || row.dataset.category === filter.value);
+    const pages = Math.max(1, Math.ceil(visible.length / pageSize));
+    page = Math.min(page, pages);
+    for (const row of ordered) { row.hidden = true; body.append(row); }
+    for (const row of visible.slice((page-1)*pageSize, page*pageSize)) row.hidden = false;
+    workspace.querySelector('[data-page-status]').textContent = `第 ${page} / ${pages} 页 · 共 ${visible.length} 项`;
+    workspace.querySelector('[data-page-prev]').disabled = page === 1;
+    workspace.querySelector('[data-page-next]').disabled = page === pages;
   }
-  workspace.addEventListener('change', update);
+  workspace.addEventListener('change', () => { page = 1; update(); });
+  workspace.querySelector('[data-page-prev]').addEventListener('click', () => { page = Math.max(1, page-1); update(); });
+  workspace.querySelector('[data-page-next]').addEventListener('click', () => { page++; update(); });
   workspace.querySelector('[data-budget-reset]').addEventListener('click', () => {
     for (const row of rows) {
       const input = row.querySelector('input[type=number]'); input.value = input.defaultValue;
       row.querySelector('input[type=checkbox]').checked = true;
     }
-    filter.value = ''; sort.value = 'original'; update();
+    filter.value = ''; sort.value = 'desc'; page = 1; update();
   });
+  update();
 }
 """
 
