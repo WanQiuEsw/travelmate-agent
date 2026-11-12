@@ -21,6 +21,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8,<10"]
 rail = ["mcp>=1.26,<2"]
+xhs = ["xhshow>=0.2,<0.3"]
 aliyun = [
     "alibabacloud-bailian20231229>=2.14.5",
 ]

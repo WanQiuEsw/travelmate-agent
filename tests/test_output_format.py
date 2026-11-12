@@ -74,7 +74,7 @@ def test_markdown_exports_the_selected_answer_and_frozen_version(tmp_path):
         assert client.get('/sessions/other/answers/' + answer['message_id'] + '/md').status_code == 404
 
 
-@pytest.mark.parametrize('cost_mode,queries_expected', [('research', 2), ('plan', 1)])
+@pytest.mark.parametrize('cost_mode,queries_expected', [('research', 3), ('plan', 2)])
 def test_configured_web_research_joins_existing_evidence_without_an_extra_model_node(
         tmp_path, monkeypatch, cost_mode, queries_expected):
     import travelmate.agent as module
@@ -94,6 +94,7 @@ def test_configured_web_research_joins_existing_evidence_without_an_extra_model_
         chat(agent, 'research', '规划')
         assert len(queries) == queries_expected
         assert any('门票价格' in query for query in queries) is (cost_mode == 'research')
+        assert any('预约规则' in query and '闭馆公告' in query for query in queries)
         assert 'https://example.com/visit' in guide_markdown(get_version(get_workflow(agent, 'research'), 1))
         assert model.calls == ['Intake', 'Areas', 'Itinerary', 'ReviewReport']
 
@@ -115,8 +116,8 @@ def test_planning_allowances_add_to_budget_and_do_not_invent_quotes_or_ignored_c
     assert sum(Decimal(row[1][1:]) for row in budget_allocation({**req, 'budget_scope': 'per_person'})) == Decimal('10000')
 
 
-def test_knowledge_hit_skips_web_research_and_is_labelled_in_sources(tmp_path, monkeypatch):
-    (tmp_path / '杭州.md').write_text('杭州西湖环湖步行与片儿川面馆，' * 20, encoding='utf-8')
+def test_knowledge_coverage_skips_duplicate_guides_but_checks_dynamic_rules(tmp_path, monkeypatch):
+    (tmp_path / '杭州.md').write_text('杭州西湖游览路线与当地美食片儿川面馆，' * 20, encoding='utf-8')
     import travelmate.agent as module
     queries = []
 
@@ -133,9 +134,9 @@ def test_knowledge_hit_skips_web_research_and_is_labelled_in_sources(tmp_path, m
     with open_test(tmp_path, model) as agent:
         chat(agent, 'kb', '规划')
         markdown = guide_markdown(get_version(get_workflow(agent, 'kb'), 1))
-    assert queries == []
-    assert '本地知识库「杭州.md」' in markdown
-    assert '本版参考了本地知识库文档' in markdown
+    assert len(queries) == 1 and '预约规则' in queries[0]
+    assert '知识库「杭州.md」' in markdown
+    assert '本版参考了知识库文档' in markdown
     assert model.calls == ['Intake', 'Areas', 'Itinerary', 'ReviewReport']
 
 

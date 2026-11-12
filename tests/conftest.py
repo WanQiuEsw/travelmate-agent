@@ -10,7 +10,7 @@ def isolated_configuration(monkeypatch):
     monkeypatch.setenv("REVIEW_MODE", "full")
     # 定时行前复核会自己联网并写会话；用例里手动调用 check_session / scheduler_pass。
     monkeypatch.setenv("WATCH_SCHEDULER", "0")
-    for name in ("MODEL_API_KEY", "TAVILY_API_KEY", "AMAP_API_KEY",
+    for name in ("MODEL_API_KEY", "TAVILY_API_KEY", "AMAP_API_KEY", "XHS_COOKIE", "XHS_ENABLED",
                  "ALIBABA_CLOUD_ACCESS_KEY_ID", "ALIBABA_CLOUD_ACCESS_KEY_SECRET",
                  "ALIBABA_CLOUD_SECURITY_TOKEN", "ALIYUN_WORKSPACE_ID", "ALIYUN_INDEX_ID",
                  "ASR_API_KEY", "ASR_PROVIDER", "ASR_BASE_URL", "ASR_MODEL"):

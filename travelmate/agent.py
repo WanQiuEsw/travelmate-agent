@@ -18,6 +18,7 @@ from travelmate.rail import search_train_tickets, china_today
 from travelmate.weather import search_weather
 from travelmate.tools import estimate_budget, search_web, search_places, search_route
 from travelmate.knowledge import create_knowledge_tool
+from travelmate.xhs import search_xiaohongshu
 from travelmate.workflow import PlanningState, update_trip, submit_itinerary
 from travelmate.public import public_data, public_answer
 
@@ -65,12 +66,12 @@ def open_agent(*, model=None, database=None, knowledge=None, legacy_tool_loop=Fa
         if not legacy_tool_loop:
             from travelmate.planner import build_planner
             yield build_planner(model, saver, knowledge_tool,
-                                {t.name: t for t in (search_train_tickets, search_places, search_route, search_web, search_weather)},
+                                {t.name: t for t in (search_train_tickets, search_places, search_route, search_web, search_weather, search_xiaohongshu)},
                                 PROMPT.format(today=china_today().isoformat()),
                                 **({"review_model": review_model} if review_model is not None else {}))
             return
         yield create_agent(model=model, state_schema=PlanningState, middleware=[capture_evidence],
-                           tools=[search_weather, search_train_tickets, estimate_budget, search_web, search_places, search_route, update_trip, submit_itinerary,
+                           tools=[search_weather, search_train_tickets, estimate_budget, search_web, search_xiaohongshu, search_places, search_route, update_trip, submit_itinerary,
                            knowledge_tool],
                            system_prompt=PROMPT.format(today=china_today().isoformat()),
                            checkpointer=saver)
@@ -93,6 +94,7 @@ def reply_content(messages):
 
 
 TOOL_LABELS = {
+    "search_xiaohongshu": "检索小红书最新攻略",
     "search_weather": "查询目的地天气",
     "search_train_tickets": "通过12306查询车次",
     "search_knowledge": "检索旅游知识资料", "search_web": "搜索网页参考来源",

@@ -19,6 +19,8 @@ from travelmate.workflow import (PlanningState, update_trip, Itinerary, PartialR
                                  period_plan, time_label, travel_label, cost_label, total_cost_label, TIME_NOTICE)
 from travelmate.evidence import normalize, validate_evidence, context_key, model_view, check_reference
 from travelmate.public import public_data
+from travelmate.knowledge import knowledge_coverage
+from travelmate.xhs import enabled as xhs_enabled
 from travelmate.guide import version_snapshot, preliminary_brief
 from travelmate.review import ReviewReport, program_review, blocking_messages, plan_key, timing_warnings
 from travelmate.interaction import Decision, requirements_interaction, decision_interaction
@@ -295,19 +297,34 @@ def build_planner(model, saver, knowledge, tools, prompt, review_model=None):
         w = state["workflow"]
         req = w["requirements"]
         writer = get_stream_writer()
-        writer({"text": f"已整理：{req['travelers']}人，{req['destination']}{req['days']}天；先查本地知识库。"})
+        writer({"text": f"已整理：{req['travelers']}人，{req['destination']}{req['days']}天；开始检索旅行资料。"})
         query_text = f"{req['destination']} {req['days']}天 特色美食 地方小吃 {req.get('dietary') or ''} {req.get('preferences', '')} {req.get('interests', [])} {req.get('exclusions', [])}"
-        # 知识库优先：有可用原文就不联网找同类资料，省钱也少一份幻觉来源。
-        knowledge_data, knowledge_records = query("search_knowledge", {"query": query_text, "city": req["destination"]}, req)
-        hit = bool((knowledge_data.get("results") or [])
-                   and any(len(str(row.get("content") or "")) >= 120 for row in knowledge_data["results"]
-                           if isinstance(row, dict)))
-        writer({"text": "知识库已命中，跳过联网找攻略。" if hit
-                else "知识库没有可用资料，改用联网检索。"})
+        research_data, records = [], {}
+        xhs_data = {'results': []}
+        if xhs_enabled() and 'search_xiaohongshu' in tools:
+            writer({'text': '优先检索小红书最新旅游笔记。'})
+            xhs_data, xhs_records = query('search_xiaohongshu', {'query': query_text, 'city': req['destination']}, req)
+            records.update(xhs_records)
+            research_data.append({'tool': 'search_xiaohongshu', 'data': xhs_data})
+            writer({'text': f"小红书找到 {len(xhs_data.get('results') or [])} 篇参考笔记。" if not xhs_data.get('error')
+                    else '小红书暂不可用，将使用知识库与联网资料补充。'})
+        coverage = knowledge_coverage(xhs_data, req)
+        if coverage['missing']:
+            writer({'text': '检索知识库补充：' + '、'.join(coverage['missing']) + '。'})
+            knowledge_data, knowledge_records = query("search_knowledge", {"query": query_text + ' ' + ' '.join(coverage['missing']), "city": req["destination"]}, req)
+            records.update(knowledge_records)
+            research_data.append({'tool': 'search_knowledge', 'data': knowledge_data})
+            coverage = knowledge_coverage({'results': (xhs_data.get('results') or []) + ([] if knowledge_data.get('error') else knowledge_data.get('results') or [])}, req)
+        missing = coverage['missing']
+        writer({"text": '知识库缺少：' + '、'.join(missing) + '，将补查。' if missing
+                else '参考资料已覆盖攻略需求；开放与预约等动态信息仍需核实。'})
         jobs = []
         online = (os.getenv('TAVILY_API_KEY') or os.getenv('MODEL_API_KEY')) and 'search_web' in tools
-        if online and not hit:
-            jobs.append(('search_web', {'query': f'{req["destination"]} 官方旅游 特色美食 场馆 参观须知 {req.get("start_date") or "最新公告"}'}, {}))
+        if online and missing:
+            jobs.append(('search_web', {'query': f'{req["destination"]} 官方旅游 {" ".join(missing)}'}, {'purpose': 'knowledge_gap'}))
+        if online:
+            jobs.append(('search_web', {'query': f'{req["destination"]} 官方 开放时间 预约规则 闭馆公告 {req.get("start_date") or "最新"}'},
+                         {'purpose': 'dynamic_rules'}))
         if online and cost_mode() == 'research':
             # 价格是实时信息，知识库不会有时效性，总查一次。
             jobs.append(('search_web', {'query': f'{req["destination"]} 景点门票价格 人均消费 {req.get("start_date") or ""}'.strip()},
@@ -337,7 +354,6 @@ def build_planner(model, saver, knowledge, tools, prompt, review_model=None):
                 jobs.append(('search_web', {'query': f'{req["destination"]}到{req["origin"]} {back_day} {word} 票价 最晚 参考'},
                              {'purpose': 'transport'}))
         # 检索之间互不依赖，串行等 HTTP 是白等；铁路两程仍在一个线程里顺序跑，避免并发抢同一个 MCP 会话。
-        research_data, records = [{"tool": "search_knowledge", "data": knowledge_data}], dict(knowledge_records)
         with ThreadPoolExecutor(max_workers=min(6, len(jobs) + 1)) as pool:
             pending = [(job, pool.submit(query, job[0], job[1], req)) for job in jobs]
             rail_future = pool.submit(lambda: [query("search_train_tickets", leg, req) for _, leg in legs]) if legs else None

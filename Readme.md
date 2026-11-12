@@ -8,7 +8,7 @@ TravelMate 是一个基于 LangChain 的旅行规划智能体。你给一句话�
 
 - 多轮对话补齐出发地、目的地、日期、天数、人数、总预算和偏好，日期和预算口径都等你确认。
 - 行程含结论、硬规则、预算三档、交通住宿、每日路线、美食、避坑、行前准备和待核实清单，天气预报写进每日标题。
-- 知识库优先。本地 Markdown 和阿里云百炼文档搜索都支持，有一条原文超过 120 字就算命中，直接跳过联网。
+- 配置小红书 Cookie 后优先检索最新旅游笔记，按主题缺口用知识库补充；未配置时使用知识库。本地 Markdown 和阿里云百炼均支持，动态规则仍独立联网核实。
 - 联网搜索走 DeepSeek 官方 Search API，与模型共用密钥；没有 DeepSeek 密钥时回退到 Tavily。
 - 高德查地点和驾车路线。铁路走自部署的 12306 MCP，拿真实车次和票价；飞机只走搜索，标待核实。
 - 每条回答可以导出 PDF 或 Markdown。每版方案另有一页单文件 HTML 攻略，手机能看，也能直接存成 PDF。
@@ -71,6 +71,7 @@ uv run python -m travelmate.accounts invite
 | `AMAP_API_KEY` | 高德 Web 服务 Key，启用地点与驾车核对 |
 | `TAVILY_API_KEY` | 没有 DeepSeek 密钥时的搜索兜底 |
 | `KNOWLEDGE_PROVIDER` | `local` 本地字符匹配 / `aliyun` 百炼知识库 |
+| `XHS_COOKIE` / `XHS_ENABLED` | 小红书最新攻略，配置 Cookie 自动启用；需安装 `xhs` 可选依赖，见接入说明 |
 | `RAIL_MCP_URL` | 12306 MCP 地址，查真实车次；不配则退回搜索 |
 | `ASR_PROVIDER` / `ASR_API_KEY` | 语音转文字，支持 OpenAI 兼容接口或 faster-whisper 本地跑 |
 | `COST_MODE` | `research` 联网查票价与人均 / `plan` 只排流程不查价 |
@@ -94,6 +95,7 @@ uv run pytest -q
 | [设计说明](docs/design.md) | 整体架构与模块划分 |
 | [邀请与账号](docs/invitation-access.md) | 登录、额度与部署 |
 | [阿里云知识库](docs/aliyun-knowledge.md) | 百炼知识库接入与标签过滤 |
+| [小红书接入](docs/xiaohongshu.md) | 本地演示配置、Cookie、检索自检与降级说明 |
 | [12306 MCP](docs/12306-mcp-setup.md) | 车次查询的配置与排错 |
 
 ---
@@ -110,7 +112,7 @@ TravelMate is a travel-planning agent built on LangChain. One sentence gets it g
 
 - Multi-turn intake fills in origin, destination, dates, trip length, party size, total budget and preferences. Dates and the budget basis always come from you.
 - The itinerary covers a verdict, hard rules, three budget tiers, transport and accommodation, a daily route, local food, pitfalls, pre-trip preparation and a to-verify list. The forecast sits in each day header.
-- The knowledge base comes first. Local Markdown and Alibaba Cloud Bailian document search both work, and one passage longer than about 120 characters counts as a hit that skips the web search.
+- With `XHS_COOKIE` configured, recent Xiaohongshu notes come first and the knowledge base fills topic gaps. Without it, local Markdown or Alibaba Cloud Bailian is used directly. Dynamic facts are checked independently.
 - Web search uses the official DeepSeek Search API with the same key as the model, and falls back to Tavily when there is no DeepSeek key.
 - Amap handles place lookup and driving routes. Train data comes from a self-hosted 12306 MCP server, so you get real train numbers and fares. Flights go through web search only and stay marked unverified.
 - Every answer can be exported to PDF or Markdown, and each saved version has a standalone single-file HTML guide that works on a phone and prints to PDF.

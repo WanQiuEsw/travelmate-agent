@@ -318,15 +318,18 @@ def make_guide(version, evidence):
         seen.add(key)
         tool = record.get('tool')
         if tool == 'search_knowledge':
-            name = f'本地知识库「{record["title"]}」'
+            name = f'知识库「{record["title"]}」'
             used_knowledge = used_knowledge or record['query_status'] == 'success'
         elif tool == 'search_web':
             name = f'网页资料「{record["title"]}」'
+        elif tool == 'search_xiaohongshu':
+            published = display_time(record['published_at']) if record.get('published_at') else '未知'
+            name = f'小红书「{record["title"]}」 · 发布时间{published} · {record.get("freshness") or "发布时间未知"}'
         else:
             name = {'search_places': '高德地点查询', 'search_weather': '天气预报查询',
                     'search_train_tickets': '铁路车次查询'}.get(tool, record['title'])
         sources.append({'text': f'{name} · {label} · 查询时间{display_time(record["queried_at"])}', 'link': safe_url(record.get('url')), 'link_label': '公开来源'})
-    intro = ['本版参考了本地知识库文档，其余为联网检索与工具查询结果。'] if used_knowledge else []
+    intro = ['本版参考了知识库文档，其余为联网检索与工具查询结果。'] if used_knowledge else []
     section('参考来源', intro + (sources or ['本版没有可追溯的公开查询结果，不将具体报价或营业状态标为已核实。']), 'sources')
     return public_guide(public_data({'title': f'{route} · {req["days"]}天旅行攻略', 'version': version['version'],
         'saved_at': display_time(version['saved_at']) if version.get('saved_at') else '未记录（历史版本）',
