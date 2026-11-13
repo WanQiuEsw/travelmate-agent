@@ -1,6 +1,7 @@
 from copy import deepcopy
 from langchain_core.runnables import RunnableLambda
 from travelmate.review import program_review, blocking_messages, fix_hint
+from travelmate.guide import get_version, guide_markdown
 from travelmate.workflow import get_workflow
 from travelmate.agent import chat
 from test_workflow import REQ, PLAN
@@ -100,13 +101,14 @@ def test_estimated_timing_warning_does_not_regenerate_or_discard_plan(tmp_path):
     with open_test(tmp_path, Model()) as agent:
         chat(agent, 'trip', '规划')
     with open_test(tmp_path, ReviewedModel([[issue]])) as agent:
-        text = chat(agent, 'trip', '修改')
+        chat(agent, 'trip', '修改')
+        state = get_workflow(agent, 'trip')
+        text = guide_markdown(get_version(state, 2))
         assert '按大致时段安排' in text and '上午' in text
         assert '| 位置 | 待解决问题 | 调整建议 |' not in text
         assert '| 时段 | 顺路安排 |' in text
         assert '09:00–11:00（上午）' in text
         assert '106.579027' not in text and 'travel_minutes' not in text
-        state = get_workflow(agent, 'trip')
         assert state['status'] == 'review' and len(state['versions']) == 2
         assert state['attempts'] == 1
         assert state['review']['issues'][0]['severity'] == 'warning'
@@ -140,4 +142,4 @@ def test_program_mode_skips_the_model_review_but_keeps_the_gate(tmp_path, monkey
         state = get_workflow(agent, 'noreview')
     assert 'ReviewReport' not in model.calls
     assert state['status'] == 'review' and state['review']['prompt_version'] == 'program-only'
-    assert '第1天' in answer and '未通过检查' not in answer
+    assert '1天旅行攻略已整理完成' in answer and '未通过检查' not in answer

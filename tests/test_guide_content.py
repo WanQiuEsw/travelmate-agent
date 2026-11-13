@@ -6,7 +6,7 @@ from langchain_core.runnables import RunnableLambda
 
 from travelmate.agent import chat, conversation
 from travelmate.evidence import normalize
-from travelmate.guide import day_heading, make_guide, render_guide, get_version, version_snapshot
+from travelmate.guide import day_heading, make_guide, render_guide, get_version, version_snapshot, guide_markdown
 from travelmate.pdf_export import answer_pdf, guide_pdf, itinerary_pdf
 from travelmate.public import public_answer
 from travelmate.workflow import get_workflow
@@ -39,7 +39,7 @@ def test_day_heading_matches_date_weekday_and_saved_forecast_only():
                     weather(req, rows=[{'date': '2026-11-05', 'dayweather': '雨'}])):
         title = day_heading('2026-11-06', 1, req, changed, NOW)
         assert '暂无预报' in title and '天气预报：白天' not in title
-    assert day_heading(None, 1, req, records, NOW) == '第1天 · 天气：出发日期未定'
+    assert day_heading(None, 1, req, records, NOW) == '第1天 · 日期未定'
     assert '星期二' in day_heading('2026-12-01', 1, req, {}, NOW)
 
 
@@ -60,7 +60,7 @@ def test_preview_uses_frozen_forecast_and_hides_legacy_review_and_map_links():
     current = weather(req, rows=[{'date': '2026-11-06', 'dayweather': '暴雨'}], now=NOW + timedelta(days=1))
     restored = get_version({'versions': [snapshot], 'evidence': current}, 1)
     html = render_guide(restored, '/saved.pdf')
-    assert '星期五' in html and '天气预报：白天晴' in html and '暴雨' not in html
+    assert '星期五' in html and '天气预报：白天晴' in html and '天气预报：白天暴雨' not in html
     assert '当地特色美食' in html and '片儿川' in html and '请提前预约' in html
     assert 'internal-review' not in html
     assert snapshot == untouched
@@ -139,12 +139,15 @@ def test_missing_food_retries_once_and_food_survives_history_and_version(tmp_pat
 
     model = FoodModel()
     with open_test(tmp_path, model) as agent:
-        answer = chat(agent, 'food', '安排杭州一日游')
+        chat(agent, 'food', '安排杭州一日游')
         assert model.calls.count('Itinerary') == 2
-        assert '当地特色美食' in answer and '片儿川' in answer
-        assert '星期二' in answer and '超出预报范围' in answer
         state = get_workflow(agent, 'food')
+        guide = get_version(state, 1)
+        markdown = guide_markdown(guide)
+        assert '当地特色美食' in markdown and '片儿川' in markdown
+        assert '星期二' in markdown and '超出预报范围' in markdown
         assert state['plan']['foods'][0]['name'] == '片儿川'
-        assert '片儿川' in render_guide(get_version(state, 1), '/guide.pdf')
+        assert '片儿川' in render_guide(guide, '/guide.pdf')
     with open_test(tmp_path, Model()) as agent:
-        assert '片儿川' in conversation(agent, 'food')['messages'][-1]['content']
+        message = conversation(agent, 'food')['messages'][-1]
+        assert '片儿川' in guide_markdown(get_version(get_workflow(agent, 'food'), message['plan_version']))

@@ -102,9 +102,9 @@
   @media (prefers-reduced-motion: reduce) { .content[aria-busy="true"] .progress summary::after { animation: none; } }
   .references { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 10px; color: var(--muted); font-size: 13px; }
   summary { cursor: pointer; }
-  .guide-link { margin-left: 10px; }
-  .export-pdf, .export-md { display: inline-block; margin-top: 18px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
-  .export-md { margin-left: 12px; }
+  .export-pdf, .export-md, .export-html { display: inline-block; margin-top: 18px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
+  .content .guide-link { background: var(--accent-hover); color: white; text-decoration: none; font-weight: 600; }
+  .guide-link + .export-pdf, .export-md, .export-html { margin-left: 12px; }
   .table-scroll { overflow-x: auto; margin: 16px 0; }
   table { border-collapse: collapse; width: 100%; font-size: 14px; }
   th, td { border: 1px solid var(--line); padding: 10px 12px; text-align: left; min-width: 80px; }
@@ -140,8 +140,8 @@
   .quick-plan-dialog::backdrop { background: #163b3866; }
   .quick-plan-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
   .quick-plan-heading h2 { font-size: 20px; margin: 0; }
-  #trip-submit { background: var(--accent); color: white; border-color: var(--accent); }
-  #trip-form { border: 0; border-radius: 0; box-shadow: none; padding: 8px 0; }
+  #trip-submit, #preset-submit { background: var(--accent); color: white; border-color: var(--accent); }
+  #trip-form, #preset-form { border: 0; border-radius: 0; box-shadow: none; padding: 8px 0; }
   .trip-step { border: 0; padding: 0; margin: 18px 0; min-width: 0; }
   .trip-step[hidden] { display: none; }
   .trip-step legend { font-size: 18px; font-weight: 600; padding: 0 0 12px; }
@@ -154,10 +154,30 @@
   .trip-grid label { display: grid; gap: 6px; font-size: 14px; color: var(--muted); }
   .trip-grid input, .trip-grid select { min-width: 0; width: 100%; min-height: 44px; border: 1px solid var(--line); border-radius: 8px; padding: 8px; font: inherit; color: var(--text); background: var(--surface); }
   .trip-optional { color: var(--muted); font-size: 11px; font-weight: normal; }
-  .trip-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .trip-actions { display: flex; flex-wrap: wrap; gap: 8px; position: sticky; bottom: -12px; padding: 10px 0; border-top: 1px solid var(--line); background: var(--surface); }
+  .city-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+  .city-card { display: block; position: relative; overflow: hidden; min-width: 0; padding: 0; text-align: left; border-radius: 14px; background: var(--surface); }
+  .city-card[hidden] { display: none; }
+  .city-card-media { display: block; aspect-ratio: 3 / 2; overflow: hidden; background: var(--tint); }
+  .city-card img { display: block; width: 100%; height: 100%; object-fit: cover; transition: transform 180ms ease, filter 180ms ease; }
+  .city-card-copy { display: grid; gap: 2px; padding: 8px 10px; overflow-wrap: anywhere; }
+  .city-card-copy small { color: var(--muted); font-size: 12px; }
+  .city-card[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .city-card[aria-pressed="true"]::after { content: ''; position: absolute; top: 8px; right: 8px; width: 22px; height: 22px; border: 1px solid white; border-radius: 50%; background: var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='white' stroke-width='2.5' d='m6 12 4 4 8-8'/%3E%3C/svg%3E") center / 18px no-repeat; }
+  .city-card:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 2px; }
+  @media (hover: hover) and (pointer: fine) {
+    .city-card:hover:enabled { border-color: var(--accent); box-shadow: 0 0 0 2px #16837222, 0 5px 16px #193c381f; }
+    .city-card:hover img { transform: scale(1.045); filter: brightness(1.08); }
+  }
+  .city-card:active { transform: scale(.985); }
+  @media (prefers-reduced-motion: reduce) {
+    .city-card img { transition: none; }
+    .city-card:active, .city-card:hover img { transform: none; }
+  }
+  #preset-draft { min-height: 150px; width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
   .train-results { white-space: pre-wrap; font-size: 13px; max-height: 220px; overflow-y: auto; margin-top: 10px; }
   .trip-note { margin: 8px 0; font-size: 14px; color: var(--muted); }
-  @media (max-width: 700px) { .trip-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 700px) { .trip-grid, .city-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   .voice-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 4px; }
   #voice-record { background: var(--accent); color: white; border-color: var(--accent); }
   #voice-text { min-height: 96px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--surface); }
@@ -279,10 +299,10 @@
       <progress id="trip-progress" max="8" value="1" aria-label="快速规划进度"></progress>
       <form id="trip-form" novalidate>
         <fieldset class="trip-step" data-title="目的地">
-          <legend>这次想去哪里？</legend>
+          <legend id="trip-city-title" tabindex="-1" autofocus>这次想去哪里？</legend>
         <div class="trip-grid">
-          <label>目的地<input name="destination" required maxlength="80" placeholder="选择或填写城市" list="trip-cities" autofocus></label>
-        </div></fieldset>
+          <label>目的地<input name="destination" required maxlength="80" placeholder="搜索或输入城市" autocomplete="off"></label>
+        </div><div id="trip-city-cards"></div></fieldset>
         <fieldset class="trip-step" data-title="出发日期" data-optional="true" hidden disabled>
           <legend>准备什么时候出发？</legend>
           <p class="trip-note">日期还没确定，可以点击“暂不确定，跳过”，按第几天规划。</p>
@@ -325,6 +345,23 @@
         <div id="trip-rail" hidden><button type="button" id="train-search">查询铁路车次</button><div id="train-results" class="train-results" role="status" aria-live="polite"></div></div>
       </form>
     </dialog>
+    <dialog class="quick-plan-dialog" id="preset-plan" aria-labelledby="preset-title">
+      <div class="quick-plan-heading"><h2 id="preset-title" tabindex="-1" autofocus>试试旅行示例</h2><button id="preset-close" type="button">关闭</button></div>
+      <p class="trip-note" id="preset-step" role="status"></p>
+      <form id="preset-form" novalidate>
+        <fieldset id="preset-city-step" class="trip-step">
+          <legend>选一个想体验的城市</legend>
+          <div class="trip-grid"><label>目的地<input id="preset-city" required maxlength="80" placeholder="搜索或输入城市" autocomplete="off"></label></div>
+          <div id="preset-city-cards"></div>
+        </fieldset>
+        <fieldset id="preset-review" class="trip-step" hidden disabled>
+          <legend id="preset-review-title" tabindex="-1">看看这趟旅行怎么安排</legend>
+          <p class="trip-note">可以直接修改示例内容，填入对话后再发送。</p>
+          <label>旅行需求<textarea id="preset-draft" required maxlength="8000" rows="5"></textarea></label>
+        </fieldset>
+        <div class="trip-actions"><button id="preset-back" type="button" hidden>上一步</button><button id="preset-submit" type="submit">下一步</button></div>
+      </form>
+    </dialog>
     <dialog class="quick-plan-dialog" id="voice" aria-labelledby="voice-title">
       <div class="quick-plan-heading"><h2 id="voice-title">语音说需求</h2><button id="voice-close" type="button">关闭</button></div>
       <p class="trip-note">录音只转成文字，先给你确认或修改；确认后填进输入框，由你自己点发送。</p>
@@ -347,7 +384,7 @@
       <div id="watch-body"></div>
     </section>
     <form id="form">
-      <div class="entry-tools"><button class="quick-fill" id="quick-fill-open" type="button" aria-haspopup="dialog" aria-controls="quick-fill">快速规划 ↗</button><button id="voice-open" type="button" aria-haspopup="dialog" aria-controls="voice">语音说需求 ↗</button><button id="preset" type="button">试试预设示例 ↗</button></div>
+      <div class="entry-tools"><button class="quick-fill" id="quick-fill-open" type="button" aria-haspopup="dialog" aria-controls="quick-fill">快速规划 ↗</button><button id="voice-open" type="button" aria-haspopup="dialog" aria-controls="voice">语音说需求 ↗</button><button id="preset" type="button" aria-haspopup="dialog" aria-controls="preset-plan">试试预设示例 ↗</button></div>
       <label class="input-label" for="input">你的旅行想法</label>
       <textarea id="input" maxlength="8000" required placeholder="想去哪里？聊聊目的地、天数和预算，或先选一个旅行灵感…"></textarea>
       <div class="actions"><span class="keyboard-hint">Enter 发送 · Ctrl + Enter 换行</span><button id="send" type="submit">发送 ↑</button></div>
@@ -358,12 +395,74 @@
   <section class="inspiration" aria-labelledby="inspiration-title"><div class="chat-width">
     <div class="inspiration-heading"><h2 id="inspiration-title">从一个旅行灵感开始</h2><p>山野、海岸，或一座慢下来的城</p></div>
     <div class="inspiration-grid">
-      <button class="inspiration-card" type="button" data-trip-idea="想找一个适合轻徒步、亲近山野的目的地，安排一段放松的旅行。请先和我确认出发地、天数、人数及预算。"><img src="/assets/visual/mountains.webp" alt="云雾间的青山与草甸步道" width="1536" height="1024" loading="lazy"><span class="inspiration-copy"><strong>去山野，深呼吸</strong><small>走进自然，让脚步慢一点</small></span></button>
-      <button class="inspiration-card" type="button" data-trip-idea="想去海边放松，沿着海岸散步，探索当地美食。请先和我确认出发地、天数、人数及预算。"><img src="/assets/visual/coast.webp" alt="碧蓝海水与阳光下的海岸" width="1536" height="1024" loading="lazy"><span class="inspiration-copy"><strong>沿着海岸慢慢走</strong><small>把时间交给海风与日落</small></span></button>
-      <button class="inspiration-card" type="button" data-trip-idea="想去一座有历史文化的古城，逛老街、看建筑、吃当地小吃。请先和我确认出发地、天数、人数及预算。"><img src="/assets/visual/town.webp" alt="石桥、绿水与白墙黛瓦的古镇" width="1536" height="1024" loading="lazy"><span class="inspiration-copy"><strong>在古城里闲逛</strong><small>在街巷中，遇见当地生活</small></span></button>
+      <button class="inspiration-card" type="button" data-trip-idea="想找一个适合轻徒步、亲近山野的目的地，安排一段放松的旅行。目的地还没定，想先看看候选。"><img src="/assets/visual/mountains.webp" alt="云雾间的青山与草甸步道" width="1536" height="1024" loading="lazy"><span class="inspiration-copy"><strong>去山野，深呼吸</strong><small>走进自然，让脚步慢一点</small></span></button>
+      <button class="inspiration-card" type="button" data-trip-idea="想去海边放松，沿着海岸散步，探索当地美食。目的地还没定，想先看看候选。"><img src="/assets/visual/coast.webp" alt="碧蓝海水与阳光下的海岸" width="1536" height="1024" loading="lazy"><span class="inspiration-copy"><strong>沿着海岸慢慢走</strong><small>把时间交给海风与日落</small></span></button>
+      <button class="inspiration-card" type="button" data-trip-idea="想去一座有历史文化的古城，逛老街、看建筑、吃当地小吃。目的地还没定，想先看看候选。"><img src="/assets/visual/town.webp" alt="石桥、绿水与白墙黛瓦的古镇" width="1536" height="1024" loading="lazy"><span class="inspiration-copy"><strong>在古城里闲逛</strong><small>在街巷中，遇见当地生活</small></span></button>
     </div><p class="inspiration-note">AI 生成的旅行意境图 · 点击仅填写灵感，编辑后发送即可开始规划</p>
   </div></section>
 </main>
+<script id="city-picker-script">
+  const cityCovers = new Map([
+    ['厦门', ['xiamen', '海岛与红瓦洋楼']], ['北京', ['beijing', '宫阙与长城']],
+    ['上海', ['shanghai', '外滩与浦江天际线']], ['杭州', ['hangzhou', '西湖与江南春色']],
+    ['成都', ['chengdu', '熊猫与锦里老街']], ['广州', ['guangzhou', '珠江与岭南建筑']],
+    ['西安', ['xian', '兵马俑与古城墙']],
+  ]);
+
+  function createCityPicker(input, names = [...cityCovers.keys()], canChoose = () => true) {
+    const group = document.createElement('div');
+    group.className = 'city-grid';
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-label', '目的地城市');
+    const buttons = names.map(name => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'city-card';
+      const cover = cityCovers.get(name === '福建厦门' ? '厦门' : name);
+      if (cover) {
+        const media = document.createElement('span');
+        media.className = 'city-card-media';
+        const image = document.createElement('img');
+        image.src = `/assets/visual/cities/${cover[0]}.webp`;
+        image.alt = '';
+        image.loading = 'lazy';
+        image.width = 960;
+        image.height = 640;
+        media.append(image);
+        button.append(media);
+      }
+      const copy = document.createElement('span');
+      copy.className = 'city-card-copy';
+      const label = document.createElement('strong');
+      label.textContent = name;
+      copy.append(label);
+      if (cover) {
+        const caption = document.createElement('small');
+        caption.textContent = cover[1];
+        copy.append(caption);
+      }
+      button.append(copy);
+      button.addEventListener('click', () => {
+        if (!canChoose()) return;
+        input.value = name;
+        input.dispatchEvent(new Event('input', {bubbles: true}));
+      });
+      group.append(button);
+      return button;
+    });
+    function update() {
+      const query = input.value.trim().toLowerCase();
+      const selected = names.findIndex(name => name.toLowerCase() === query);
+      buttons.forEach((button, index) => {
+        button.setAttribute('aria-pressed', String(index === selected));
+        button.hidden = selected === -1 && !names[index].toLowerCase().includes(query);
+      });
+    }
+    input.addEventListener('input', update);
+    update();
+    return {group, buttons};
+  }
+</script>
 <script type="module">
   import {renderMarkdown} from '/assets/markdown.js';
   import {apiFetch as fetch, refreshAccount, logout} from '/assets/auth.js';
@@ -422,7 +521,6 @@
     const progress = document.createElement('progress'); progress.max = interaction.fields.length + 1;
     progress.className = 'interaction-progress'; progress.setAttribute('aria-label', '补充条件进度');
     const presets = {
-      destination: ['北京', '上海', '杭州', '成都', '厦门', '西安'],
       days: ['1', '2', '3', '5', '7', '10'], travelers: ['1', '2', '3', '4', '6'],
       budget: ['1000', '3000', '5000', '10000'],
       budget_currency: ['CNY', 'USD', 'EUR', 'HKD', 'JPY'],
@@ -431,7 +529,8 @@
     const controls = [];
     for (const field of interaction.fields) {
       const step = document.createElement('fieldset'); step.className = 'interaction-step';
-      const legend = document.createElement('legend'); legend.textContent = field.label; legend.tabIndex = -1;
+      const legend = document.createElement('legend'); legend.tabIndex = -1;
+      legend.textContent = field.key === 'destination' ? '这次想去哪里？' : field.label;
       step.append(legend);
       const control = document.createElement(field.type === 'select' ? 'select' : 'input');
       control.name = field.key; control.required = true;
@@ -448,6 +547,16 @@
         for (const key of ['min', 'max', 'maxLength', 'step', 'placeholder']) if (field[key] !== undefined) control[key] = field[key];
       }
       if (answers[field.key] !== undefined) control.value = String(answers[field.key]);
+      if (field.key === 'destination') {
+        control.placeholder = '搜索或输入城市';
+        control.autocomplete = 'off';
+        const {group, buttons} = createCityPicker(control, field.suggestions?.length ? field.suggestions : undefined,
+          () => !busy && !send.disabled);
+        step.append(control, group);
+        questionForm.append(step);
+        controls.push({field, control, step, legend, buttons});
+        continue;
+      }
       const choices = field.options || (field.suggestions || presets[field.key] || []).map(value => ({value, label: value}));
       const group = document.createElement('div'); group.className = 'interaction-choices';
       group.setAttribute('role', 'group'); group.setAttribute('aria-label', field.label);
@@ -459,6 +568,10 @@
         button.addEventListener('click', () => {
           if (busy || send.disabled) return;
           control.value = String(choice.value); updateChoices(); error.textContent = '';
+          if (field.key !== 'decision' && valid(index)) {
+            if (custom) custom.open = false;
+            showStep(index + 1);
+          }
         });
         group.append(button); return button;
       });
@@ -554,26 +667,36 @@
   });
   function addExport(body, messageId, sessionId = session, planVersion = null) {
     if (!/^[a-f0-9]{32}$/.test(messageId || '')) return;
+    const base = '/sessions/' + encodeURIComponent(sessionId);
+    const hasGuide = Number.isInteger(planVersion) && planVersion > 0;
+    const path = hasGuide ? base + '/plans/' + planVersion : base + '/answers/' + messageId;
+    if (hasGuide) {
+      const guide = document.createElement('a');
+      guide.className = 'export-pdf guide-link';
+      guide.textContent = '查看图文攻略';
+      guide.href = path;
+      guide.target = '_blank';
+      guide.rel = 'noopener';
+      body.append(guide);
+    }
     const link = document.createElement('a');
     link.className = 'export-pdf';
-    link.textContent = '导出这份回答为 PDF';
-    link.href = '/sessions/' + encodeURIComponent(sessionId) + '/answers/' + messageId + '/pdf';
+    link.textContent = hasGuide ? '导出 PDF' : '导出这份回答为 PDF';
+    link.href = path + '/pdf';
     link.target = '_blank';
     link.rel = 'noopener';
     body.append(link);
     const markdown = document.createElement('a');
     markdown.className = 'export-md';
     markdown.textContent = '下载 Markdown';
-    markdown.href = '/sessions/' + encodeURIComponent(sessionId) + '/answers/' + messageId + '/md';
+    markdown.href = path + '/md';
     body.append(markdown);
-    if (Number.isInteger(planVersion) && planVersion > 0) {
-      const guide = document.createElement('a');
-      guide.className = 'export-pdf guide-link';
-      guide.textContent = '查看图文攻略';
-      guide.href = '/sessions/' + encodeURIComponent(sessionId) + '/plans/' + planVersion;
-      guide.target = '_blank';
-      guide.rel = 'noopener';
-      body.append(guide);
+    if (hasGuide) {
+      const html = document.createElement('a');
+      html.className = 'export-html';
+      html.textContent = '下载 HTML';
+      html.href = path + '/html';
+      body.append(html);
     }
   }
   function showReply(body, text) { body.classList.remove('plain'); renderMarkdown(body, text); }
@@ -591,7 +714,6 @@
     return {
       append(chunk) { text += chunk; schedule(); },
       finish(answer) {
-        // 骨架已流式显示过，完成后直接替换成完整版，不清空避免闪一下白屏。
         visible = Math.min(visible, answer.length);
         text = answer;
         return new Promise(resolve => { finished = resolve; schedule(); });
@@ -836,7 +958,7 @@
         messages.replaceChildren();
         for (const item of data.messages) {
           const body = appendMessage(item.role === 'user' ? '你' : 'TravelMate', item.content, item.role === 'user');
-          if (item.role === 'assistant') addExport(body, item.message_id, id, item.plan_version);
+          if (item.role === 'assistant' && !item.generation_failed) addExport(body, item.message_id, id, item.plan_version);
         }
         if (generating) {
           const last = data.messages[data.messages.length - 1];
@@ -938,6 +1060,7 @@
     reply.setAttribute('aria-busy', 'true');
     let generating = false;
     let done = false;
+    let generationFailed = false;
     try {
       const response = await fetch('/chat/stream', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -961,7 +1084,10 @@
           const dataLine = frame.split('\n').find(line => line.startsWith('data: '));
           if (!dataLine) continue;
           const data = JSON.parse(dataLine.slice(6));
-          if (event === 'error') throw new Error(data.text);
+          if (event === 'error') {
+            generationFailed = data.generation_failed === true;
+            throw new Error(data.text);
+          }
           if (event === 'status') {
             if (!/失败|未核实/.test(data.text)) status.textContent = data.text + ' · ' + outputNotice;
             progress.add(data.text, data.sources);
@@ -974,7 +1100,12 @@
           }
           if (event === 'done') {
             showInteraction(data.interaction, data.interaction?.id === interactionResponse?.id ? interactionResponse?.answers : {});
-            await writer.finish(data.answer);
+            if (data.plan_version) {
+              writer.cancel();
+              showReply(progress.answer, data.answer);
+            } else {
+              await writer.finish(data.answer);
+            }
             reply.scrollIntoView?.({block: 'start'});
             addExport(progress.answer, data.message_id, data.session_id || session, data.plan_version);
             reply.setAttribute('aria-busy', 'false');
@@ -990,12 +1121,13 @@
       refreshSessions().catch(() => { status.textContent = '回复已保存，历史列表暂时无法更新。'; });
     } catch (error) {
       writer.cancel();
-      if (interactionResponse) showInteraction(submittedInteraction, interactionResponse.answers);
+      if (interactionResponse && !generationFailed) showInteraction(submittedInteraction, interactionResponse.answers);
       input.value = text;
-      progress.add('请求中断，已保留本次执行记录。');
-      showReply(progress.answer, '本次回复未完成：' + (error.message || '请稍后重试。'));
+      progress.add(generationFailed ? '规划失败，已保留本次执行记录。' : '请求中断，已保留本次执行记录。');
+      showReply(progress.answer, generationFailed ? error.message : '本次回复未完成：' + (error.message || '请稍后重试。'));
       reply.setAttribute('aria-busy', 'false');
-      status.textContent = (error.message || '请求失败，请稍后重试') + '。输入已保留。';
+      status.textContent = generationFailed ? '规划未完成，输入已保留。'
+        : (error.message || '请求失败，请稍后重试') + '。输入已保留。';
     } finally {
       progress.finish(done);
       input.placeholder = '想去哪里？聊聊目的地、天数和预算，或使用快速规划…';
@@ -1074,11 +1206,13 @@
   const tripInput = document.querySelector('#input');
   const tripPanel = document.querySelector('#quick-fill');
   const tripSteps = [...tripForm.querySelectorAll('.trip-step')];
+  document.querySelector('#trip-city-cards').append(createCityPicker(tripForm.elements.destination).group);
   let tripStep = 0;
   function showTripStep(index) {
     tripStep = index;
     tripSteps.forEach((step, i) => { step.hidden = i !== index; step.disabled = i !== index; });
-    document.querySelector('#trip-step-label').textContent = `第 ${index + 1} / ${tripSteps.length} 步 · ${tripSteps[index].dataset.title}`;
+    const city = index > 0 ? ` · ${tripForm.elements.destination.value.trim()}` : '';
+    document.querySelector('#trip-step-label').textContent = `第 ${index + 1} / ${tripSteps.length} 步 · ${tripSteps[index].dataset.title}${city}`;
     document.querySelector('#trip-progress').max = tripSteps.length;
     document.querySelector('#trip-progress').value = index + 1;
     document.querySelector('#trip-back').disabled = index === 0;
@@ -1096,7 +1230,7 @@
         `步行与行动限制：${f.mobility.value.trim()}`
       ].join('\n');
     } else document.querySelector('#train-results').textContent = '';
-    const focus = tripSteps[index].querySelector('input, select') || tripSteps[index].querySelector('legend');
+    const focus = (index === 0 || reviewing) ? tripSteps[index].querySelector('legend') : tripSteps[index].querySelector('input, select');
     if (focus) { if (reviewing) focus.tabIndex = -1; focus.focus(); }
   }
   document.querySelector('#quick-fill-open').addEventListener('click', () => {
@@ -1125,9 +1259,52 @@
     tripInput.dispatchEvent(new Event('input', {bubbles: true}));
     return true;
   }
+  const presetPanel = document.querySelector('#preset-plan');
+  const presetCity = document.querySelector('#preset-city');
+  const presetCityStep = document.querySelector('#preset-city-step');
+  const presetReview = document.querySelector('#preset-review');
+  const presetDraft = document.querySelector('#preset-draft');
+  const presetBack = document.querySelector('#preset-back');
+  let previewedCity = '';
+  document.querySelector('#preset-city-cards').append(createCityPicker(presetCity).group);
+  function showPresetReview(reviewing) {
+    presetCityStep.hidden = presetCityStep.disabled = reviewing;
+    presetReview.hidden = presetReview.disabled = !reviewing;
+    presetBack.hidden = !reviewing;
+    document.querySelector('#preset-step').textContent = reviewing ? '第 2 / 2 步 · 编辑示例' : '第 1 / 2 步 · 选择目的地';
+    document.querySelector('#preset-submit').textContent = reviewing ? '填入对话' : '下一步';
+    document.querySelector(reviewing ? '#preset-review-title' : '#preset-title').focus();
+  }
   document.querySelector('#preset').addEventListener('click', () => {
-    const tomorrow = new Intl.DateTimeFormat('zh-CN', {timeZone: 'Asia/Shanghai', year: 'numeric', month: 'numeric', day: 'numeric'}).format(new Date(Date.now() + 86400000)).split('/');
-    fillTripDraft(`我们【2人】准备【${tomorrow[0]}年${tomorrow[1]}月${tomorrow[2]}日】从【厦门】出发到【北京】玩【3天】，总预算【3000元】，交通方式【高铁】，请帮我们规划行程。`);
+    if (document.querySelector('#send').disabled || tripInput.disabled || presetPanel.open) return;
+    presetPanel.showModal();
+    showPresetReview(false);
+  });
+  document.querySelector('#preset-close').addEventListener('click', () => presetPanel.close());
+  presetBack.addEventListener('click', () => showPresetReview(false));
+  document.querySelector('#preset-form').addEventListener('submit', event => {
+    event.preventDefault();
+    if (document.querySelector('#send').disabled || tripInput.disabled) return;
+    if (!presetReview.hidden) {
+      presetDraft.setCustomValidity(presetDraft.value.trim() ? '' : '请填写旅行需求');
+      if (presetDraft.reportValidity()) {
+        presetPanel.close();
+        fillTripDraft(presetDraft.value.trim());
+        previewedCity = '';
+      }
+      return;
+    }
+    const city = presetCity.value.trim();
+    presetCity.setCustomValidity(city ? '' : '请选择或填写目的地');
+    if (!presetCity.reportValidity()) return;
+    if (city !== previewedCity) {
+      const tomorrow = new Intl.DateTimeFormat('zh-CN', {timeZone: 'Asia/Shanghai', year: 'numeric', month: 'numeric', day: 'numeric'}).format(new Date(Date.now() + 86400000)).split('/');
+      const origin = city.includes('厦门') ? '杭州' : '厦门';
+      const highlight = cityCovers.get(city)?.[1];
+      presetDraft.value = `我们【2人】准备【${tomorrow[0]}年${tomorrow[1]}月${tomorrow[2]}日】从【${origin}】出发到【${city}】玩【3天】，全员总预算【3000元】人民币（CNY），预算包含【住宿、餐饮、门票和市内交通，不含往返高铁】，交通方式【高铁】，${highlight ? `想体验${highlight}，` : ''}请帮我们规划行程。`;
+      previewedCity = city;
+    }
+    showPresetReview(true);
   });
   tripForm.addEventListener('submit', event => {
     event.preventDefault();

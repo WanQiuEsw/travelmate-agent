@@ -62,12 +62,19 @@ def test_brand_assets_are_public_but_do_not_expose_other_files(protected):
         assert response.status_code == 200
         assert response.headers['content-type'] == 'image/webp'
         assert response.content[:4] == b'RIFF'
+    for city in ('xiamen', 'beijing', 'shanghai', 'hangzhou', 'chengdu', 'guangzhou', 'xian'):
+        response = client.get(f'/assets/visual/cities/{city}.webp')
+        assert response.status_code == 200
+        assert response.headers['content-type'] == 'image/webp'
+        assert response.content[:4] == b'RIFF'
+    assert client.get('/assets/visual/cities/unknown.webp').status_code == 401
     stylesheet = client.get('/assets/theme.css')
     assert stylesheet.status_code == 200
     assert stylesheet.headers['content-type'].startswith('text/css')
     assert client.get('/assets/visual/.env').status_code == 401
     assert client.get('/assets/visual/auth.py').status_code == 401
     register(*protected)
+    assert client.get('/assets/visual/cities/unknown.webp').status_code == 404
     assert client.get('/assets/visual/auth.py').status_code == 422
 
 
@@ -141,7 +148,8 @@ def test_isolation_covers_history_mutation_export_and_bulk(protected):
     bob = TestClient(app, headers=HEADERS)
     register(app, bob, 'bob')
     assert bob.get('/sessions').json() == {'sessions': []}
-    for path in ('', '/trip', '/trip/pdf', f'/answers/{answer_id}/pdf', f'/answers/{answer_id}/md', '/plans/1', '/plans/1/pdf', '/plans/1/md'):
+    for path in ('', '/trip', '/trip/pdf', f'/answers/{answer_id}/pdf', f'/answers/{answer_id}/md',
+                 '/plans/1', '/plans/1/pdf', '/plans/1/md', '/plans/1/html'):
         assert bob.get('/sessions/alice-trip' + path).status_code == 404
     assert bob.delete('/sessions/alice-trip').status_code == 404
     assert bob.patch('/sessions/alice-trip/title', json={'title': 'stolen'}).status_code == 404
@@ -218,7 +226,7 @@ def test_busy_and_invalid_requests_do_not_charge_but_started_failure_does(protec
     def broken(*args, **kwargs):
         raise RuntimeError('secret-should-not-leak')
 
-    monkeypatch.setattr('travelmate.api.chat', broken)
+    monkeypatch.setattr('travelmate.api.chat_reply', broken)
     response = client.post('/chat', json={'session_id': 'two', 'message': '预算'})
     assert response.status_code == 502 and 'secret-should-not-leak' not in response.text
     assert client.get('/auth/me').json()['quota']['used'] == 2

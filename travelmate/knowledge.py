@@ -1,11 +1,50 @@
 """Select local reference search or Alibaba Cloud managed document retrieval."""
 import json
 import os
+import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 from langchain.tools import tool
 
 from travelmate.tools import knowledge_tool
+
+
+def knowledge_coverage(data, requirements):
+    """保守检查参考资料覆盖；分数仅保留供校准，不跨提供商设置阈值。"""
+    city = requirements['destination']
+    texts, accepted = [], []
+    for index, row in enumerate([] if data.get('error') else data.get('results') or []):
+        if not isinstance(row, dict) or not isinstance(row.get('content'), str):
+            continue
+        content = row['content'].strip()
+        if not content or (row.get('city') and row['city'] != city):
+            continue
+        if city not in str(row.get('source', '')) + content and data.get('city_filter') != 'on':
+            continue
+        if row.get('expires_at'):
+            try:
+                expiry = datetime.fromisoformat(row['expires_at'])
+                if expiry.tzinfo is None or expiry <= datetime.now(timezone.utc):
+                    continue
+            except (ValueError, TypeError):
+                continue
+        texts.append(content)
+        accepted.append(index)
+    text = '\n'.join(texts)
+    topics = ['特色美食', *requirements.get('interests', [])]
+    preferences = requirements.get('preferences', '')
+    if preferences and preferences != '无特殊偏好':
+        topics.extend(part.strip() for part in re.split(r'[，,、；;。\n]', preferences) if part.strip())
+    aliases = {'特色美食': ('美食', '小吃', '餐饮', '餐厅'), '美食': ('美食', '小吃', '餐饮', '餐厅')}
+    # shortcut: 词面匹配会多补查同义表达，有固定评估集后再扩充语义匹配。
+    missing = [topic for topic in dict.fromkeys(topics)
+               if not any(word in text for word in aliases.get(topic, (topic,)))]
+    if not any(word in text for word in ('景点', '游览', '游玩', '参观', '路线', '片区')):
+        missing.insert(0, '游览路线与景点')
+    return {'accepted_results': accepted, 'missing': missing,
+            'queried_at': datetime.now(timezone.utc).isoformat(),
+            'dynamic_facts': '价格、开放时间、预约规则和闭馆公告需独立核实'}
 
 
 def create_knowledge_tool(directory: Path):

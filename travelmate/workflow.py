@@ -81,6 +81,7 @@ class Stop(BaseModel):
     travel_minutes: int | None = Field(default=None, ge=0, le=1440, description="活动开始前的交通分钟数；未知时留空，不编造精确值。分时段安排仅作估算，不用于硬时间校验。")
     travel_estimate: str | None = Field(default=None, max_length=200, description="交通耗时估算范围或待确认说明，例如约30至60分钟，含候车缓冲。")
     cost: float = Field(ge=0, le=1e8, description="全员费用，人民币")
+    cost_category: Literal["景点门票", "酒店住宿", "餐饮费用", "交通费用", "活动费用"] = Field(default="活动费用", description="仅分类该活动自身的cost，不重复计入其他费用；混合或无法细分时用活动费用。")
     cost_estimated: bool = Field(default=False, description="有合理估算依据时为true，并在notes写明口径；金额未知时为false且cost填0。")
     notes: str = Field(default="", max_length=1000)
     activities: list[Literal["walking", "climbing", "museum", "food", "rest", "other"]] = Field(default_factory=list, max_length=10)
@@ -93,6 +94,8 @@ class Stop(BaseModel):
 class Day(BaseModel):
     date: CalendarDate | None = Field(default=None, description="未提供出发日期时为 null，按列表顺序表示第几天")
     stops: list[Stop] = Field(min_length=1, max_length=20)
+    rain_stops: list[Stop] = Field(default_factory=list, max_length=20, description="普通雨天的完整当日路线；只替换受影响活动，保留餐饮、预订与到离安排。无可靠方案时留空。")
+    rain_note: str = Field(default="", max_length=600, description="说明替换哪些活动、交通与费用变化以及预约要求。")
 
 
 class RailSegment(BaseModel):
@@ -140,11 +143,20 @@ class VerifyItem(BaseModel):
     channel: str = Field(min_length=1, max_length=120, description="官方核验渠道，例如12306、景区公众号、大众点评")
 
 
+class OtherExpense(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    name: str = Field(min_length=1, max_length=120)
+    category: Literal["景点门票", "酒店住宿", "餐饮费用", "交通费用", "综合费用"]
+    amount: float = Field(ge=0, le=1e8, description="全员人民币金额，仅拆分other_cost，不含days中已列活动。")
+    note: str = Field(default="", max_length=600)
+
+
 class Itinerary(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     time_granularity: Literal["precise", "period"] = Field(default="precise", description="交通或到离时刻不确定时用period，按上午/中午/下午等安排；precise兼容已有精确行程。")
     days: list[Day] = Field(min_length=1, max_length=30)
     other_cost: float = Field(ge=0, le=1e8, description="仅用户预算包含范围内、尚未计入活动的全员费用；明确排除的住宿或往返交通不计入，没有额外项目时为0。cost_notes说明构成及合计算式。")
+    other_cost_items: list[OtherExpense] = Field(default_factory=list, max_length=100, description="将other_cost拆为往返交通、住宿、市内交通等独立费用行；金额之和必须等于other_cost，已计入活动的餐饮门票不得重复。")
     other_cost_estimated: bool = Field(default=False, description="有依据且已在cost_notes列明费用构成和算式时为true。")
     alternatives: list[Alternative] = Field(default_factory=list, max_length=30)
     reminders: list[str] = Field(default_factory=list, max_length=30)
@@ -161,8 +173,12 @@ class Itinerary(BaseModel):
 
     @model_validator(mode="after")
     def consistent_timing(self):
+        from decimal import Decimal, ROUND_HALF_UP
+        cents = lambda n: (Decimal(str(n)) * 100).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+        if self.other_cost_items and sum(cents(item.amount) for item in self.other_cost_items) != cents(self.other_cost):
+            raise ValueError("其他费用分项之和必须等于other_cost，不能重复计入活动费用")
         for day in self.days:
-            for stop in day.stops:
+            for stop in [*day.stops, *day.rain_stops]:
                 if self.time_granularity == "precise" and (stop.start is None or stop.end is None):
                     raise ValueError("精确行程需同时提供start和end；时间不确定请使用period行程")
                 if self.time_granularity == "period" and (stop.period is None or stop.start is not None or stop.end is not None):
@@ -174,7 +190,7 @@ def period_plan(plan):
     data = deepcopy(plan)
     data["time_granularity"] = "period"
     for day in data["days"]:
-        for stop in day["stops"]:
+        for stop in [*day["stops"], *day.get("rain_stops", [])]:
             if not stop.get("period"):
                 hour = int(stop["start"][:2]) if stop.get("start") else None
                 stop["period"] = ("机动安排" if hour is None else "清晨" if hour < 6 else "上午" if hour < 11
@@ -281,6 +297,15 @@ def validate_plan(requirements, plan):
             if any((stop.end > deadline if plan.time_granularity == "precise" else
                     PERIOD_START[stop.period] >= cutoff) for stop in day.stops):
                 issues.append(f"第{index}天活动超过已订出发或返程时限 {deadline}，请调整并预留交通时间")
+    if any(day.rain_stops for day in plan.days):
+        rain = plan.model_dump(mode="json")
+        for day in rain['days']:
+            day['stops'] = day.pop('rain_stops') or day['stops']
+        rain_issues, _ = validate_plan(requirements, rain)
+        issues.extend('雨天方案：' + issue for issue in rain_issues)
+        mixed_total = plan.other_cost + sum(max(sum(s.cost for s in day.stops), sum(s.cost for s in day.rain_stops)) for day in plan.days)
+        if round(mixed_total, 2) > limit and not any('超过预算' in issue for issue in rain_issues):
+            issues.append('雨天方案：按天切换后的最高全员费用超过预算，请调整费用或预算')
     return issues, total
 
 

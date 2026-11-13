@@ -7,6 +7,8 @@ from typing import Annotated
 
 from travelmate.accounts import COOKIE
 
+CITY_VISUALS = frozenset(('xiamen', 'beijing', 'shanghai', 'hangzhou', 'chengdu', 'guangzhou', 'xian'))
+
 
 class Login(BaseModel):
     username: Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=32, pattern=r'^[a-zA-Z0-9_]+$')]
@@ -33,8 +35,9 @@ def require_access(request: Request):
                 or request.headers.get('sec-fetch-site') in ('same-site', 'cross-site')
                 or origin is not None and origin != str(request.base_url).rstrip('/')):
             raise HTTPException(403, '请通过本站页面提交请求')
-    public = {'/', '/login', '/assets/markdown.js', '/assets/auth.js', '/assets/theme.css', '/health',
-              *(f'/assets/visual/{name}.webp' for name in ('companion', 'coast', 'mountains', 'town', 'icon'))}
+    public = {'/', '/login', '/assets/markdown.js', '/assets/auth.js', '/assets/theme.css', '/health', '/assets/visual/food-reference.png',
+              *(f'/assets/visual/{name}.webp' for name in ('companion', 'coast', 'mountains', 'town', 'icon', 'lodging-room', 'lodging-city', 'lodging-canal')),
+              *(f'/assets/visual/cities/{city}.webp' for city in CITY_VISUALS)}
     if request.method in ('GET', 'HEAD') and request.url.path in public:
         return
     if request.method == 'POST' and request.url.path in ('/auth/register', '/auth/login'):

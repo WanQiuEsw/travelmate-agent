@@ -18,6 +18,7 @@ from travelmate.rail import search_train_tickets, china_today
 from travelmate.weather import search_weather
 from travelmate.tools import estimate_budget, search_web, search_places, search_route
 from travelmate.knowledge import create_knowledge_tool
+from travelmate.xhs import search_xiaohongshu
 from travelmate.workflow import PlanningState, update_trip, submit_itinerary
 from travelmate.public import public_data, public_answer
 
@@ -65,24 +66,35 @@ def open_agent(*, model=None, database=None, knowledge=None, legacy_tool_loop=Fa
         if not legacy_tool_loop:
             from travelmate.planner import build_planner
             yield build_planner(model, saver, knowledge_tool,
-                                {t.name: t for t in (search_train_tickets, search_places, search_route, search_web, search_weather)},
+                                {t.name: t for t in (search_train_tickets, search_places, search_route, search_web, search_weather, search_xiaohongshu)},
                                 PROMPT.format(today=china_today().isoformat()),
                                 **({"review_model": review_model} if review_model is not None else {}))
             return
         yield create_agent(model=model, state_schema=PlanningState, middleware=[capture_evidence],
-                           tools=[search_weather, search_train_tickets, estimate_budget, search_web, search_places, search_route, update_trip, submit_itinerary,
+                           tools=[search_weather, search_train_tickets, estimate_budget, search_web, search_xiaohongshu, search_places, search_route, update_trip, submit_itinerary,
                            knowledge_tool],
                            system_prompt=PROMPT.format(today=china_today().isoformat()),
                            checkpointer=saver)
 
 
 def chat(agent, session_id: str, message: str, interaction_response=None) -> str:
+    return chat_reply(agent, session_id, message, interaction_response)["answer"]
+
+
+def chat_reply(agent, session_id: str, message: str, interaction_response=None) -> dict:
     result = agent.invoke({"messages": [HumanMessage(content=message, additional_kwargs={"interaction_response": interaction_response} if interaction_response else {})]},
                           {"configurable": {"thread_id": session_id}, "recursion_limit": 60})
-    return public_answer(result["messages"][-1].text, result["messages"])
+    return reply_content(result["messages"])
+
+
+def reply_content(messages):
+    last = messages[-1]
+    version = last.additional_kwargs.get("plan_version")
+    return {"answer": public_answer(last.text, messages), **({"plan_version": version} if version else {})}
 
 
 TOOL_LABELS = {
+    "search_xiaohongshu": "检索小红书最新攻略",
     "search_weather": "查询目的地天气",
     "search_train_tickets": "通过12306查询车次",
     "search_knowledge": "检索旅游知识资料", "search_web": "搜索网页参考来源",
@@ -123,7 +135,6 @@ def tool_progress(item):
 
 def stream_chat(agent, session_id: str, message: str, interaction_response=None):
     config = {"configurable": {"thread_id": session_id}, "recursion_limit": 60}
-    previewed = False
     with closing(agent.stream({"messages": [HumanMessage(content=message, additional_kwargs={"interaction_response": interaction_response} if interaction_response else {})]},
                               config, stream_mode=["messages", "custom", "updates"])) as stream:
         for mode, value in stream:
@@ -132,13 +143,7 @@ def stream_chat(agent, session_id: str, message: str, interaction_response=None)
                 # Emit only the sanitized final answer below, after validation.
                 continue
             elif mode == "custom":
-                preview = value.get("preview") if isinstance(value, dict) else None
-                if preview:
-                    previewed = True
-                    for offset in range(0, len(preview), 48):
-                        yield "token", {"text": preview[offset:offset + 48]}
-                else:
-                    yield "status", public_data(value)
+                yield "status", public_data(value)
             elif mode == "updates":
                 for node, update in value.items():
                     if node in ("intake", "research", "organize", "verify_places", "generate", "check", "review", "save", "present"):
@@ -158,14 +163,17 @@ def stream_chat(agent, session_id: str, message: str, interaction_response=None)
         yield "error", {"text": "运行尚未完成，可继续对话恢复；此前方案已保留。"}
         return
     last = state.values["messages"][-1]
-    answer = public_answer(last.text, state.values["messages"])
-    if not previewed:
+    reply = reply_content(state.values["messages"])
+    if last.additional_kwargs.get("generation_failed"):
+        yield "error", {"text": reply["answer"], "generation_failed": True}
+        return
+    if not reply.get("plan_version"):
+        answer = reply["answer"]
         for offset in range(0, len(answer), 48):
             yield "token", {"text": answer[offset:offset + 48]}
-    yield "done", {"answer": answer, "session_id": session_id,
+    yield "done", {**reply, "session_id": session_id,
                    **({"interaction": last.additional_kwargs["interaction"]} if last.additional_kwargs.get("interaction") else {}),
-                   "message_id": answer_id(last, len(state.values["messages"]) - 1),
-                   **({"plan_version": last.additional_kwargs["plan_version"]} if last.additional_kwargs.get("plan_version") else {})}
+                   "message_id": answer_id(last, len(state.values["messages"]) - 1)}
 
 
 def answer_id(message, index):
@@ -182,6 +190,7 @@ def conversation(agent, session_id: str) -> dict:
         elif isinstance(message, AIMessage) and not message.tool_calls and message.text:
             messages.append({"role": "assistant", "content": public_answer(message.text, stored),
                              **({"interaction": message.additional_kwargs["interaction"]} if message.additional_kwargs.get("interaction") else {}),
+                             **({"generation_failed": True} if message.additional_kwargs.get("generation_failed") else {}),
                              "message_id": answer_id(message, index) if index < len(stored) - 1 or not state.next else None,
                              **({"plan_version": message.additional_kwargs["plan_version"]} if message.additional_kwargs.get("plan_version") else {})})
     return {"session_id": session_id, "messages": messages, "interrupted": bool(state.next)}

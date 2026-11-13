@@ -15,7 +15,7 @@ def merge_evidence(left, right):
 
 
 MODEL_FIELDS = ("id", "kind", "value", "title", "url", "query_status", "verification",
-                "address", "location", "applicable_date", "query", "expires_at")
+                "address", "location", "applicable_date", "query", "expires_at", "published_at", "updated_at", "freshness")
 ALWAYS = ("id", "value")
 
 
@@ -81,6 +81,8 @@ def normalize(name, args, data, call_id, requirements, now=None):
         for row in rows:
             add("document", row.get("content", ""), row.get("title") or row.get("source") or "参考资料",
                 row.get("url"), reference=True)
+            if name == 'search_xiaohongshu':
+                records[next(reversed(records))].update({field: row.get(field) for field in ('published_at', 'updated_at', 'freshness')})
     return records
 
 
@@ -117,7 +119,7 @@ def check_reference(evidence, ref, kind, value, requirements, now=None):
 def validate_evidence(requirements, plan, evidence):
     issues = []
     for day_no, day in enumerate(plan.get("days", []), 1):
-        for stop in day["stops"]:
+        for stop in [*day["stops"], *day.get("rain_stops", [])]:
             refs = stop.get("fact_refs", {})
             for field, ref in refs.items():
                 kind = {"place": "place", "cost": "price", "opening_hours": "opening_hours",
@@ -155,7 +157,7 @@ def validate_evidence(requirements, plan, evidence):
 def capture_evidence(request, handler):
     output = handler(request)
     name = request.tool_call["name"]
-    if name not in {"search_places", "search_route", "search_train_tickets", "search_knowledge", "search_web", "search_weather"} or not isinstance(output, ToolMessage):
+    if name not in {"search_places", "search_route", "search_train_tickets", "search_knowledge", "search_web", "search_weather", "search_xiaohongshu"} or not isinstance(output, ToolMessage):
         return output
     data = {}
     try:

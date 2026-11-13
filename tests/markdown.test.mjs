@@ -14,6 +14,7 @@ class Node {
   replaceChildren(...children) { this.children = children; }
   setAttribute(name, value) { this[name] = value; }
   addEventListener(event, handler) { this.handlers[event] = handler; }
+  dispatchEvent(event) { this.handlers[event.type]?.(event); }
   querySelectorAll(selector) {
     const descendants = this.children.flatMap(nodes);
     if (selector === '[aria-current]') return descendants.filter(node => node['aria-current'] !== undefined);
@@ -83,7 +84,8 @@ test('sources are collapsed with safe readable links', () => {
 });
 
 const html = await readFile(new URL('../travelmate/index.html', import.meta.url), 'utf8');
-const appSource = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
+const appSource = html.match(/<script id="city-picker-script">([\s\S]*?)<\/script>/)[1]
+  + html.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
   .replace(/import \{renderMarkdown\} from '[^']+';/, '')
   .replace(/import \{apiFetch[^;]+;/, 'const refreshAccount = async () => ({user: {id: "test"}});')
   .replace('  send.disabled = newChat.disabled = historySelect.disabled = true;', '')
@@ -135,12 +137,13 @@ test('question wizard opens on demand, keeps closed drafts, validates steps and 
   let submits = 0;
   elements.form.requestSubmit = () => submits++;
   const context = vm.createContext({
-    setTimeout, clearTimeout,
+    setTimeout, clearTimeout, Event,
     document: {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []},
     renderMarkdown, crypto: {randomUUID: () => 'new'}, localStorage: {getItem: () => 'test', setItem() {}},
   });
   vm.runInContext(appSource, context);
   vm.runInContext(`showInteraction({id: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', title: '补充条件', description: '继续规划', fields: [
+    {key: 'destination', label: '目的地', type: 'text', suggestions: ['青岛', '威海', '厦门']},
     {key: 'days', label: '游玩天数', type: 'number', min: 1, max: 30},
     {key: 'mobility', label: '可接受步数', type: 'text', suggestions: ['每天5000步']},
     {key: 'budget_scope', label: '预算口径', type: 'select', options: [{value: 'total', label: '全员预算'}]}
@@ -156,37 +159,42 @@ test('question wizard opens on demand, keeps closed drafts, validates steps and 
   assert.equal(days.min, 1); assert.equal(days.max, 30); assert.equal(days.required, true);
   const steps = all.filter(node => node.className === 'interaction-step');
   const next = () => questionForm.handlers.submit({preventDefault() {}});
-  assert.deepEqual(steps.map(step => step.hidden), [false, true, true]);
+  const destinations = nodes(steps[0]).filter(node => node.tagName === 'BUTTON');
+  assert.deepEqual(destinations.map(button => nodes(button).find(node => node.tagName === 'STRONG').textContent), ['青岛', '威海', '厦门']);
+  assert.equal(nodes(destinations[2]).find(node => node.tagName === 'IMG').src, '/assets/visual/cities/xiamen.webp');
+  assert.equal(nodes(destinations[1]).some(node => node.tagName === 'IMG'), false);
+  assert.deepEqual(steps.map(step => step.hidden), [false, true, true, true]);
+  destinations[1].handlers.click();
+  assert.equal(destinations[1]['aria-pressed'], 'true');
+  assert.deepEqual(steps.map(step => step.hidden), [false, true, true, true]);
   next();
-  assert.equal(steps[0].hidden, false);
+  assert.equal(steps[1].hidden, false);
   assert.equal(submits, 0);
   days.value = '31'; next();
-  assert.equal(steps[0].hidden, false);
-  const pick = nodes(steps[0]).find(node => node.tagName === 'BUTTON' && node.textContent === '3 天');
+  assert.equal(steps[1].hidden, false);
+  const pick = nodes(steps[1]).find(node => node.tagName === 'BUTTON' && node.textContent === '3 天');
   pick.handlers.click();
   assert.equal(days.value, '3');
   assert.equal(pick['aria-pressed'], 'true');
+  assert.deepEqual(steps.map(step => step.hidden), [true, true, false, true]);
   all.find(node => node.tagName === 'BUTTON' && node.textContent === '稍后再选').handlers.click();
   assert.equal(elements.interaction.open, false);
   elements['interaction-open'].handlers.click();
   assert.equal(elements.interaction.open, true);
   assert.equal(days.value, '3');
-  next();
-  assert.deepEqual(steps.map(step => step.hidden), [true, false, true]);
   all.find(node => node.name === 'mobility').value = '每天8000步'; next();
-  nodes(steps[2]).find(node => node.tagName === 'BUTTON' && node.textContent === '全员预算').handlers.click();
-  next();
+  nodes(steps[3]).find(node => node.tagName === 'BUTTON' && node.textContent === '全员预算').handlers.click();
   assert.equal(submits, 0);
   const review = all.find(node => node.className === 'trip-review');
   assert.equal(review.hidden, false);
   assert.ok(review.textContent.includes('可接受步数：每天8000步'));
   all.find(node => node.tagName === 'BUTTON' && node.textContent === '上一步').handlers.click();
-  assert.equal(steps[2].hidden, false);
+  assert.equal(steps[3].hidden, false);
   assert.equal(all.find(node => node.name === 'budget_scope').value, 'total');
   next(); next();
   assert.equal(submits, 1);
   const reply = JSON.parse(vm.runInContext('JSON.stringify(pendingResponse)', context));
-  assert.deepEqual(reply.answers, {days: 3, mobility: '每天8000步', budget_scope: 'total'});
+  assert.deepEqual(reply.answers, {destination: '威海', days: 3, mobility: '每天8000步', budget_scope: 'total'});
   assert.ok(elements.input.value.includes('预算口径：全员预算'));
   vm.runInContext('busy = true', context);
   questionForm.handlers.submit({preventDefault() {}});
@@ -222,12 +230,15 @@ test('history restores latest scroll position without opening a dialog or interr
     renderMarkdown, localStorage: {getItem: () => 'test', setItem() {}},
     fetch: async () => ({ok: true, json: async () => ({messages: [
       {role: 'user', content: '最早的问题'},
+      {role: 'assistant', content: '规划失败，请重试。', generation_failed: true, message_id: 'b'.repeat(32)},
       {role: 'assistant', content: '最新的回答', interaction: {id: 'a'.repeat(32), title: '补充条件', fields: [{key: 'days', label: '天数', type: 'number'}]}}
     ]})}),
   });
   vm.runInContext(appSource, context);
   await vm.runInContext('loadConversation("test")', context);
   assert.equal(viewport.scrollTop, 2000);
+  assert.ok(elements.messages.textContent.includes('规划失败，请重试。'));
+  assert.equal(nodes(elements.messages).filter(node => node.tagName === 'A').length, 0);
   assert.ok(!elements.interaction.open);
   assert.equal(elements['interaction-open'].hidden, false);
   viewport.scrollTop = 100;
@@ -285,8 +296,11 @@ test('Enter sends, Ctrl/Command+Enter inserts a newline, and IME confirmation st
   assert.equal(submissions, 1);
 });
 
-for (const success of [true, false]) {
-  test(`renders SSE text before done and handles ${success ? 'success' : 'failure'}`, async () => {
+for (const outcome of ['answer', 'guide', 'error', 'generation failure']) {
+  test(`renders SSE progress and handles a completed ${outcome} event`, async () => {
+    const guide = outcome === 'guide';
+    const generationFailed = outcome === 'generation failure';
+    const success = outcome === 'answer' || guide;
     const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history',
       'trip-panel', 'trip-data', 'trip-status', 'trip-confirm', 'trip-save', 'trip-pdf', 'trip-preview']
       .map(id => [id, new Node('div')]));
@@ -299,10 +313,16 @@ for (const success of [true, false]) {
     let reads = 0;
     const reader = {async read() {
       reads++;
-      if (reads === 1) return {value: encoder.encode('event: status\ndata: {"text":"找到参考资料","sources":[{"title":"官方攻略","url":"https://example.com/guide"},{"title":"危险链接","url":"javascript:alert(1)"}]}\n\nevent: token\ndata: {"text":"## 完整行程\\n**西湖**"}\n\n'), done: false};
+      if (reads === 1) {
+        const status = 'event: status\ndata: {"text":"找到参考资料","sources":[{"title":"官方攻略","url":"https://example.com/guide"},{"title":"危险链接","url":"javascript:alert(1)"}]}\n\n';
+        const token = 'event: token\ndata: {"text":"## 完整行程\\n**西湖**"}\n\n';
+        return {value: encoder.encode(guide ? status : status + token), done: false};
+      }
       if (reads === 2) {
         await gate;
-        const frame = success ? 'event: done\ndata: {"answer":"## 完整行程\\n**西湖**","message_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}\n\n'
+        const frame = guide ? 'event: done\ndata: {"answer":"杭州 1 天旅行攻略已整理完成","plan_version":2,"session_id":"trip","message_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}\n\n'
+          : success ? 'event: done\ndata: {"answer":"## 完整行程\\n**西湖**","message_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}\n\n'
+          : generationFailed ? 'event: error\ndata: {"text":"规划失败，请重试。","generation_failed":true}\n\n'
           : 'event: error\ndata: {"text":"失败"}\n\n';
         return {value: encoder.encode(frame), done: false};
       }
@@ -321,8 +341,7 @@ for (const success of [true, false]) {
     await new Promise(resolve => setTimeout(resolve, 40));
     assert.ok(elements.messages.textContent.includes('已用时 0 秒'));
     assert.equal(nodes(elements.messages).find(node => node.className === 'progress').open, false);
-    assert.ok(nodes(elements.messages).some(node => node.tagName === 'H2' && node.textContent === '完整行程'));
-    assert.ok(nodes(elements.messages).some(node => node.tagName === 'STRONG' && node.textContent === '西湖'));
+    assert.equal(nodes(elements.messages).some(node => node.tagName === 'H2' && node.textContent === '完整行程'), !guide);
     assert.equal(elements.send.disabled, true);
     assert.equal(elements.input.value, '');
     assert.equal(elements.input.disabled, true);
@@ -331,14 +350,19 @@ for (const success of [true, false]) {
     assert.equal(nodes(elements.messages).filter(node => node.tagName === 'A').length, 1);
     release();
     await completion;
-    if (success) {
+    if (guide) {
+      assert.ok(elements.messages.textContent.includes('旅行攻略已整理完成'));
+      assert.deepEqual(nodes(elements.messages).map(node => node.href).filter(href => href?.startsWith('/sessions/')),
+        ['/sessions/trip/plans/2', '/sessions/trip/plans/2/pdf', '/sessions/trip/plans/2/md', '/sessions/trip/plans/2/html']);
+      assert.equal(elements.input.value, '');
+    } else if (success) {
       assert.equal(nodes(elements.messages).filter(node => node.className === 'export-pdf').length, 1);
       assert.ok(nodes(elements.messages).some(node => node.tagName === 'H2' && node.textContent === '完整行程'));
       assert.ok(nodes(elements.messages).some(node => node.tagName === 'STRONG' && node.textContent === '西湖'));
       assert.equal(elements.input.value, '');
     } else {
-      assert.equal(nodes(elements.messages).filter(node => node.className === 'export-pdf').length, 0);
-      assert.ok(elements.messages.textContent.includes('本次回复未完成'));
+      assert.equal(nodes(elements.messages).filter(node => ['export-pdf', 'export-md', 'export-html'].includes(node.className)).length, 0);
+      assert.ok(elements.messages.textContent.includes(generationFailed ? '规划失败，请重试。' : '本次回复未完成'));
       assert.equal(elements.input.value, '规划杭州');
     }
     assert.equal(elements.send.disabled, false);
@@ -588,9 +612,13 @@ test('guide links bind to completed answer version and original session', async 
     addExport(appendMessage('TravelMate', '旧攻略'), 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', session, 1);
     session = 'trip-new';
     addExport(appendMessage('TravelMate', '新攻略'), 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', session, 2);`, context);
-  const links = nodes(elements.messages).filter(node => node.className === 'export-pdf guide-link');
-  assert.equal(links[0].href, '/sessions/trip-old/plans/1');
-  assert.equal(links[1].href, '/sessions/trip-new/plans/2');
+  const links = nodes(elements.messages).filter(node => node.tagName === 'A');
+  assert.deepEqual(links.map(node => node.href), [
+    '/sessions/trip-old/plans/1', '/sessions/trip-old/plans/1/pdf', '/sessions/trip-old/plans/1/md', '/sessions/trip-old/plans/1/html',
+    '/sessions/trip-new/plans/2', '/sessions/trip-new/plans/2/pdf', '/sessions/trip-new/plans/2/md', '/sessions/trip-new/plans/2/html',
+  ]);
+  assert.equal(links[0].textContent, '查看图文攻略');
+  assert.equal(links[0].target, '_blank');
 });
 
 test('reload polls an active session even before it appears in history', async () => {

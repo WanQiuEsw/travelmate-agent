@@ -16,15 +16,17 @@ from pydantic import BaseModel, Field, field_validator, StringConstraints
 
 from travelmate.rail import search_train_tickets
 from travelmate.interaction import InteractionResponse
-from travelmate.agent import chat, conversation, conversations, open_agent, stream_chat, pin_sessions, delete_sessions, rename_session
+from travelmate.agent import chat_reply, conversation, conversations, open_agent, stream_chat, pin_sessions, delete_sessions, rename_session
 from travelmate.evidence import validate_evidence
 from travelmate.workflow import Itinerary, get_workflow, save_workflow, validate_plan
 from travelmate.pdf_export import itinerary_pdf, answer_pdf, guide_pdf
 from travelmate.guide import get_version, render_guide, guide_markdown
+from travelmate.result import RESULT_SCRIPT_HASH
 from travelmate.accounts import Accounts
-from travelmate.auth import install_auth, require_access
+from travelmate.auth import CITY_VISUALS, install_auth, require_access
 from travelmate import asr, watch
 from travelmate.tools import search_places, search_web
+from travelmate.preparation import overlay
 
 
 class ChatRequest(BaseModel):
@@ -43,6 +45,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     session_id: str
     answer: str
+    plan_version: int | None = None
 
 
 SessionKey = Annotated[str, StringConstraints(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_-]+$")]
@@ -58,6 +61,26 @@ class SessionPin(SessionSelection):
 
 class SessionRename(BaseModel):
     title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
+
+
+class PreparationItem(BaseModel):
+    detail: str | None = Field(default=None, max_length=500)
+    category: Literal['证件', '随身用品', '出发确认'] | None = None
+    id: str = Field(min_length=1, max_length=64, pattern=r'^[a-zA-Z0-9_-]+$')
+    text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
+    done: bool = Field(strict=True)
+
+
+class PreparationUpdate(BaseModel):
+    revision: int = Field(ge=0, strict=True)
+    items: list[PreparationItem] = Field(max_length=100)
+
+    @field_validator('items')
+    @classmethod
+    def unique_ids(cls, items):
+        if len({item.id for item in items}) != len(items):
+            raise ValueError('事项编号不能重复')
+        return items
 
 
 class RailRequest(BaseModel):
@@ -142,8 +165,14 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
         return FileResponse(Path(__file__).with_name("theme.css"), media_type="text/css")
 
     @app.get("/assets/visual/{filename}", include_in_schema=False)
-    def visual_asset(filename: Literal["companion.webp", "coast.webp", "mountains.webp", "town.webp", "icon.webp"]):
-        return FileResponse(Path(__file__).with_name("images") / filename, media_type="image/webp")
+    def visual_asset(filename: Literal["companion.webp", "coast.webp", "mountains.webp", "town.webp", "icon.webp", "lodging-room.webp", "lodging-city.webp", "lodging-canal.webp", "food-reference.png", "hotel-room.webp"]):
+        return FileResponse(Path(__file__).with_name("images") / filename, media_type="image/png" if filename.endswith('.png') else "image/webp")
+
+    @app.get('/assets/visual/cities/{city}.webp', include_in_schema=False)
+    def city_visual(city: str):
+        if city not in CITY_VISUALS:
+            raise HTTPException(404, '城市图片不存在')
+        return FileResponse(Path(__file__).with_name('images') / 'cities' / f'{city}.webp', media_type='image/webp')
 
     @app.get("/health")
     def health():
@@ -186,13 +215,13 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
         return {**history, "generating": run is not None,
                 "progress": {**run, "steps": list(run["steps"])} if run else None}
 
-    @app.post("/chat", response_model=ChatResponse)
+    @app.post("/chat", response_model=ChatResponse, response_model_exclude_none=True)
     def respond(request: ChatRequest, http_request: Request):
         try:
             with generation_lock(request.session_id, request.message, http_request.state.user):
-                answer = chat(app.state.agent, request.session_id, request.message,
-                              **({"interaction_response": request.interaction_response.model_dump()} if request.interaction_response else {}))
-            return ChatResponse(session_id=request.session_id, answer=answer)
+                reply = chat_reply(app.state.agent, request.session_id, request.message,
+                                   **({"interaction_response": request.interaction_response.model_dump()} if request.interaction_response else {}))
+            return ChatResponse(session_id=request.session_id, **reply)
         except HTTPException:
             raise
         except Exception:
@@ -320,13 +349,32 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
         guide = get_version(state, version)
         if guide is None:
             raise HTTPException(404, "攻略版本不存在或尚未完成")
-        return guide
+        from copy import deepcopy
+        return overlay(deepcopy(guide), state.get('preparation_lists', {}).get(str(version)))
+
+    @app.get('/sessions/{session_id}/plans/{version}/preparation')
+    def preparation(session_id: SessionId, version: Annotated[int, PathParam(ge=1)]):
+        with trip_lock():
+            return load_guide(session_id, version)['preparation']
+
+    @app.put('/sessions/{session_id}/plans/{version}/preparation')
+    def update_preparation(session_id: SessionId, version: Annotated[int, PathParam(ge=1)], data: PreparationUpdate):
+        with trip_lock():
+            current = load_guide(session_id, version)['preparation']
+            if current['revision'] != data.revision:
+                raise HTTPException(409, '清单已更新，请刷新后重新编辑')
+            state = get_workflow(app.state.agent, session_id)
+            saved = {'revision': current['revision'] + 1, 'items': [item.model_dump() for item in data.items]}
+            state['preparation_lists'] = {**state.get('preparation_lists', {}), str(version): saved}
+            save_workflow(app.state.agent, session_id, state)
+            return saved
 
     @app.get("/sessions/{session_id}/plans/{version}")
     def preview(session_id: SessionId, version: Annotated[int, PathParam(ge=1)]):
         guide = load_guide(session_id, version)
+        guide['_preparation_url'] = f'/sessions/{session_id}/plans/{version}/preparation'
         return HTMLResponse(render_guide(guide, f"/sessions/{session_id}/plans/{version}/pdf"),
-            headers={"Cache-Control": "no-store", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+            headers={"Cache-Control": "no-store", "Content-Security-Policy": f"default-src 'none'; connect-src 'self'; script-src 'sha256-{RESULT_SCRIPT_HASH}'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'",
                      "X-Content-Type-Options": "nosniff"})
 
     @app.get("/sessions/{session_id}/plans/{version}/pdf")
@@ -339,6 +387,12 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
     def export_guide_markdown(session_id: SessionId, version: Annotated[int, PathParam(ge=1)]):
         return Response(guide_markdown(load_guide(session_id, version)), media_type='text/markdown',
                         headers={'Content-Disposition': f'attachment; filename="travelmate-v{version}.md"'})
+
+    @app.get('/sessions/{session_id}/plans/{version}/html')
+    def export_guide_html(session_id: SessionId, version: Annotated[int, PathParam(ge=1)]):
+        return HTMLResponse(render_guide(load_guide(session_id, version)),
+                            headers={'Cache-Control': 'no-store',
+                                     'Content-Disposition': f'attachment; filename="travelmate-v{version}.html"'})
 
     @app.get("/sessions/{session_id}/trip/pdf")
     def export_trip(session_id: SessionId):

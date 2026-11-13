@@ -1,6 +1,8 @@
+from base64 import b64decode
 from contextlib import contextmanager
 from copy import deepcopy
 from datetime import datetime, timezone
+import re
 from fastapi.testclient import TestClient
 
 from travelmate.api import create_app
@@ -49,6 +51,13 @@ def test_sample_sections_render_tiers_pitfalls_and_verification_order():
     assert '由此推出的硬规则' in text and '1. 只买 553 元的二等座' in text
     assert '| 经济档 |' in text and '| 待核实 |' in text
     assert '❌ 南翔馒头店二楼堂食价格翻倍' in text and '12306 App' in text
+    html = render_guide(guide, '/plans/1/pdf')
+    sections = re.findall(r'<section class="card budget">(.*?)</section>', html, re.S)
+    assert len(sections) == 3
+    for section, note in zip(sections, ('可调整预留额度', '此表汇总已列项目', '三档只换住宿')):
+        content, details = section.split('<details class="section-notes"><summary>注意事项</summary>')
+        assert ('</table>' in content or 'class="tiers"' in content) and note not in content
+        assert note in details.split('</details>')[0]
 
 
 def test_shared_document_costs_statuses_and_navigation():
@@ -95,7 +104,7 @@ def test_script_and_unsafe_links_never_execute():
         assert safe_url(value) is None
 
 
-def test_api_links_immutable_version_pdf_and_unknown(tmp_path):
+def test_api_links_immutable_version_exports_and_unknown(tmp_path):
     @contextmanager
     def factory():
         with open_test(tmp_path, Model()) as agent:
@@ -110,10 +119,21 @@ def test_api_links_immutable_version_pdf_and_unknown(tmp_path):
         assert "无法查询" in old.text and "600.00" not in old.text
         pdf = client.get("/sessions/trip/plans/1/pdf")
         assert pdf.content.startswith(b"%PDF-")
+        html_path = '/sessions/trip/plans/1/html'
+        assert f'href="{html_path}"' in old.text
+        html = client.get(html_path)
+        assert html.headers['content-type'] == 'text/html; charset=utf-8'
+        assert html.headers['content-disposition'] == 'attachment; filename="travelmate-v1.html"'
+        assert '注意事项' in html.text and '无法查询' in html.text and '<style>' in html.text
+        assert 'class="actions"' not in html.text and '/assets/' not in html.text
+        images = re.findall(r'<img[^>]*src="data:image/webp;base64,([^"]+)"', html.text)
+        assert images and b64decode(images[0]) == client.get('/assets/visual/cities/hangzhou.webp').content
         assert client.get("/sessions/other/plans/1").status_code == 404
         assert client.get("/sessions/trip/plans/99").status_code == 404
+        assert client.get('/sessions/trip/plans/99/html').status_code == 404
         client.post("/chat/stream", json={"session_id": "trip", "message": "再规划"})
         assert client.get("/sessions/trip/plans/1").text == old.text
+        assert client.get(html_path).content == html.content
         assert client.get("/sessions/trip/plans/2").status_code == 200
         result = client.put("/sessions/trip/trip", json=PLAN).json()
         assert result["status"] == "needs_review"
@@ -126,11 +146,12 @@ def test_pending_and_failed_answers_have_no_new_guide(tmp_path):
         assert "plan_version" not in conversation(agent, "trip")["messages"][-1]
 
 
-def test_html_guide_uses_a_destination_image_and_states_it_is_a_placeholder():
+def test_html_guide_uses_shared_header_and_labels_remaining_images():
     req = {**REQ, 'destination': '九寨沟'}
     guide = make_guide({'version': 1, 'requirements': req, 'plan': deepcopy(PLAN)}, {})
     html = render_guide(guide, '/guide.pdf')
     assert guide['hero'] == '/assets/visual/mountains.webp'
-    assert '<img src="/assets/visual/mountains.webp"' in html
+    assert '<header class="hero">' not in html
+    assert html.count('class="daily-masthead"') == 1
     assert '<img src="http' not in html and '示意图' in html
-    assert '下载这版 PDF' in html
+    assert '下载 PDF' in html

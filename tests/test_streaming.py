@@ -128,7 +128,8 @@ def test_stage_progress_is_available_while_model_is_still_working(tmp_path):
         finally:
             release.set()
         frames = running.result(timeout=10).text
-        assert 'event: token' in frames and 'event: done' in frames
+        assert 'event: token' not in frames and 'event: done' in frames
+        assert '"plan_version": 1' in frames
         assert '正在根据检查结果调整' not in frames
 
 
@@ -232,7 +233,7 @@ def test_disconnected_stream_keeps_progress_and_completes(tmp_path, monkeypatch)
         assert history["messages"][-1]["content"] == "预算合计1800元\n供参考"
 
 
-def test_skeleton_streams_before_the_finished_guide_and_is_not_the_answer(tmp_path):
+def test_planning_streams_progress_then_a_completed_guide_reference(tmp_path):
     class SkeletonModel(Model):
         def with_structured_output(self, schema, **kwargs):
             if schema.__name__ != 'Areas':
@@ -246,11 +247,9 @@ def test_skeleton_streams_before_the_finished_guide_and_is_not_the_answer(tmp_pa
 
     with open_test(tmp_path, SkeletonModel()) as agent:
         events = list(stream_chat(agent, 'preview', '规划'))
-    tokens = ''.join(data['text'] for kind, data in events if kind == 'token')
-    assert '行程骨架（细节正在补全）' in tokens and '| 第1天 | 抵达西湖·老城吃面 |' in tokens
-    # 骨架也用表格：天顺序一行看完，三档量级单独一张表。
-    assert '| Day | 主题 | 当天顺序 |' in tokens and '| 经济档 | 约3000 |' in tokens
-    assert events[-1][0] == 'done'
-    # 骨架只是过渡内容，最终回答仍是完整攻略，导出和 PDF 不受影响。
-    assert '行程骨架' not in events[-1][1]['answer']
-    assert events[-1][1]['answer'].startswith('# 上海 → 杭州')
+    assert all(kind == 'status' for kind, _ in events[:-1])
+    kind, done = events[-1]
+    assert kind == 'done' and done['plan_version'] == 1
+    assert '上海 → 杭州 · 1天旅行攻略已整理完成' in done['answer']
+    assert '图文攻略' in done['answer'] and '导出 PDF、Markdown 和 HTML' in done['answer']
+    assert '\n' not in done['answer']

@@ -1,35 +1,44 @@
-"""One frozen public document shared by the preview and PDF."""
+"""One frozen public document shared by the preview and exports."""
+from base64 import b64encode
 from copy import deepcopy
 from datetime import date, datetime, timezone, timedelta
 from html import escape
+from pathlib import Path
 
 from travelmate.evidence import safe_url, context_key
 from travelmate.public import public_data, public_answer, internal_title
 from travelmate.workflow import budget_total, time_label, travel_label, cost_label, total_cost_label, TIME_NOTICE
 
 
-def day_heading(value, index, requirements, evidence, asof=None):
-    if not value:
-        return f"第{index}天 · 天气：出发日期未定"
-    day = date.fromisoformat(str(value))
-    label = f"{day.year}年{day.month}月{day.day}日 · 星期{'一二三四五六日'[day.weekday()]}"
+def daily_forecast(value, requirements, evidence, asof=None):
     asof = asof or datetime.now(timezone.utc)
     if asof.tzinfo is None:
         asof = asof.replace(tzinfo=timezone.utc)
     forecasts = []
     for record in evidence.values():
         if (record.get('kind') != 'weather_forecast' or record.get('context') != context_key(requirements)
-                or record.get('query_status') != 'success' or record.get('applicable_date') != day.isoformat()):
+                or record.get('query_status') != 'success' or record.get('applicable_date') != value):
             continue
         try:
             queried = datetime.fromisoformat(record['queried_at'])
             expires = datetime.fromisoformat(record['expires_at'])
-            if queried <= asof <= expires and record.get('value', {}).get('date') == day.isoformat():
+            if queried <= asof <= expires and record.get('value', {}).get('date') == value:
                 forecasts.append(record)
         except (KeyError, TypeError, ValueError):
             continue
-    if forecasts:
-        row = max(forecasts, key=lambda item: datetime.fromisoformat(item['queried_at']))['value']
+    return max(forecasts, key=lambda item: datetime.fromisoformat(item['queried_at']))['value'] if forecasts else {}
+
+
+def day_heading(value, index, requirements, evidence, asof=None):
+    if not requirements.get('start_date') or not value:
+        return f"第{index}天 · 日期未定"
+    day = date.fromisoformat(str(value))
+    label = f"{day.year}年{day.month}月{day.day}日 · 星期{'一二三四五六日'[day.weekday()]}"
+    asof = asof or datetime.now(timezone.utc)
+    if asof.tzinfo is None:
+        asof = asof.replace(tzinfo=timezone.utc)
+    row = daily_forecast(value, requirements, evidence, asof)
+    if row:
         weather = f"白天{row.get('dayweather') or '未提供'}，夜间{row.get('nightweather') or '未提供'}"
         if row.get('nighttemp') is not None and row.get('daytemp') is not None:
             weather += f"，{row['nighttemp']}至{row['daytemp']}℃"
@@ -70,7 +79,7 @@ def preliminary_brief(req):
         lines.append(f'你给出的金额为 {req["budget"]:g} {req.get("budget_currency") or "（币种待确认）"}，{scope}。')
     lines.append('确认是否包含往返交通和住宿后再算账；不把未查询的票价或酒店价格当作可购买报价。')
     if not req.get('start_date'):
-        lines += ['', '### 日期与天气', '日期未定时先按第几天规划；确定日期后再查询车次及覆盖日期内的天气预报。']
+        lines += ['', '### 日期安排', '日期未定时先按第几天规划；确定日期后再查询车次并细化当天安排。']
     return '\n'.join(lines)
 
 
@@ -90,8 +99,11 @@ def public_guide(guide):
     guide = deepcopy(guide)
     guide['sections'] = [section for section in guide['sections'] if not internal_title(section['title'])]
     for section in guide['sections']:
-        if section.get('rows'):
-            section['rows'] = [[public_answer(str(value)) for value in row] for row in section['rows']]
+        for key in ('rows', 'rain_rows'):
+            if section.get(key):
+                section[key] = [[public_answer(str(value)) for value in row] for row in section[key]]
+        if section.get('rain_note'):
+            section['rain_note'] = public_answer(section['rain_note'])
         for item in section['items']:
             item['text'] = public_answer(item['text'])
             if '查看地图' in item.get('link_label', '') or 'uri.amap.com/marker' in (item.get('link') or ''):
@@ -284,6 +296,8 @@ def make_guide(version, evidence):
         summary.append('已列费用 ' + total_cost_label(day['stops'], req, evidence, now=asof))
         notes = [' · '.join(summary)] + (['当日美食：' + '；'.join(meals)] if meals else [])
         section(day_heading(day.get('date'), i, req, evidence, asof), notes, 'day', ['时段', '顺路安排', '吃什么 / 怎么玩', '交通预留', '全员费用'], rows)
+        sections[-1]['rain_rows'] = [[time_label(plan, stop), stop['place'], stop.get('notes') or '按预约和体力调整', modes[stop.get('transport_mode', 'unknown')] + '，' + travel_label(stop), cost_label(stop, req, evidence, asof)] for stop in day.get('rain_stops', [])]
+        sections[-1]['rain_note'] = day.get('rain_note', '')
     foods = plan.get('foods', [])
     if foods:
         rows = [[food['name'], food['description'], (f'第{food["day"]}天 · ' if food.get('day') else '') + food.get('meal', '不限'), food.get('area') or '结合当日片区顺路选择', food.get('tips') or '点单前确认食材与忌口'] for food in foods]
@@ -292,7 +306,7 @@ def make_guide(version, evidence):
     if pitfalls:
         icons = {'严重': '❌', '注意': '⚠️', '技巧': '💡'}
         section('避坑', [f"{icons.get(item['level'], '⚠️')} {item['text']}" for item in pitfalls]
-                + ['以上涉及营业时间、票价与开放状态的条目，出行前请按下方清单通过官方渠道复核。'], 'pitfalls')
+                + ['涉及营业时间、票价与开放状态的条目，请以出行时官方公告为准。'], 'pitfalls')
     alternatives = plan.get('alternatives', [])
     if alternatives:
         rows = [[a['trigger'], a['action'],
@@ -301,7 +315,7 @@ def make_guide(version, evidence):
                 columns=['触发情况', '立即怎么换', '预计增加费用'], rows=rows)
     else:
         section('下雨、排队或约不上时怎么换', ['遇雨可减少室外步行、选择同片区室内活动；餐馆排队时优先换附近同类菜品，是否开放及能否入场以当日公告为准。'])
-    section('行前准备', plan.get('reminders', []) or ['确定日期后查询往返交通与天气；确认酒店取消条款、场馆规则、餐馆营业信息和饮食限制。'])
+    section('行前准备', plan.get('reminders', []) or ['确定日期后查询往返交通；确认酒店取消条款、场馆规则、餐馆营业信息和饮食限制。'])
     if plan.get('verify_items'):
         section('待核实清单', ['以下内容本次没有取得可核实的实时数据，出发前按对应渠道确认，不要按记忆出发。'], 'verify',
                 ['项目', '核验渠道'], [[item['item'], item['channel']] for item in plan['verify_items']])
@@ -316,20 +330,53 @@ def make_guide(version, evidence):
         seen.add(key)
         tool = record.get('tool')
         if tool == 'search_knowledge':
-            name = f'本地知识库「{record["title"]}」'
+            name = f'知识库「{record["title"]}」'
             used_knowledge = used_knowledge or record['query_status'] == 'success'
         elif tool == 'search_web':
             name = f'网页资料「{record["title"]}」'
+        elif tool == 'search_xiaohongshu':
+            published = display_time(record['published_at']) if record.get('published_at') else '未知'
+            name = f'小红书「{record["title"]}」 · 发布时间{published} · {record.get("freshness") or "发布时间未知"}'
         else:
             name = {'search_places': '高德地点查询', 'search_weather': '天气预报查询',
                     'search_train_tickets': '铁路车次查询'}.get(tool, record['title'])
         sources.append({'text': f'{name} · {label} · 查询时间{display_time(record["queried_at"])}', 'link': safe_url(record.get('url')), 'link_label': '公开来源'})
-    intro = ['本版参考了本地知识库文档，其余为联网检索与工具查询结果。'] if used_knowledge else []
+    intro = ['本版参考了知识库文档，其余为联网检索与工具查询结果。'] if used_knowledge else []
     section('参考来源', intro + (sources or ['本版没有可追溯的公开查询结果，不将具体报价或营业状态标为已核实。']), 'sources')
     return public_guide(public_data({'title': f'{route} · {req["days"]}天旅行攻略', 'version': version['version'],
         'saved_at': display_time(version['saved_at']) if version.get('saved_at') else '未记录（历史版本）',
         'hero': hero_image(req, plan),
-        'notice': '这是保存时的方案快照，天气为当时取得的预报；出发前重新确认天气、场馆规则和价格。', 'total': total, 'sections': sections}))
+        'result': {
+            'travelers': req['travelers'],
+            'budget': budget_total(req),
+            'budget_currency': req.get('budget_currency') or 'CNY',
+            'budget_includes': req.get('budget_includes') or '范围待确认',
+            'start_date': req.get('start_date'),
+            'weather': [dict(daily_forecast(day.get('date'), req, evidence, asof),
+                             date=day.get('date'), city=req['destination']) for day in plan['days']] if req.get('start_date') else [],
+            'ledger': [dict(category=stop.get('cost_category', '活动费用'), day=i,
+                            name=stop['place'], amount=stop['cost'] if cost_label(stop, req, evidence, asof) != '无法查询' else None,
+                            status=cost_label(stop, req, evidence, asof))
+                       for i, day in enumerate(plan['days'], 1) for stop in day['stops']]
+                      + ([dict(category=item['category'], day=None, name=item['name'], detail=item.get('note', ''), split=True,
+                               amount=item['amount'] if other_estimated else None, status='估算' if other_estimated else '待核实')
+                          for item in plan['other_cost_items']]
+                         if plan.get('other_cost_items') and round(sum(item['amount'] for item in plan['other_cost_items']), 2) == round(plan['other_cost'], 2)
+                         else [dict(category='综合费用', day=None, name=plan.get('cost_notes') or '其他费用',
+                                    amount=plan['other_cost'] if other_estimated else None, status=other_label)]),
+            'cost': displayed_total,
+            'per_person': (('约' if '约' in displayed_total else '')
+                           + f"¥{(sum(stop['cost'] for stop in stops if cost_label(stop, req, evidence, asof) != '无法查询') + (plan['other_cost'] if other_estimated else 0)) / req['travelers']:.2f}"
+                           + ('（部分项目待核实）' if '部分项目' in displayed_total else '（估算）' if '估算' in displayed_total else '')) if displayed_total != '无法查询' else '无法查询',
+            'places': [[{'name': stop['place'],
+                         'location': evidence.get(stop.get('fact_refs', {}).get('place'), {}).get('location')}
+                        for stop in day['stops']] for day in plan['days']],
+            'weather_times': [display_time(r['queried_at']) for r in evidence.values()
+                              if r.get('kind') == 'weather_forecast' and r.get('context') == context_key(req)
+                              and r.get('query_status') == 'success' and r.get('queried_at')] if req.get('start_date') else [],
+        },
+        'notice': ('这是保存时的方案快照，天气为当时取得的预报；出发前重新确认天气、场馆规则和价格。' if req.get('start_date')
+                   else '这是保存时的方案快照；出发前重新确认场馆规则和价格。'), 'total': total, 'sections': sections}))
 
 
 def guide_markdown(guide):
@@ -404,6 +451,9 @@ a:focus-visible,summary:focus-visible{outline:3px solid #b45309;outline-offset:4
 .verify{background:#fffdf5}.verify h2{border-left-color:#d97706}
 .sources{background:#f7f9f7}
 summary{cursor:pointer;font-size:19px;font-weight:600}
+.section-notes{margin-top:12px}
+.section-notes summary{font-size:14px;color:#0f5d55;padding:8px 0}
+.section-notes[open] summary{margin-bottom:6px}
 footer{margin-top:26px;text-align:center;font-size:13px;color:#5c6b64}
 .tl{list-style:none;margin:0;padding:0}
 .tl-item{display:grid;grid-template-columns:92px minmax(0,1fr);gap:12px;margin:0;padding:0;border:0}
@@ -474,21 +524,22 @@ def tier_cards(section, text):
     return ''.join(out) + '</div>'
 
 
-def render_guide(guide, pdf_url):
+def render_guide(guide, pdf_url=None):
     guide = public_guide(guide)
     def text(value):
         return escape(str(value), quote=True)
-    hero = guide.get('hero') or '/assets/visual/town.webp'
-    parts = [f'<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{text(guide["title"])}</title><style>{GUIDE_CSS}</style></head><body><main>',
-        f'<header class="hero"><img src="{text(hero)}" alt="目的地风景示意图"><div class="hero-body">',
-        f'<p class="eyebrow">TRAVELMATE · 图文攻略</p><h1>{text(guide["title"])}</h1>',
-        f'<p class="lede">{text(guide["notice"])}</p>',
-        f'<p class="chips"><span>版本 {text(guide["version"])}</span><span>{text(guide["saved_at"])}</span>'
-        f'<span>合计 {text(guide["total"])}</span></p>',
-        f'<div class="actions"><a class="btn" href="{text(pdf_url)}">下载这版 PDF</a>'
-        f'<a class="btn ghost" href="{text(pdf_url.removesuffix("/pdf") + "/md")}">下载 Markdown</a></div>',
-        '</div></header>']
+    actions = ''
+    if pdf_url is not None:
+        path = pdf_url.removesuffix('/pdf')
+        actions = (f'<div class="actions"><a class="btn" href="{text(pdf_url)}">下载 PDF</a>'
+                   f'<a class="btn ghost" href="{text(path)}/md">下载 Markdown</a>'
+                   f'<a class="btn ghost" href="{text(path)}/html">HTML</a></div>')
+    from travelmate.result import RESULT_CSS, RESULT_JS, result_panels
+    parts = [f'<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{text(guide["title"])}</title><style>{GUIDE_CSS}{RESULT_CSS}</style></head><body><main>']
+    rendered_sections = []
+    section_parts = []
     for section in guide["sections"]:
+        parts, outer_parts = section_parts, parts
         parts.append(f'<section class="card {text(section["kind"])}">')
         if section["kind"] == "sources":
             parts.append(f'<details><summary>{text(section["title"])}</summary>')
@@ -507,6 +558,9 @@ def render_guide(guide, pdf_url):
                 for row in section['rows']:
                     parts.append('<tr>' + ''.join('<td>' + text(value).replace('\n', '<br>') + '</td>' for value in row) + '</tr>')
                 parts.append('</tbody></table></div>')
+        fold_notes = section['kind'] == 'budget' and section['items']
+        if fold_notes:
+            parts.append('<details class="section-notes"><summary>注意事项</summary>')
         parts.append('<ul>')
         for item in section["items"]:
             parts.append('<li>' + text(item["text"]))
@@ -515,8 +569,12 @@ def render_guide(guide, pdf_url):
                 parts.append(f'<br><a href="{text(url)}" target="_blank" rel="noopener noreferrer">{text(item.get("link_label", "公开来源"))}</a>')
             parts.append('</li>')
         parts.append('</ul>')
-        if section["kind"] == "sources":
+        if fold_notes or section["kind"] == "sources":
             parts.append('</details>')
         parts.append('</section>')
+        rendered_sections.append((section, ''.join(section_parts)))
+        parts = outer_parts
+        section_parts = []
+    parts.append(result_panels(guide, rendered_sections, text, inline_images=pdf_url is None, actions=actions))
     parts.append('<footer>图为目的地示意图，非实景；价格与开放状态以出行时官方信息为准</footer>')
-    return ''.join(parts) + '</main></body></html>'
+    return ''.join(parts) + '</main><script type="module">' + RESULT_JS + '</script></body></html>'

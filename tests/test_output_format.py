@@ -28,22 +28,22 @@ def test_food_trip_has_a_useful_first_answer_without_invented_dates_or_budget_sc
         assert {field['key'] for field in fields} == {'budget_scope', 'budget_includes'}
 
 
-def test_chat_preview_and_markdown_share_food_route_budget_and_alternatives(tmp_path):
+def test_preview_and_markdown_share_food_route_budget_and_alternatives(tmp_path):
     plan = deepcopy(PLAN)
     plan['summary'] = '围绕西湖片区顺路吃，预留休息，减少跨城赶场。'
     plan['lodging'] = ['优先选择当日片区交通方便的住宿，按实际日期询价。']
     plan['foods'][0].update(day=1, meal='午餐')
     plan['alternatives'] = [{'trigger': '下雨', 'action': '减少湖边步行，在同片区休息用餐', 'extra_cost': None}]
     with open_test(tmp_path, Model(plans=[plan])) as agent:
-        answer = chat(agent, 'format', '偏重美食')
+        chat(agent, 'format', '偏重美食')
         state = get_workflow(agent, 'format')
         guide = get_version(state, 1)
-        assert answer.strip() == guide_markdown(guide).strip()
-        assert '| 时段 | 顺路安排 | 吃什么 / 怎么玩 |' in answer
-        assert '| 片儿川 |' in answer and '第1天 · 午餐' in answer
-        assert '| 下雨 | 减少湖边步行，在同片区休息用餐 | 待核实 |' in answer
-        assert '不能确认预算是否足够' in answer and '5000足够' not in answer
-        assert '住哪里更顺路' in answer
+        markdown = guide_markdown(guide)
+        assert '| 时段 | 顺路安排 | 吃什么 / 怎么玩 |' in markdown
+        assert '| 片儿川 |' in markdown and '第1天 · 午餐' in markdown
+        assert '| 下雨 | 减少湖边步行，在同片区休息用餐 | 待核实 |' in markdown
+        assert '不能确认预算是否足够' in markdown and '5000足够' not in markdown
+        assert '住哪里更顺路' in markdown
         html = render_guide(guide, '/guide.pdf')
         assert '<table>' in html and '下载 Markdown' in html
         assert '片儿川' in html and '查看地图' not in html
@@ -56,8 +56,10 @@ def test_markdown_exports_the_selected_answer_and_frozen_version(tmp_path):
             yield agent
 
     with TestClient(create_app(factory, auth_enabled=False)) as client:
-        client.post('/chat', json={'session_id': 'trip', 'message': '规划'})
+        reply = client.post('/chat', json={'session_id': 'trip', 'message': '规划'}).json()
         answer = client.get('/sessions/trip').json()['messages'][-1]
+        assert reply['plan_version'] == answer['plan_version'] == 1
+        assert reply['answer'] == answer['content'] and '攻略已整理完成' in reply['answer']
         path = f'/sessions/trip/answers/{answer["message_id"]}/md'
         response = client.get(path)
         assert response.status_code == 200 and response.text == answer['content']
@@ -72,7 +74,7 @@ def test_markdown_exports_the_selected_answer_and_frozen_version(tmp_path):
         assert client.get('/sessions/other/answers/' + answer['message_id'] + '/md').status_code == 404
 
 
-@pytest.mark.parametrize('cost_mode,queries_expected', [('research', 2), ('plan', 1)])
+@pytest.mark.parametrize('cost_mode,queries_expected', [('research', 3), ('plan', 2)])
 def test_configured_web_research_joins_existing_evidence_without_an_extra_model_node(
         tmp_path, monkeypatch, cost_mode, queries_expected):
     import travelmate.agent as module
@@ -89,10 +91,11 @@ def test_configured_web_research_joins_existing_evidence_without_an_extra_model_
     monkeypatch.setenv('COST_MODE', cost_mode)
     model = Model()
     with open_test(tmp_path, model) as agent:
-        answer = chat(agent, 'research', '规划')
+        chat(agent, 'research', '规划')
         assert len(queries) == queries_expected
         assert any('门票价格' in query for query in queries) is (cost_mode == 'research')
-        assert 'https://example.com/visit' in answer
+        assert any('预约规则' in query and '闭馆公告' in query for query in queries)
+        assert 'https://example.com/visit' in guide_markdown(get_version(get_workflow(agent, 'research'), 1))
         assert model.calls == ['Intake', 'Areas', 'Itinerary', 'ReviewReport']
 
 
@@ -113,8 +116,8 @@ def test_planning_allowances_add_to_budget_and_do_not_invent_quotes_or_ignored_c
     assert sum(Decimal(row[1][1:]) for row in budget_allocation({**req, 'budget_scope': 'per_person'})) == Decimal('10000')
 
 
-def test_knowledge_hit_skips_web_research_and_is_labelled_in_sources(tmp_path, monkeypatch):
-    (tmp_path / '杭州.md').write_text('杭州西湖环湖步行与片儿川面馆，' * 20, encoding='utf-8')
+def test_knowledge_coverage_skips_duplicate_guides_but_checks_dynamic_rules(tmp_path, monkeypatch):
+    (tmp_path / '杭州.md').write_text('杭州西湖游览路线与当地美食片儿川面馆，' * 20, encoding='utf-8')
     import travelmate.agent as module
     queries = []
 
@@ -129,10 +132,11 @@ def test_knowledge_hit_skips_web_research_and_is_labelled_in_sources(tmp_path, m
     monkeypatch.setenv('COST_MODE', 'plan')
     model = Model()
     with open_test(tmp_path, model) as agent:
-        answer = chat(agent, 'kb', '规划')
-    assert queries == []
-    assert '本地知识库「杭州.md」' in answer
-    assert '本版参考了本地知识库文档' in answer
+        chat(agent, 'kb', '规划')
+        markdown = guide_markdown(get_version(get_workflow(agent, 'kb'), 1))
+    assert len(queries) == 1 and '预约规则' in queries[0]
+    assert '知识库「杭州.md」' in markdown
+    assert '本版参考了知识库文档' in markdown
     assert model.calls == ['Intake', 'Areas', 'Itinerary', 'ReviewReport']
 
 

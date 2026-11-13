@@ -49,7 +49,7 @@ def test_flight_and_ferry_plans_can_be_validated_saved_and_presented(tmp_path, m
         assert state['status'] == 'review'
         guide = get_version(state, 1)
         assert ('飞机' if mode == 'flight' else '轮渡') in render_guide(guide, '/guide.pdf')
-        assert events[-1][0] == 'done' and '第1天' in events[-1][1]['answer']
+        assert events[-1][0] == 'done' and events[-1][1]['plan_version'] == 1
 
 
 @pytest.mark.parametrize('always_invalid', [False, True])
@@ -76,8 +76,43 @@ def test_schema_format_repair_is_bounded_and_streams_progress(tmp_path, monkeypa
         assert model.calls.count('Itinerary') == 2
         assert sum(event == 'status' and '正在修正回答的数据格式' in data['text'] for event, data in events) == 1
         assert get_workflow(agent, 'format')['status'] == ('failed' if always_invalid else 'review')
-        assert events[-1][0] == 'done'
-        assert 'unsupported-mode' not in events[-1][1]['answer']
+        kind, payload = events[-1]
+        assert kind == ('error' if always_invalid else 'done')
+        assert 'unsupported-mode' not in (payload.get('text') or payload['answer'])
+
+
+@pytest.mark.parametrize('always_empty', [False, True])
+def test_preset_intake_retries_when_the_model_omits_the_structured_result(tmp_path, always_empty):
+    class EmptyIntakeModel(Model):
+        def with_structured_output(self, schema, **kwargs):
+            assert schema.__name__ == 'Intake'
+
+            def run(messages):
+                self.calls.append(schema.__name__)
+                if len(self.calls) == 1 or always_empty:
+                    return None
+                assert '未返回结构化结果' in messages[-1].content
+                return schema.model_validate({'intent': 'plan', 'conditions': {
+                    'origin': '厦门', 'destination': '北京', 'days': 3, 'travelers': 2,
+                    'budget': 3000, 'budget_scope': 'total', 'budget_currency': 'CNY', 'transport': '高铁',
+                }})
+
+            return RunnableLambda(run)
+
+    model = EmptyIntakeModel()
+    preset = '我们【2人】从【厦门】出发到【北京】玩【3天】，总预算【3000元】，交通方式【高铁】，请帮我们规划行程。'
+    with open_test(tmp_path, model) as agent:
+        events = list(stream_chat(agent, 'preset', preset))
+        message = conversation(agent, 'preset')['messages'][-1]
+        assert model.calls == ['Intake', 'Intake']
+        assert any('正在修正回答的数据格式' in data['text'] for kind, data in events if kind == 'status')
+        kind, payload = events[-1]
+        if always_empty:
+            assert kind == 'error' and payload['generation_failed'] and payload['text'] == message['content']
+            assert message['generation_failed'] and 'plan_version' not in message
+        else:
+            assert kind == 'done' and not message.get('generation_failed')
+            assert [field['key'] for field in payload['interaction']['fields']] == ['budget_includes']
 
 
 def test_real_evidence_ids_reach_model_and_places_query_concurrently(tmp_path, monkeypatch):
@@ -130,7 +165,7 @@ def test_required_order_versions_and_restart(tmp_path, monkeypatch):
         assert state["status"] == "review" and state["version"] == 1
         assert [row["node"] for row in state["trace"]] == ["requirements", "ready", "research", "organize_places", "verify_places", "generate", "check", "quality_review", "save_version", "present"]
         assert state["versions"][0]["plan"] == state["plan"]
-        assert "估算" in text and "无法查询" in text
+        assert "1天旅行攻略已整理完成" in text
     with open_test(tmp_path, Model(intake={"intent": "modify", "conditions": {"budget": 2000}})) as agent:
         chat(agent, "trip", "预算改成2000")
         state = get_workflow(agent, "trip")
@@ -166,6 +201,8 @@ def test_bounded_revision_and_preserve_success(tmp_path):
         assert state["plan"] == previous and len(state["versions"]) == 1
         assert model.calls.count("Itinerary") == 3
         assert "停止" in answer
+        assert "上一版可用攻略已保留" in answer
+        assert conversation(agent, "trip")["messages"][-1]["plan_version"] == 1
 
 
 def test_unverifiable_refs_are_cleaned_instead_of_regenerating():
@@ -226,7 +263,9 @@ def test_interrupt_checkpoint_resume_and_stream_status(tmp_path):
         agent.invoke(None, config)
         assert not agent.get_state(config).next
         assert get_workflow(agent, "trip")["status"] == "review"
-        events = list(stream_chat(agent, "stream", "规划"))
+    model = Model(intake={"intent": "question", "direction": "可以按兴趣选择片区。" * 8})
+    with open_test(tmp_path, model) as agent:
+        events = list(stream_chat(agent, "stream", "怎么选景点"))
         assert events[-1][0] == "done"
         assert any(event == "status" for event, _ in events)
         tokens = [data['text'] for event, data in events if event == 'token']
@@ -269,3 +308,26 @@ def test_default_graph_api_history_pdf_and_failed_edit(tmp_path):
         assert client.put("/sessions/new/trip", json=invalid).json()["status"] == "blocked"
         assert client.get("/sessions/new/trip").json()["plan"] == old
         assert client.get(f"/sessions/new/answers/{answer_id}/pdf").content.startswith(b"%PDF-")
+
+
+def test_no_weather_lookup_when_departure_date_is_missing(tmp_path, monkeypatch):
+    import travelmate.agent as agent_module
+    calls = []
+
+    @tool
+    def search_weather(city: str, start_date: str, days: int = 1) -> dict:
+        """Record weather calls without using the network."""
+        calls.append((city, start_date))
+        return {'status': 'no_data'}
+
+    monkeypatch.setattr(agent_module, 'search_weather', search_weather)
+    req = {**REQ, 'start_date': None}
+    plan = deepcopy(PLAN)
+    plan['days'][0]['date'] = None
+    with open_test(tmp_path, Model(intake={'intent': 'plan', 'conditions': req}, plans=[plan])) as agent:
+        events = list(stream_chat(agent, 'no-date', '出发日期待定，请先规划杭州一日游'))
+        state = get_workflow(agent, 'no-date')
+        assert state['status'] == 'review'
+        assert calls == []
+        assert state['versions'][0]['guide']['result']['weather'] == []
+        assert all('天气' not in data.get('text', '') for kind, data in events if kind == 'status')
