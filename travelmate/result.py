@@ -5,18 +5,18 @@ from decimal import Decimal
 from urllib.parse import urlencode
 
 from travelmate.daily_ui import CSS as DAILY_CSS, day_cards
-from travelmate.weather_ui import WEATHER_CSS, weather_panel, weather_icon
+from travelmate.weather_ui import WEATHER_CSS, weather_panel
 from travelmate.carousel import CAROUSEL_CSS, CAROUSEL_JS, coverflow
 from travelmate.preparation import CSS as PREPARATION_CSS, JS as PREPARATION_JS, panel as preparation_panel
 
 RESULT_CSS = """
 .result-nav a{text-decoration:none;white-space:nowrap;padding:12px 4px;border-bottom:3px solid transparent;color:#63736c}
-.result:not(:has(:target)) a[href="#panel-overview"],.result:has(#panel-overview:target) a[href="#panel-overview"],.result:has(#panel-prepare:target) a[href="#panel-prepare"],.result:has(#panel-budget:target) a[href="#panel-budget"],.result:has(#panel-map:target) a[href="#panel-map"],.result:has(#panel-days:target,.day-anchor:target) a[href="#panel-days"],.result:has(#panel-weather:target) a[href="#panel-weather"],.result:has(#panel-tips:target) a[href="#panel-tips"]{border-color:#b94d2a;color:#b94d2a;font-weight:700}
+.result:not(:has(:target)) a[href="#panel-overview"],.result:has(#panel-overview:target) a[href="#panel-overview"],.result:has(#panel-prepare:target) a[href="#panel-prepare"],.result:has(#panel-budget:target) a[href="#panel-budget"],.result:has(#panel-days:target,.day-anchor:target) a[href="#panel-days"],.result:has(#panel-tips:target) a[href="#panel-tips"]{border-color:#b94d2a;color:#b94d2a;font-weight:700}
 body{background:#faf8f3;color:#193c38}main{max-width:1240px;padding:28px 28px 60px}
 .hero img{height:280px}.hero{box-shadow:none}.card{box-shadow:none;border-color:#dedfd5}
 .result{background:#f2f0e8;border:1px solid #dedfd5;border-radius:24px;padding:24px}
 .result-nav{display:flex;gap:24px;overflow-x:auto;border-bottom:1px solid #ccd4cb;margin-bottom:24px}
-.panel{display:none}.panel-overview{display:block}.result:has(.panel:target,.day-anchor:target) .panel{display:none}.result .panel:target,.result:has(.day-anchor:target) .panel-days{display:block!important}
+.panel{display:none;scroll-margin-top:100vh}.panel-overview{display:block}.result:has(.panel:target,.day-anchor:target) .panel{display:none}.result .panel:target,.result:has(.day-anchor:target) .panel-days{display:block!important}
 .result-intro{color:#63736c}.day-anchor{scroll-margin-top:20px}.budget-summary{background:#193c38;color:#fff;border-radius:18px;padding:24px;display:flex;gap:36px;flex-wrap:wrap}.budget-summary strong{display:block;font-size:26px}.budget-summary p{margin:0}.weather-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.weather-day{background:#eaf3ee;border:1px solid #cadbd1;padding:24px;border-radius:18px}.weather-day h3{font-size:20px}.route-map{width:100%;height:300px;background:#eaf3ee;border-radius:18px;border:1px solid #cadbd1}.route-map text{font:16px sans-serif;fill:#fff}.route-map circle{fill:#087f7a}.route-map polyline{stroke:#b94d2a;stroke-width:3;fill:none;stroke-dasharray:8 6}.map-stops{display:flex;flex-wrap:wrap;gap:12px;margin:18px 0}.map-stops a{background:#fff;border:1px solid #dedfd5;padding:8px 14px;border-radius:12px}.result .card:first-child{margin-top:0}
 .day-picker{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}.day-picker a{padding:8px 18px;border:1px solid #cadbd1;border-radius:999px;background:#fff;text-decoration:none}.day-detail{margin-bottom:18px}.day-detail>summary{background:#eaf3ee;padding:16px 20px;border:1px solid #cadbd1;border-radius:16px}.day-detail .card{margin-top:10px}.day-anchor:target>.day-detail>summary{border-color:#b94d2a}.result a:focus-visible,.carousel input:focus-visible{outline:3px solid #b94d2a;outline-offset:4px}
 @media print{.day-picker{display:none}}
@@ -27,7 +27,7 @@ body{background:#faf8f3;color:#193c38}main{max-width:1240px;padding:28px 28px 60
 
 RESULT_CSS += DAILY_CSS + WEATHER_CSS + CAROUSEL_CSS + PREPARATION_CSS
 RESULT_CSS += """
-.trip-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:0 0 20px}.trip-facts>div{background:#eef2e7;padding:14px 20px;border-radius:12px;min-width:0}.trip-facts dt{font-size:12px;color:#63736c}.trip-facts dd{margin:4px 0 0;font-size:17px;overflow-wrap:anywhere}.guide-detail{background:#fffefa;border:1px solid #d8ddcf;border-radius:14px;margin:12px 0;padding:16px 20px}.guide-detail>summary{font-size:17px;color:#285b48}.guide-detail>.card{border:0;padding:12px 0 0;margin:0;background:transparent}.guide-detail>.card>h2{display:none}.snapshot-facts{display:grid;grid-template-columns:auto 1fr;gap:8px 20px;font-size:14px}.snapshot-facts dt{color:#63736c}.snapshot-facts dd{margin:0;overflow-wrap:anywhere}.snapshot-info>p{font-size:13px;color:#63736c}.weather-empty{text-align:center;padding:36px 20px;background:linear-gradient(135deg,#eef3e6,#e0efe8)}.weather-empty .weather-art{display:block;width:140px;height:110px;margin:0 auto}.weather-empty h3{font:700 25px Georgia,'Songti SC',SimSun,serif;margin:12px 0}.weather-empty p{font-size:14px}.weather-empty details{max-width:600px;margin:12px auto 0}.result-nav a{flex-shrink:0}.panel{min-width:0}.daily-masthead{flex-wrap:wrap}.daily-masthead .actions{flex-shrink:0}.panel-tips .daily-heading{margin-bottom:20px}
+.trip-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:0 0 20px}.trip-facts>div{background:#eef2e7;padding:14px 20px;border-radius:12px;min-width:0}.trip-facts dt{font-size:12px;color:#63736c}.trip-facts dd{margin:4px 0 0;font-size:17px;overflow-wrap:anywhere}.guide-detail{background:#fffefa;border:1px solid #d8ddcf;border-radius:14px;margin:12px 0;padding:16px 20px}.guide-detail>summary{font-size:17px;color:#285b48}.guide-detail>.card{border:0;padding:12px 0 0;margin:0;background:transparent}.guide-detail>.card>h2{display:none}.snapshot-facts{display:grid;grid-template-columns:auto 1fr;gap:8px 20px;font-size:14px}.snapshot-facts dt{color:#63736c}.snapshot-facts dd{margin:0;overflow-wrap:anywhere}.snapshot-info>p{font-size:13px;color:#63736c}.result-nav a{flex-shrink:0}.panel{min-width:0}.daily-masthead{flex-wrap:wrap}.daily-masthead .actions{flex-shrink:0}.panel-tips .daily-heading{margin-bottom:20px}
 @media(max-width:700px){.trip-facts{grid-template-columns:1fr;gap:8px}.trip-facts>div{display:flex;align-items:baseline;gap:16px;padding:10px 14px}.trip-facts dt{flex-shrink:0}.trip-facts dd{font-size:14px}.daily-masthead .actions{margin-left:0;width:100%}.daily-masthead strong{font-size:28px}.daily-masthead span{border:0;padding-left:0;font-size:16px}.guide-detail{padding:14px}.result .result-nav{gap:22px;justify-content:flex-start}}
 @media print{.daily-masthead .actions{display:none}.guide-detail::details-content{display:block;content-visibility:visible}.guide-detail{break-inside:avoid}.snapshot-info{font-size:12px}}
 """
@@ -46,11 +46,14 @@ def result_panels(guide, sections, text, inline_images=False, actions=""):
     days = [s for s, _ in sections if s['kind'] == 'day']
     meta = guide.get('result', {})
     out = ['<div class="result" aria-label="旅行方案">']
-    views = [('overview', '行程概览'), ('budget', '预算明细'), ('map', '景点地图'), ('prepare', '行前准备'), ('days', '每日行程'), ('weather', '天气信息'), ('tips', '其他攻略')]
+    views = [('overview', '行程概览'), ('budget', '预算明细'), ('days', '每日行程'), ('prepare', '行程准备'), ('tips', '其他攻略')]
     out.append(f'<header class="daily-masthead"><strong><svg class="budget-brand-mark" viewBox="0 0 60 36" aria-hidden="true"><path d="M2 28 21 5q4-5 8 0l21 23-17-5-12-4Z" fill="#196457"/><path d="m30 12 8-7 20 24-17-5Z" fill="#73947f"/><path d="M10 32q14-13 28-3t20-3q-12 14-28 7t-20-1" fill="#196457"/></svg>TravelMate</strong><span>{text(guide["title"])}</span>{actions}</header>')
     out.append('<svg class="budget-header-art" viewBox="0 0 480 120" aria-hidden="true"><path d="M0 99 66 68l36 13 49-35 33 16 48-25 59 39 49-27 47 22 46-19 47 30v25Z" fill="#cfddd3"/><path d="m0 103 70-16 45 4 64-22 54 10 51-12 60 15 57-14 79 25v17H0Z" fill="#9fb9a1"/><path d="M0 106q120-18 240-1t240-2v17H0Z" fill="#d6e3d9"/><path d="M42 112h190m-135 5h260m-80-9h130" stroke="#8ca9a0" opacity=".5"/><g stroke="#294d43" stroke-width="2" fill="#637d6b"><path d="M350 94h53m-44 0V65h34v29m-39-24h44m-50-6q18 0 28-14 10 14 28 14Zm6 14h42m-28-10v26m-10-26v26"/><path d="M256 69V28m-8 41V36h16v33m-20-30h24m-22-8h20m-17-6h14m-11-5h8" fill="none"/></g><g stroke="#779449" fill="none"><path d="M470 0q-20 37-4 102M452 0q-23 25-24 73m20-73q-4 35-12 57M479 0q-4 56-1 110" stroke-width="2"/><path d="m466 15-9 17m9 3 8 18m-11 4-9 18m-17-54-7 15m0 13-9 17m51-50 7 17" stroke-width="5"/></g></svg>')
     out.append('<nav class="result-nav" aria-label="结果板块">' + ''.join(f'<a href="#panel-{key}">{title}</a>' for key, title in views) + '</nav>')
     groups = {key: [] for key, _ in views}
+    groups['map'] = []
+    overview = next((s for s, _ in sections if s['kind'] == 'overview'), {})
+    selected_date = meta.get('start_date') if 'start_date' in meta else next((r[1] for r in overview.get('rows', []) if r[0] == '日期' and '未定' not in r[1]), None)
     for index, (section, html) in enumerate(sections):
         kind = section['kind']
         if section['title'] == '行前准备':
@@ -59,6 +62,8 @@ def result_panels(guide, sections, text, inline_images=False, actions=""):
                  if kind in ('food', 'traffic', 'pitfalls', 'verify') or section['title'] in
                  ('交通与已订安排', '住哪里更顺路', '时间安排说明', '下雨、排队或约不上时怎么换') else 'tips')
         if kind == 'day':
+            if not selected_date:
+                section = dict(section, title=section['title'].split(' · 天气')[0])
             number = sum(s['kind'] == 'day' for s, _ in sections[:index]) + 1
             html = day_cards(section, number, text, inline_images) if section.get("columns", [])[:1] == ["时段"] else f'<div id="day-{number}" class="day-anchor"><details class="day-detail" open><summary>第 {number} 天 · 查看或收起安排</summary>{html}</details></div>'
         if group == 'tips':
@@ -66,7 +71,6 @@ def result_panels(guide, sections, text, inline_images=False, actions=""):
         groups[group].append(html)
     groups['overview'].insert(0, coverflow(days, text, inline_images))
     groups['prepare'].append(preparation_panel(guide, text))
-    overview = next((s for s, _ in sections if s['kind'] == 'overview'), {})
     facts = [r for r in overview.get('rows', []) if r[0] in ('路线', '人数与天数', '日期')]
     groups['overview'].insert(0, '<dl class="trip-facts">' + ''.join('<div><dt>' + text(r[0]) + '</dt><dd>' + text(r[1]) + '</dd></div>' for r in facts) + '</dl>')
     budget_facts = [r for r in overview.get('rows', []) if '预算' in r[0]]
@@ -97,11 +101,10 @@ def result_panels(guide, sections, text, inline_images=False, actions=""):
                 url = 'https://uri.amap.com/marker?' + urlencode({'position': f'{xy[0]},{xy[1]}', 'name': place['name']})
                 groups['map'].append(f'<a href="{text(url)}" target="_blank" rel="noopener noreferrer">高德地图 ↗</a>')
         groups['map'].append('</div></section>')
-    selected_date = meta.get('start_date') if 'start_date' in meta else next((r[1] for r in overview.get('rows', []) if r[0] == '日期' and '未定' not in r[1]), None)
-    if not selected_date:
-        groups['weather'].append('<div class="weather-day weather-empty" role="status">' + weather_icon('多云') + '<h3>尚未选择出行日期</h3><p class="muted">补充日期后查看出行天气</p><details class="section-notes"><summary>如何查看天气</summary><p>请先在快速规划中选择出发日期，或在对话中补充具体日期。确认并保存新方案后，才能查看对应日期的天气。</p><p>当前按第几天展示行程，不提供具体日期的天气预报。</p></details></div>')
-    else:
-        groups['weather'].append(weather_panel(meta, days, selected_date, text))
+    if selected_date:
+        groups['days'].insert(1, '<details class="guide-detail daily-weather" open><summary>每日天气</summary>' + weather_panel(meta, days, selected_date, text) + '</details>')
+    if groups['map']:
+        groups['days'].append('<details class="guide-detail"><summary>景点地图</summary>' + ''.join(groups['map']) + '</details>')
     for key, title in views:
         out.append(f'<section id="panel-{key}" class="panel panel-{key}" aria-label="{title}">' + ''.join(groups[key]) + '</section>')
     return ''.join(out) + '</div>'
@@ -152,6 +155,53 @@ from base64 import b64encode
 from hashlib import sha256
 from travelmate.budget_ui import CSS as BUDGET_CSS, JS as BUDGET_JS
 RESULT_CSS += BUDGET_CSS
+RESULT_CSS += """
+html{scrollbar-gutter:stable}
+body{background:radial-gradient(ellipse at top right,#f3efdf55,transparent 60%),#faf8f3}
+body main{max-width:1600px;padding:14px 24px 32px}
+.result{position:relative}
+.budget-brand-mark{display:inline-block;width:58px;height:36px;margin-right:12px;vertical-align:middle}
+.budget-header-art{position:absolute;right:0;top:0;width:320px;height:105px;opacity:.25;pointer-events:none}
+.result .daily-masthead{position:relative;z-index:1;padding:0 12px 12px;border:0}
+.daily-masthead strong{font-size:36px}
+.daily-masthead .actions .btn{background:#fffdf9;color:#165b50;border:1px solid #65958a;border-radius:10px}
+.result .result-nav{position:relative;z-index:1;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;overflow:visible;padding:0;margin:0 0 22px;border-bottom:1px solid #bcc8be}
+.result .result-nav a{display:flex;align-items:center;justify-content:center;min-width:0;min-height:48px;font-size:19px;padding:10px 8px;text-align:center}
+@media(max-width:760px){
+body main{padding:12px}
+.budget-header-art{display:none}
+.budget-brand-mark{width:40px;margin-right:8px}
+.result .daily-masthead{gap:12px;padding:0 0 12px}
+.daily-masthead strong{font-size:28px}
+.daily-masthead span{border:0;padding-left:0;font-size:16px}
+.daily-masthead .actions{margin-left:0;width:100%}
+.result .result-nav{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:18px;padding:8px 0 12px}
+.result .result-nav a{font-size:15px;min-height:44px;padding:8px 4px;background:#f0f3eb;border:1px solid #d8dfd1;border-radius:9px}
+.result .result-nav a[aria-current=page]{background:#f9e7d9;border-color:#ba5931;color:#a63c17}
+.panel-days .day-picker{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));width:100%;gap:8px;overflow:visible;padding-bottom:0}
+.panel-days .day-picker a{padding:8px;min-width:0;min-height:44px}
+.day-picker span{max-width:none;min-width:0}
+.weather-dates{display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));overflow:visible}
+.weather-date{min-width:0}
+}
+@media print{.result .result-nav,.budget-header-art{display:none}}
+"""
+RESULT_JS += r"""
+const resultNav = document.querySelector('.result-nav');
+if (resultNav) {
+  const updateNavigation = () => {
+    const target = document.getElementById(location.hash.slice(1));
+    const panel = target?.closest('.panel');
+    const current = panel ? '#' + panel.id : '#panel-overview';
+    for (const link of resultNav.querySelectorAll('a')) {
+      if (link.getAttribute('href') === current) link.setAttribute('aria-current', 'page');
+      else link.removeAttribute('aria-current');
+    }
+  };
+  window.addEventListener('hashchange', updateNavigation);
+  updateNavigation();
+}
+"""
 RESULT_JS += BUDGET_JS
 RESULT_JS += CAROUSEL_JS
 RESULT_JS += PREPARATION_JS

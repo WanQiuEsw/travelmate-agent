@@ -402,7 +402,7 @@ def build_planner(model, saver, knowledge, tools, prompt, review_model=None):
                 "\n费用有可解释依据才填写cost_estimated或other_cost_estimated，分别在notes或cost_notes写明全员金额的构成和口径。未知活动费用用cost=0且cost_estimated=false表示，不写成免费。应急方案选本行程最相关的情形，如下雨、餐馆排队、闭馆、约不上或无票；trigger写明影响哪天哪项，action写立即怎么替换、怎么去或在哪里复核，extra_cost只填有依据的全员预计增加额，未知留空。"
                 "\n可交付规则：航班到离时刻未知不等于条件不足，不追问已完整需求；首日仅安排抵达后可选的市区轻量活动，把轮渡上岛等依赖时刻的核心活动放到中间完整日。不假设早班抵达或晚班返程；在首末日notes与reminders写明按实际航班调整及机场交通、值机预留。明确时间仅为估算，用户可以调整顺序、删减或继续细化。"
                 "\n每日步数受限时按片区安排2至3个主要景点，安排午餐及明确休息时段，跨片区乘车；notes给步行量估算范围与临近上限时的删减顺序，不把估算写成保证。不要默认看日出或登高。交通衔接计入候车、换乘和出入口缓冲；渡轮不编确定班次，按当日订票时刻调整。"
-                "\n预算严格遵守budget_includes：明确排除的住宿、机票不计入stop.cost或other_cost，也不因未查这些价格阻塞行程；明确包含的往返交通、住宿即使未查到价格，也要按公开估算计入other_cost并在cost_notes标待核实，不能因为未查询就不计入，也不能为凑预算压到无依据的低价；确实超预算时如实写出超支额和取舍，由用户决定。other_cost只放范围内尚未逐项列出的费用并解释算式。对票价、开放时段、交通时长保留估算/待确认并给替代方案，不编造确定事实。未查询实时天气时禁止输出具体日期的天气预报，只提示出发前查询。输出精简，避免冗长重复notes。"
+                "\n预算严格遵守budget_includes：明确排除的住宿、机票不计入stop.cost或other_cost，也不因未查这些价格阻塞行程；明确包含的往返交通、住宿即使未查到价格，也要按公开估算计入other_cost并在cost_notes标待核实，不能因为未查询就不计入，也不能为凑预算压到无依据的低价；确实超预算时如实写出超支额和取舍，由用户决定。other_cost只放范围内尚未逐项列出的费用并解释算式。对票价、开放时段、交通时长保留估算/待确认并给替代方案，不编造确定事实。用户未填写start_date时，不查询天气，不输出天气预报或缺少天气的提示；已填写日期但未查询实时天气时禁止输出具体日期的天气预报，只提示出发前查询。输出精简，避免冗长重复notes。"
                 "\n按样稿骨架填写新增字段：key_call 写开篇关键判断（钱够不够、主要花在哪、必须舍弃什么），只能用已列费用和查询依据推导，不能无依据说预算充足；hard_rules 写三条以内可直接执行的规则（买哪个价位、住哪个片区、不买什么票）；budget_tiers 给出经济、舒适、品质三档，差异要落到具体住宿、交通与餐标，总额没有算法依据时留空；pitfalls 至少5条真实会踩的坑，分严重、注意、技巧，写清具体店名或环节与替代做法，不写注意安全这类空话；verify_items 列出出行前要复核的项目与官方渠道，与正文待核实的信息对应。" + TRANSPORT_RULE + cost_instruction(), {"requirements": w["requirements"], "areas": state["areas"], "research": state["research_data"], "transport": transport_anchor(state.get("research_data")), "evidence": evidence, "previous_candidate": state.get("candidate"), "issues": w.get("issues", [])}, deadline=run_deadline(w))
             return {"workflow": stage(w, "generate", attempts=w.get("attempts", 0) + 1), "candidate": candidate.model_dump(mode="json")}
         except Exception:
@@ -507,7 +507,7 @@ def build_planner(model, saver, knowledge, tools, prompt, review_model=None):
             labels = {"intake": "正在整理人数、日期、预算范围与行动限制…", "research": "正在检索目的地旅游资料…",
                       "organize": "正在按片区筛选景点，减少往返和步行…", "verify_places": "正在核对候选地点…",
                       "check": "正在核对日期、活动衔接、费用和查询依据…", "review": "正在检查方案是否符合预算、体力限制与出行安排…",
-                      "save": "检查完成，正在保存本次方案…", "present": "正在整理每日行程、天气与特色美食…"}
+                      "save": "检查完成，正在保存本次方案…", "present": "正在整理每日行程与特色美食…"}
             text = labels.get(name)
             if name == "generate":
                 attempt = state["workflow"].get("attempts", 0) + 1

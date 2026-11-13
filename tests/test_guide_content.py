@@ -39,7 +39,7 @@ def test_day_heading_matches_date_weekday_and_saved_forecast_only():
                     weather(req, rows=[{'date': '2026-11-05', 'dayweather': '雨'}])):
         title = day_heading('2026-11-06', 1, req, changed, NOW)
         assert '暂无预报' in title and '天气预报：白天' not in title
-    assert day_heading(None, 1, req, records, NOW) == '第1天 · 天气：出发日期未定'
+    assert day_heading(None, 1, req, records, NOW) == '第1天 · 日期未定'
     assert '星期二' in day_heading('2026-12-01', 1, req, {}, NOW)
 
 

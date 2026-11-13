@@ -42,7 +42,7 @@ def test_checklist_crud_persistence_versions_exports_and_conflict(tmp_path):
         html = client.get('/sessions/trip/plans/1')
         assert 'connect-src \'self\'' in html.headers['content-security-policy']
         nav = html.text.split('<nav class="result-nav"')[1].split('</nav>')[0]
-        assert nav.index('href="#panel-prepare"') < nav.index('href="#panel-days"')
+        assert nav.index('href="#panel-days"') < nav.index('href="#panel-prepare"')
         assert 'checked' in html.text and '带雨伞&lt;script&gt;' in html.text
         assert '[x] 身份证与学生证' in client.get('/sessions/trip/plans/1/md').text
         assert '当前浏览器' in client.get('/sessions/trip/plans/1/html').text

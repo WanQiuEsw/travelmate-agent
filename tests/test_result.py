@@ -9,7 +9,7 @@ def test_result_sections_and_historical_snapshot():
     guide = make_guide(dict(version=1, plan=deepcopy(PLAN), requirements=REQ,
                             saved_at=datetime.now(timezone.utc).isoformat()), {})
     html = render_guide(guide, '/plans/1/pdf')
-    for name in ('overview', 'budget', 'map', 'days', 'weather'):
+    for name in ('overview', 'budget', 'days', 'prepare', 'tips'):
         assert f'id="panel-{name}"' in html
         assert f'href="#panel-{name}"' in html
     assert '知识图谱' not in html
@@ -32,20 +32,30 @@ def render_sample(req=None, plan=None):
                                        saved_at=datetime.now(timezone.utc).isoformat()), {}), '/plans/1/pdf')
 
 
-def test_missing_date_has_explicit_weather_empty_state_for_new_and_old_versions():
+def test_weather_is_inside_days_and_omitted_without_date_for_new_and_old_versions():
     req = {**REQ, 'start_date': None}
-    plan = deepcopy(PLAN)
-    plan['days'][0]['date'] = None
-    guide = make_guide(dict(version=1, plan=plan, requirements=req,
+    guide = make_guide(dict(version=1, plan=deepcopy(PLAN), requirements=req,
                             saved_at=datetime.now(timezone.utc).isoformat()), {})
+    assert guide['result']['weather'] == []
+    from travelmate.guide import preliminary_brief, guide_markdown
+    assert '天气' not in preliminary_brief(req)
+    assert '天气' not in guide_markdown(guide)
     for historical in (False, True):
         if historical:
             guide.pop('result')
-        weather = render_guide(guide).split('aria-label="天气信息">')[1]
-        assert '尚未选择出行日期' in weather
-        assert 'weather-grid' not in weather
-        assert '预报查询时间' not in weather
-    assert '尚未选择出行日期' not in render_sample()
+        html = render_guide(guide)
+        daily = html.split('id="panel-days"')[1].split('id="panel-prepare"')[0]
+        assert '日期未定' in daily
+        for value in ('weather-shell', '每日天气', '天气预报', '暂无预报', '尚未选择出行日期'):
+            assert value not in daily
+        assert 'panel-weather' not in html
+    html = render_sample()
+    daily = html.split('id="panel-days"')[1].split('id="panel-prepare"')[0]
+    assert 'weather-shell' in daily and '每日天气' in daily
+    nav = html.split('<nav class="result-nav"')[1].split('</nav>')[0]
+    import re
+    assert re.findall(r'>([^<>]+)</a>', nav) == ['行程概览', '预算明细', '每日行程', '行程准备', '其他攻略']
+    assert 'panel-map' not in nav and 'panel-weather' not in nav
 
 
 def test_carousel_has_wrapping_controls_and_daily_navigation():
@@ -59,9 +69,9 @@ def test_carousel_has_wrapping_controls_and_daily_navigation():
     assert 'data-carousel-target="highlight-1" aria-label="下一个景点"' in html
     assert 'aria-label="选择行程日"' in html
     assert 'href="#day-2"' in html
-    budget = html.split('aria-label="预算明细">')[1].split('id="panel-map"')[0]
+    budget = html.split('aria-label="预算明细">')[1].split('id="panel-days"')[0]
     assert '逐项费用' in budget and '西湖' in budget and '预算口径' in budget
-    daily = html.split('aria-label="每日行程">')[1].split('id="panel-weather"')[0]
+    daily = html.split('aria-label="每日行程">')[1].split('id="panel-prepare"')[0]
     for value in ('交通与已订安排', '住哪里更顺路', '当地特色美食', '下雨、排队或约不上时怎么换'):
         assert value not in daily
         assert value in html.split('id="panel-tips"')[1]
@@ -101,13 +111,13 @@ const rows = [row('景点门票','0.10',0),row('综合费用','0.20',1),row('餐
 const total = {}, person = {}, notice = {}, filter = {value:''}, sort = {value:'original'};
 const categories = ['景点门票','综合费用','餐饮费用'].map(c=>({dataset:{categoryTotal:c}}));
 const balance={}, barLabel={}, bar={style:{},querySelector:()=>barLabel}, pending={};
-const limitInput={value:'3.00',defaultValue:'3.00',validity:{valid:true}};
+const limitInput={value:'3.00',defaultValue:'3.00',validity:{valid:true},style:{setProperty(name,value){this[name]=value;}}};
 const segmentLabel={}, segment={dataset:{segment:'景点门票'},style:{},querySelector:()=>segmentLabel};
 const events={};
 let update, reset;
 const nodes = {'[data-budget-limit]':limitInput,'[data-total]':total,'[data-person]':person,'[data-unknown]':notice,'[data-budget-filter]':filter,'[data-budget-sort]':sort,'[data-balance]':balance,'[data-balance-bar]':bar,'.budget-pending h3':pending,'[data-budget-reset]':{addEventListener:(_,fn)=>reset=fn}};
 const fakeWorkspace = {dataset:{travelers:'2',limit:'300'},querySelector:s=>nodes[s],querySelectorAll:s=>s.includes('tr[')?rows:s==='[data-ledger]'?[body]:s.includes('category-total')?categories:s==='[data-segment]'?[segment]:[],addEventListener:(name,fn)=>{events[name]=fn;if(name==='change')update=fn;}};
-global.document = {querySelector:()=>fakeWorkspace,querySelectorAll:()=>[]};
+global.document = {querySelector:s=>s==='.budget-workspace'?fakeWorkspace:null,querySelectorAll:()=>[]};
 '''
     checks = r'''
 update();assert.equal(total.textContent,'¥0.30');assert.equal(person.textContent,'¥0.15');assert.equal(balance.textContent,'¥2.70');
@@ -121,7 +131,7 @@ const beforeMoves=moves;
 ticket.input.value='2.00';events.input({target:{matches:()=>true}});
 assert.equal(total.textContent,'¥12.00');assert.equal(moves,beforeMoves);assert.equal(segment.style.flexGrow,200);assert.equal(segmentLabel.textContent,'¥2.00');
 limitInput.value='20.00';events.input({target:{matches:()=>true}});
-assert.equal(balance.textContent,'¥8.00');assert.equal(bar.style.flexGrow,800);assert.equal(barLabel.textContent,'¥8.00');
+assert.equal(limitInput.style['--budget-digits'],5);assert.equal(balance.textContent,'¥8.00');assert.equal(bar.style.flexGrow,800);assert.equal(barLabel.textContent,'¥8.00');
 limitInput.value='';events.input({target:{matches:()=>true}});assert.equal(balance.textContent,'待确认');
 reset();assert.equal(limitInput.value,'3.00');assert.equal(total.textContent,'¥0.30');assert.equal(filter.value,'');assert.equal(unknown.check.checked,false);assert.equal(notice.textContent,'1 项待核实');
 '''
@@ -179,7 +189,7 @@ def test_structured_other_expenses_validation_and_display():
 
 def test_daily_layout_and_separate_tips_keep_exports():
     html = render_sample()
-    daily = html.split('id="panel-days"')[1].split('id="panel-weather"')[0]
+    daily = html.split('id="panel-days"')[1].split('id="panel-prepare"')[0]
     tips = html.split('id="panel-tips"')[1]
     assert '<header class="daily-heading">' in daily
     assert 'class="daily-footer"' in daily
@@ -211,3 +221,27 @@ def test_all_views_share_header_and_snapshot_details_live_in_tips():
     assert '.result .daily-masthead{display:flex' in RESULT_CSS
     assert 'body:has(.panel-days:target' not in RESULT_CSS
     assert '.btn.ghost{color:#285b48' in RESULT_CSS
+
+
+def test_navigation_announces_selected_panel_and_day_anchors():
+    import subprocess
+    from travelmate.result import RESULT_JS
+    stub = r'''
+const assert = require('node:assert/strict');
+const links = ['overview','budget','days','prepare','tips'].map(id=>({
+ href:'#panel-'+id, current:null,
+ getAttribute(){return this.href},setAttribute(_,value){this.current=value},removeAttribute(){this.current=null}
+}));
+let hashchange;
+global.location={hash:''};
+global.window={addEventListener:(name,fn)=>{if(name==='hashchange')hashchange=fn}};
+global.document={querySelector:s=>s==='.result-nav'?{querySelectorAll:()=>links}:null,querySelectorAll:()=>[],
+ getElementById:id=>id==='day-2'?{closest:()=>({id:'panel-days'})}:id.startsWith('panel-')?{closest:()=>({id})}:null};
+'''
+    checks = r'''
+assert.equal(links[0].current,'page');
+for(const [hash,index] of [['#panel-budget',1],['#panel-days',2],['#day-2',2],['#panel-prepare',3],['#panel-tips',4],['',0]]){
+ location.hash=hash;hashchange();assert.equal(links[index].current,'page');assert.equal(links.filter(l=>l.current==='page').length,1);
+}
+'''
+    subprocess.run(['node', '-e', stub + RESULT_JS + checks], check=True, capture_output=True, text=True)

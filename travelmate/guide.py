@@ -30,8 +30,8 @@ def daily_forecast(value, requirements, evidence, asof=None):
 
 
 def day_heading(value, index, requirements, evidence, asof=None):
-    if not value:
-        return f"第{index}天 · 天气：出发日期未定"
+    if not requirements.get('start_date') or not value:
+        return f"第{index}天 · 日期未定"
     day = date.fromisoformat(str(value))
     label = f"{day.year}年{day.month}月{day.day}日 · 星期{'一二三四五六日'[day.weekday()]}"
     asof = asof or datetime.now(timezone.utc)
@@ -79,7 +79,7 @@ def preliminary_brief(req):
         lines.append(f'你给出的金额为 {req["budget"]:g} {req.get("budget_currency") or "（币种待确认）"}，{scope}。')
     lines.append('确认是否包含往返交通和住宿后再算账；不把未查询的票价或酒店价格当作可购买报价。')
     if not req.get('start_date'):
-        lines += ['', '### 日期与天气', '日期未定时先按第几天规划；确定日期后再查询车次及覆盖日期内的天气预报。']
+        lines += ['', '### 日期安排', '日期未定时先按第几天规划；确定日期后再查询车次并细化当天安排。']
     return '\n'.join(lines)
 
 
@@ -310,7 +310,7 @@ def make_guide(version, evidence):
                 columns=['触发情况', '立即怎么换', '预计增加费用'], rows=rows)
     else:
         section('下雨、排队或约不上时怎么换', ['遇雨可减少室外步行、选择同片区室内活动；餐馆排队时优先换附近同类菜品，是否开放及能否入场以当日公告为准。'])
-    section('行前准备', plan.get('reminders', []) or ['确定日期后查询往返交通与天气；确认酒店取消条款、场馆规则、餐馆营业信息和饮食限制。'])
+    section('行前准备', plan.get('reminders', []) or ['确定日期后查询往返交通；确认酒店取消条款、场馆规则、餐馆营业信息和饮食限制。'])
     if plan.get('verify_items'):
         section('待核实清单', ['以下内容本次没有取得可核实的实时数据，出发前按对应渠道确认，不要按记忆出发。'], 'verify',
                 ['项目', '核验渠道'], [[item['item'], item['channel']] for item in plan['verify_items']])
@@ -348,7 +348,7 @@ def make_guide(version, evidence):
             'budget_includes': req.get('budget_includes') or '范围待确认',
             'start_date': req.get('start_date'),
             'weather': [dict(daily_forecast(day.get('date'), req, evidence, asof),
-                             date=day.get('date'), city=req['destination']) for day in plan['days']],
+                             date=day.get('date'), city=req['destination']) for day in plan['days']] if req.get('start_date') else [],
             'ledger': [dict(category=stop.get('cost_category', '活动费用'), day=i,
                             name=stop['place'], amount=stop['cost'] if cost_label(stop, req, evidence, asof) != '无法查询' else None,
                             status=cost_label(stop, req, evidence, asof))
@@ -368,9 +368,10 @@ def make_guide(version, evidence):
                         for stop in day['stops']] for day in plan['days']],
             'weather_times': [display_time(r['queried_at']) for r in evidence.values()
                               if r.get('kind') == 'weather_forecast' and r.get('context') == context_key(req)
-                              and r.get('query_status') == 'success' and r.get('queried_at')],
+                              and r.get('query_status') == 'success' and r.get('queried_at')] if req.get('start_date') else [],
         },
-        'notice': '这是保存时的方案快照，天气为当时取得的预报；出发前重新确认天气、场馆规则和价格。', 'total': total, 'sections': sections}))
+        'notice': ('这是保存时的方案快照，天气为当时取得的预报；出发前重新确认天气、场馆规则和价格。' if req.get('start_date')
+                   else '这是保存时的方案快照；出发前重新确认场馆规则和价格。'), 'total': total, 'sections': sections}))
 
 
 def guide_markdown(guide):

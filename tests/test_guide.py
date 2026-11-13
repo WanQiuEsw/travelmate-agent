@@ -126,8 +126,8 @@ def test_api_links_immutable_version_exports_and_unknown(tmp_path):
         assert html.headers['content-disposition'] == 'attachment; filename="travelmate-v1.html"'
         assert '注意事项' in html.text and '无法查询' in html.text and '<style>' in html.text
         assert 'class="actions"' not in html.text and '/assets/' not in html.text
-        image = re.search(r'<img src="data:image/webp;base64,([^"]+)"', html.text)
-        assert image and b64decode(image[1]) == client.get('/assets/visual/town.webp').content
+        images = re.findall(r'<img[^>]*src="data:image/webp;base64,([^"]+)"', html.text)
+        assert images and b64decode(images[0]) == client.get('/assets/visual/cities/hangzhou.webp').content
         assert client.get("/sessions/other/plans/1").status_code == 404
         assert client.get("/sessions/trip/plans/99").status_code == 404
         assert client.get('/sessions/trip/plans/99/html').status_code == 404

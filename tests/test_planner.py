@@ -308,3 +308,26 @@ def test_default_graph_api_history_pdf_and_failed_edit(tmp_path):
         assert client.put("/sessions/new/trip", json=invalid).json()["status"] == "blocked"
         assert client.get("/sessions/new/trip").json()["plan"] == old
         assert client.get(f"/sessions/new/answers/{answer_id}/pdf").content.startswith(b"%PDF-")
+
+
+def test_no_weather_lookup_when_departure_date_is_missing(tmp_path, monkeypatch):
+    import travelmate.agent as agent_module
+    calls = []
+
+    @tool
+    def search_weather(city: str, start_date: str, days: int = 1) -> dict:
+        """Record weather calls without using the network."""
+        calls.append((city, start_date))
+        return {'status': 'no_data'}
+
+    monkeypatch.setattr(agent_module, 'search_weather', search_weather)
+    req = {**REQ, 'start_date': None}
+    plan = deepcopy(PLAN)
+    plan['days'][0]['date'] = None
+    with open_test(tmp_path, Model(intake={'intent': 'plan', 'conditions': req}, plans=[plan])) as agent:
+        events = list(stream_chat(agent, 'no-date', '出发日期待定，请先规划杭州一日游'))
+        state = get_workflow(agent, 'no-date')
+        assert state['status'] == 'review'
+        assert calls == []
+        assert state['versions'][0]['guide']['result']['weather'] == []
+        assert all('天气' not in data.get('text', '') for kind, data in events if kind == 'status')
