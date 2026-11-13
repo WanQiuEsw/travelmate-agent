@@ -63,7 +63,8 @@ def test_carousel_has_wrapping_controls_and_daily_navigation():
     assert '逐项费用' in budget and '西湖' in budget and '预算口径' in budget
     daily = html.split('aria-label="每日行程">')[1].split('id="panel-weather"')[0]
     for value in ('交通与已订安排', '住哪里更顺路', '当地特色美食', '下雨、排队或约不上时怎么换'):
-        assert value in daily
+        assert value not in daily
+        assert value in html.split('id="panel-tips"')[1]
 
 
 def test_budget_ledger_counts_other_cost_once_and_keeps_unknown_amounts():
@@ -170,3 +171,38 @@ def test_structured_other_expenses_validation_and_display():
     plan['other_cost_items'][0]['amount'] = 1700
     with pytest.raises(ValueError, match='分项之和'):
         Itinerary.model_validate(plan)
+
+def test_daily_layout_and_separate_tips_keep_exports():
+    html = render_sample()
+    daily = html.split('id="panel-days"')[1].split('id="panel-weather"')[0]
+    tips = html.split('id="panel-tips"')[1]
+    assert '<header class="daily-heading">' in daily
+    assert 'class="daily-footer"' in daily
+    assert 'href="#panel-tips"' in daily
+    for title in ('交通与已订安排', '住哪里更顺路', '下雨、排队或约不上时怎么换'):
+        assert title not in daily
+        assert title in tips
+    masthead = html.split('class="daily-masthead"')[1].split('</header>')[0]
+    assert 'TravelMate' in masthead
+    assert 'href="/plans/1/pdf"' in masthead
+    assert 'href="/plans/1/html"' in masthead
+    assert 'href="#panel-tips">其他攻略</a>' in html
+
+
+def test_all_views_share_header_and_snapshot_details_live_in_tips():
+    html = render_sample()
+    assert '<header class="hero">' not in html
+    assert html.count('class="daily-masthead"') == 1
+    masthead = html.split('class="daily-masthead"')[1].split('</header>')[0]
+    assert '版本' not in masthead and '保存时间' not in masthead
+    tips = html.split('id="panel-tips"')[1]
+    assert '方案版本与使用说明' in tips
+    assert '保存时间' in tips and '已列费用' in tips
+    overview = html.split('id="panel-overview"')[1].split('id="panel-budget"')[0]
+    assert 'trip-facts' in overview and 'carousel-stage' in overview
+    assert '<summary>先说结论</summary>' in tips
+    assert '<summary>旅行概览</summary>' in tips
+    from travelmate.result import RESULT_CSS
+    assert '.result .daily-masthead{display:flex' in RESULT_CSS
+    assert 'body:has(.panel-days:target' not in RESULT_CSS
+    assert '.btn.ghost{color:#285b48' in RESULT_CSS

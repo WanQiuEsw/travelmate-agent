@@ -16,11 +16,9 @@ CAROUSEL_CSS = """
 .carousel-side-select{position:absolute;inset:0;border-radius:24px;cursor:pointer;display:none}.carousel-controls{display:none;justify-content:center;align-items:center;gap:18px;position:absolute;top:432px;left:0;right:0;color:#326355;font-size:14px}.carousel-controls button{width:44px;height:44px;border:1px solid #5c9182;border-radius:50%;background:#fffefa;color:#087f7a;font-size:24px;cursor:pointer}.carousel-controls button:hover{background:#e5f1e8}.carousel-controls button:focus-visible{outline:3px solid #b94d2a;outline-offset:3px}.carousel-controls button:disabled{opacity:.4;cursor:default}
 .carousel-dots{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:-10px 12px 10px}.carousel-dot{width:24px;height:24px;display:grid;place-items:center;cursor:pointer}.carousel-dot:after{content:'';width:24px;height:5px;border-radius:5px;background:#b1bdae}.carousel-help{font-size:12px;color:#63736c;margin:8px 0 24px}.carousel-days{border-top:1px solid #d6ddd2;padding-top:20px;text-align:left}.carousel-days h3{font-size:22px;margin:0 0 14px}.carousel-day-links{display:flex;gap:12px;overflow-x:auto;padding:2px 2px 10px}.carousel-day-links a{flex:1 0 170px;border:1px solid #d7ded1;border-radius:14px;padding:14px;background:#fffefa;color:#193c38;text-decoration:none;display:flex;gap:14px;align-items:center}.carousel-day-links small{color:#b94d2a;white-space:nowrap}.carousel-day-links span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .carousel-controls button{position:absolute;top:-245px;left:-27%}.carousel-controls button:last-child{left:auto;right:-27%}
-.carousel-playback{border:1px solid #cad9ce;border-radius:999px;background:#fffefa;color:#326355;padding:7px 16px;font:inherit;font-size:12px;cursor:pointer;margin:4px 0}.carousel-playback:focus-visible{outline:3px solid #b94d2a;outline-offset:3px}.carousel-playback[hidden]{display:none}
 @media(max-width:700px){.carousel-heading{font-size:25px}.carousel-intro{font-size:13px}.carousel-stage{height:470px}.carousel-slide{left:8%;width:84%}.carousel-photo{height:270px}.carousel-caption{padding:45px 16px 16px}.carousel-caption strong{font-size:23px}.carousel-meta{padding:14px;gap:6px;min-height:100px}.carousel-meta .carousel-cta{font-size:12px;padding:7px 10px}.carousel-controls{top:391px}.carousel-meta small{font-size:11px}.carousel-help{margin-bottom:18px}}
 @media(prefers-reduced-motion:reduce){.carousel-slide,.carousel-photo img{transition:none}}
 @media print{.carousel .carousel-meta{display:flex!important}}
-@media print{.carousel-playback{display:none}}
 @media(max-width:700px){.carousel-controls button{top:-230px;left:-8%;width:36px;height:36px;font-size:20px}.carousel-controls button:last-child{right:-8%}}
 @media print{.carousel-stage{height:auto;perspective:none}.carousel .carousel-slide{position:static;display:block!important;visibility:visible!important;opacity:1!important;transform:none!important;filter:none!important;width:100%;margin:0 0 20px;break-inside:avoid}.carousel-controls,.carousel>input,.carousel-dots,.carousel-side-select,.carousel-help{display:none!important}.carousel{overflow:visible}.carousel-photo{height:220px}}
 """
@@ -64,7 +62,7 @@ def coverflow(days, text, inline_images=False):
         out.append(f'<article class="carousel-slide slide-{n}"><a class="highlight" href="#day-{i}"><div class="carousel-photo"><img src="{text(scenery(row[1]))}" alt="默认风景示意图，非景点实拍"><span class="carousel-image-note">默认风景 · 示意图</span><div class="carousel-caption"><strong>{text(row[1])}</strong><p>{text(row[2])}</p></div></div><div class="carousel-meta"><small>第 {i} 天</small><small>{text(row[0])}</small><span class="carousel-cta">查看当日日程 ↗</span></div></a><label class="carousel-side-select" for="highlight-{n}" aria-label="切换至{text(row[1])}"></label><div class="carousel-controls"><button type="button" data-carousel-target="highlight-{previous}" aria-label="上一个景点" {"disabled" if len(slides) == 1 else ""}>←</button><span>{n:02d} / {len(slides):02d}</span><button type="button" data-carousel-target="highlight-{following}" aria-label="下一个景点" {"disabled" if len(slides) == 1 else ""}>→</button></div></article>')
     out.append('</div><div class="carousel-dots" aria-label="选择景点">')
     out.extend(f'<label class="carousel-dot" for="highlight-{n}" aria-label="选择景点 {n}"></label>' for n in range(1, len(slides)+1))
-    out.append('</div>' + ('<button type="button" class="carousel-playback" data-carousel-playback aria-pressed="false" hidden>暂停自动轮播</button>' if len(slides) > 1 else '') + '<p class="carousel-help">点击两侧卡片或使用方向键切换 · 点击主卡片查看当日日程</p><div class="carousel-days"><h3>每天都有一点期待</h3><div class="carousel-day-links">')
+    out.append('</div><p class="carousel-help">点击两侧卡片或使用方向键切换 · 点击主卡片查看当日日程</p><div class="carousel-days"><h3>每天都有一点期待</h3><div class="carousel-day-links">')
     for i, day in enumerate(days, 1):
         title = next((row[1] for row in day.get('rows', [])), f'第 {i} 天安排')
         out.append(f'<a href="#day-{i}"><small>DAY {i:02d}</small><span>{text(title)}</span></a>')
@@ -74,39 +72,26 @@ def coverflow(days, text, inline_images=False):
 CAROUSEL_JS = r"""
 for (const carousel of document.querySelectorAll('.carousel')) {
   const radios = [...carousel.querySelectorAll('input[name="highlight"]')];
-  const toggle = carousel.querySelector('[data-carousel-playback]');
-  if (radios.length < 2 || !toggle) continue;
-  const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
-  let paused = motion.matches, hovered = false, focused = false, timer;
+  if (radios.length < 2) continue;
+  let timer, inView = false;
   const stop = () => { clearTimeout(timer); timer = undefined; };
   function schedule() {
     stop();
-    if (paused || hovered || focused || document.hidden || !carousel.getClientRects().length) return;
+    if (!inView || document.hidden || !carousel.getClientRects().length) return;
     timer = setTimeout(() => {
       const index = radios.findIndex(radio => radio.checked);
       radios[(index + 1) % radios.length].checked = true;
       schedule();
     }, 4000);
   }
-  function label() {
-    toggle.textContent = paused ? '开始自动轮播' : '暂停自动轮播';
-    toggle.setAttribute('aria-pressed', String(paused));
-  }
-  toggle.hidden = false;
-  toggle.addEventListener('click', () => { paused = !paused; label(); schedule(); });
-  carousel.addEventListener('mouseenter', () => { hovered = true; stop(); });
-  carousel.addEventListener('mouseleave', () => { hovered = false; schedule(); });
-  carousel.addEventListener('focusin', () => { focused = true; stop(); });
-  carousel.addEventListener('focusout', event => {
-    if (!carousel.contains(event.relatedTarget)) { focused = false; schedule(); }
+  const observer = new IntersectionObserver(entries => {
+    inView = entries.some(entry => entry.isIntersecting);
+    schedule();
   });
-  carousel.addEventListener('change', schedule);
+  observer.observe(carousel.querySelector('.carousel-stage'));
   document.addEventListener('visibilitychange', schedule);
   window.addEventListener('hashchange', schedule);
   window.addEventListener('pagehide', stop);
   window.addEventListener('pageshow', schedule);
-  motion.addEventListener('change', () => { if (motion.matches) paused = true; label(); schedule(); });
-  label();
-  schedule();
 }
 """

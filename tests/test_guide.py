@@ -146,11 +146,12 @@ def test_pending_and_failed_answers_have_no_new_guide(tmp_path):
         assert "plan_version" not in conversation(agent, "trip")["messages"][-1]
 
 
-def test_html_guide_uses_a_destination_image_and_states_it_is_a_placeholder():
+def test_html_guide_uses_shared_header_and_labels_remaining_images():
     req = {**REQ, 'destination': '九寨沟'}
     guide = make_guide({'version': 1, 'requirements': req, 'plan': deepcopy(PLAN)}, {})
     html = render_guide(guide, '/guide.pdf')
     assert guide['hero'] == '/assets/visual/mountains.webp'
-    assert '<img src="/assets/visual/mountains.webp"' in html
+    assert '<header class="hero">' not in html
+    assert html.count('class="daily-masthead"') == 1
     assert '<img src="http' not in html and '示意图' in html
-    assert '下载这版 PDF' in html
+    assert '下载 PDF' in html

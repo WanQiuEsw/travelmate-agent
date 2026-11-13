@@ -519,24 +519,14 @@ def render_guide(guide, pdf_url=None):
     guide = public_guide(guide)
     def text(value):
         return escape(str(value), quote=True)
-    hero = guide.get('hero') or '/assets/visual/town.webp'
     actions = ''
-    if pdf_url is None:
-        image = Path(__file__).with_name('images') / Path(hero).name
-        hero = 'data:image/webp;base64,' + b64encode(image.read_bytes()).decode('ascii')
-    else:
+    if pdf_url is not None:
         path = pdf_url.removesuffix('/pdf')
-        actions = (f'<div class="actions"><a class="btn" href="{text(pdf_url)}">下载这版 PDF</a>'
-                   f'<a class="btn ghost" href="{text(path)}/md">下载 Markdown</a>'
-                   f'<a class="btn ghost" href="{text(path)}/html">下载 HTML</a></div>')
+        actions = (f'<div class="actions"><a class="btn" href="{text(pdf_url)}">下载 PDF</a>'
+                   f'<a class="btn ghost" href="{text(path)}/md">Markdown</a>'
+                   f'<a class="btn ghost" href="{text(path)}/html">HTML</a></div>')
     from travelmate.result import RESULT_CSS, RESULT_JS, result_panels
-    parts = [f'<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{text(guide["title"])}</title><style>{GUIDE_CSS}{RESULT_CSS}</style></head><body><main>',
-        f'<header class="hero"><img src="{text(hero)}" alt="目的地风景示意图"><div class="hero-body">',
-        f'<p class="eyebrow">TRAVELMATE · 图文攻略</p><h1>{text(guide["title"])}</h1>',
-        f'<p class="lede">{text(guide["notice"])}</p>',
-        f'<p class="chips"><span>版本 {text(guide["version"])}</span><span>{text(guide["saved_at"])}</span>'
-        f'<span>合计 {text((guide.get("result") or {}).get("cost", "请参见费用表"))}</span></p>',
-        actions, '</div></header>']
+    parts = [f'<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{text(guide["title"])}</title><style>{GUIDE_CSS}{RESULT_CSS}</style></head><body><main>']
     rendered_sections = []
     section_parts = []
     for section in guide["sections"]:
@@ -576,6 +566,6 @@ def render_guide(guide, pdf_url=None):
         rendered_sections.append((section, ''.join(section_parts)))
         parts = outer_parts
         section_parts = []
-    parts.append(result_panels(guide, rendered_sections, text, inline_images=pdf_url is None))
+    parts.append(result_panels(guide, rendered_sections, text, inline_images=pdf_url is None, actions=actions))
     parts.append('<footer>图为目的地示意图，非实景；价格与开放状态以出行时官方信息为准</footer>')
     return ''.join(parts) + '</main><script type="module">' + RESULT_JS + '</script></body></html>'

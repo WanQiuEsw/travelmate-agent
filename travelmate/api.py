@@ -26,6 +26,7 @@ from travelmate.accounts import Accounts
 from travelmate.auth import CITY_VISUALS, install_auth, require_access
 from travelmate import asr, watch
 from travelmate.tools import search_places, search_web
+from travelmate.preparation import overlay
 
 
 class ChatRequest(BaseModel):
@@ -60,6 +61,24 @@ class SessionPin(SessionSelection):
 
 class SessionRename(BaseModel):
     title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
+
+
+class PreparationItem(BaseModel):
+    id: str = Field(min_length=1, max_length=64, pattern=r'^[a-zA-Z0-9_-]+$')
+    text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
+    done: bool = Field(strict=True)
+
+
+class PreparationUpdate(BaseModel):
+    revision: int = Field(ge=0, strict=True)
+    items: list[PreparationItem] = Field(max_length=100)
+
+    @field_validator('items')
+    @classmethod
+    def unique_ids(cls, items):
+        if len({item.id for item in items}) != len(items):
+            raise ValueError('事项编号不能重复')
+        return items
 
 
 class RailRequest(BaseModel):
@@ -328,13 +347,32 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
         guide = get_version(state, version)
         if guide is None:
             raise HTTPException(404, "攻略版本不存在或尚未完成")
-        return guide
+        from copy import deepcopy
+        return overlay(deepcopy(guide), state.get('preparation_lists', {}).get(str(version)))
+
+    @app.get('/sessions/{session_id}/plans/{version}/preparation')
+    def preparation(session_id: SessionId, version: Annotated[int, PathParam(ge=1)]):
+        with trip_lock():
+            return load_guide(session_id, version)['preparation']
+
+    @app.put('/sessions/{session_id}/plans/{version}/preparation')
+    def update_preparation(session_id: SessionId, version: Annotated[int, PathParam(ge=1)], data: PreparationUpdate):
+        with trip_lock():
+            current = load_guide(session_id, version)['preparation']
+            if current['revision'] != data.revision:
+                raise HTTPException(409, '清单已更新，请刷新后重新编辑')
+            state = get_workflow(app.state.agent, session_id)
+            saved = {'revision': current['revision'] + 1, 'items': [item.model_dump() for item in data.items]}
+            state['preparation_lists'] = {**state.get('preparation_lists', {}), str(version): saved}
+            save_workflow(app.state.agent, session_id, state)
+            return saved
 
     @app.get("/sessions/{session_id}/plans/{version}")
     def preview(session_id: SessionId, version: Annotated[int, PathParam(ge=1)]):
         guide = load_guide(session_id, version)
+        guide['_preparation_url'] = f'/sessions/{session_id}/plans/{version}/preparation'
         return HTMLResponse(render_guide(guide, f"/sessions/{session_id}/plans/{version}/pdf"),
-            headers={"Cache-Control": "no-store", "Content-Security-Policy": f"default-src 'none'; script-src 'sha256-{RESULT_SCRIPT_HASH}'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+            headers={"Cache-Control": "no-store", "Content-Security-Policy": f"default-src 'none'; connect-src 'self'; script-src 'sha256-{RESULT_SCRIPT_HASH}'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'",
                      "X-Content-Type-Options": "nosniff"})
 
     @app.get("/sessions/{session_id}/plans/{version}/pdf")

@@ -4,12 +4,14 @@ from math import isfinite
 from decimal import Decimal, ROUND_HALF_UP
 from urllib.parse import urlencode
 
-from travelmate.weather_ui import WEATHER_CSS, weather_panel
+from travelmate.daily_ui import CSS as DAILY_CSS, day_cards
+from travelmate.weather_ui import WEATHER_CSS, weather_panel, weather_icon
 from travelmate.carousel import CAROUSEL_CSS, CAROUSEL_JS, coverflow
+from travelmate.preparation import CSS as PREPARATION_CSS, JS as PREPARATION_JS, panel as preparation_panel
 
 RESULT_CSS = """
 .result-nav a{text-decoration:none;white-space:nowrap;padding:12px 4px;border-bottom:3px solid transparent;color:#63736c}
-.result:not(:has(:target)) a[href="#panel-overview"],.result:has(#panel-overview:target) a[href="#panel-overview"],.result:has(#panel-budget:target) a[href="#panel-budget"],.result:has(#panel-map:target) a[href="#panel-map"],.result:has(#panel-days:target,.day-anchor:target) a[href="#panel-days"],.result:has(#panel-weather:target) a[href="#panel-weather"]{border-color:#b94d2a;color:#193c38;font-weight:700}
+.result:not(:has(:target)) a[href="#panel-overview"],.result:has(#panel-overview:target) a[href="#panel-overview"],.result:has(#panel-prepare:target) a[href="#panel-prepare"],.result:has(#panel-budget:target) a[href="#panel-budget"],.result:has(#panel-map:target) a[href="#panel-map"],.result:has(#panel-days:target,.day-anchor:target) a[href="#panel-days"],.result:has(#panel-weather:target) a[href="#panel-weather"],.result:has(#panel-tips:target) a[href="#panel-tips"]{border-color:#b94d2a;color:#b94d2a;font-weight:700}
 body{background:#faf8f3;color:#193c38}main{max-width:1240px;padding:28px 28px 60px}
 .hero img{height:280px}.hero{box-shadow:none}.card{box-shadow:none;border-color:#dedfd5}
 .result{background:#f2f0e8;border:1px solid #dedfd5;border-radius:24px;padding:24px}
@@ -27,7 +29,13 @@ body{background:#faf8f3;color:#193c38}main{max-width:1240px;padding:28px 28px 60
 """
 
 
-RESULT_CSS += WEATHER_CSS + CAROUSEL_CSS
+RESULT_CSS += DAILY_CSS + WEATHER_CSS + CAROUSEL_CSS + PREPARATION_CSS
+RESULT_CSS += """
+.trip-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:0 0 20px}.trip-facts>div{background:#eef2e7;padding:14px 20px;border-radius:12px;min-width:0}.trip-facts dt{font-size:12px;color:#63736c}.trip-facts dd{margin:4px 0 0;font-size:17px;overflow-wrap:anywhere}.guide-detail{background:#fffefa;border:1px solid #d8ddcf;border-radius:14px;margin:12px 0;padding:16px 20px}.guide-detail>summary{font-size:17px;color:#285b48}.guide-detail>.card{border:0;padding:12px 0 0;margin:0;background:transparent}.guide-detail>.card>h2{display:none}.snapshot-facts{display:grid;grid-template-columns:auto 1fr;gap:8px 20px;font-size:14px}.snapshot-facts dt{color:#63736c}.snapshot-facts dd{margin:0;overflow-wrap:anywhere}.snapshot-info>p{font-size:13px;color:#63736c}.weather-empty{text-align:center;padding:36px 20px;background:linear-gradient(135deg,#eef3e6,#e0efe8)}.weather-empty .weather-art{display:block;width:140px;height:110px;margin:0 auto}.weather-empty h3{font:700 25px Georgia,'Songti SC',SimSun,serif;margin:12px 0}.weather-empty p{font-size:14px}.weather-empty details{max-width:600px;margin:12px auto 0}.result-nav a{flex-shrink:0}.panel{min-width:0}.daily-masthead{flex-wrap:wrap}.daily-masthead .actions{flex-shrink:0}.panel-tips .daily-heading{margin-bottom:20px}
+@media(max-width:700px){.trip-facts{grid-template-columns:1fr;gap:8px}.trip-facts>div{display:flex;align-items:baseline;gap:16px;padding:10px 14px}.trip-facts dt{flex-shrink:0}.trip-facts dd{font-size:14px}.daily-masthead .actions{margin-left:0;width:100%}.daily-masthead strong{font-size:28px}.daily-masthead span{border:0;padding-left:0;font-size:16px}.guide-detail{padding:14px}.result .result-nav{gap:22px;justify-content:flex-start}}
+@media print{.daily-masthead .actions{display:none}.guide-detail::details-content{display:block;content-visibility:visible}.guide-detail{break-inside:avoid}.snapshot-info{font-size:12px}}
+"""
+
 
 
 def coordinates(value):
@@ -38,25 +46,39 @@ def coordinates(value):
         return None
 
 
-def result_panels(guide, sections, text, inline_images=False):
+def result_panels(guide, sections, text, inline_images=False, actions=""):
     days = [s for s, _ in sections if s['kind'] == 'day']
     meta = guide.get('result', {})
     out = ['<div class="result" aria-label="旅行方案">']
-    views = [('overview', '行程概览'), ('budget', '预算明细'), ('map', '景点地图'), ('days', '每日行程'), ('weather', '天气信息')]
+    views = [('overview', '行程概览'), ('budget', '预算明细'), ('map', '景点地图'), ('prepare', '行前准备'), ('days', '每日行程'), ('weather', '天气信息'), ('tips', '其他攻略')]
+    out.append(f'<header class="daily-masthead"><strong>TravelMate</strong><span>{text(guide["title"])}</span>{actions}</header>')
     out.append('<nav class="result-nav" aria-label="结果板块">' + ''.join(f'<a href="#panel-{key}">{title}</a>' for key, title in views) + '</nav>')
     groups = {key: [] for key, _ in views}
     for index, (section, html) in enumerate(sections):
         kind = section['kind']
-        group = 'budget' if kind == 'budget' else 'days' if kind in ('day', 'food', 'traffic') or section['title'] in ('交通与已订安排', '住哪里更顺路', '时间安排说明', '下雨、排队或约不上时怎么换') else 'overview'
+        if section['title'] == '行前准备':
+            continue
+        group = ('budget' if kind == 'budget' else 'days' if kind == 'day' else 'tips'
+                 if kind in ('food', 'traffic', 'pitfalls', 'verify') or section['title'] in
+                 ('交通与已订安排', '住哪里更顺路', '时间安排说明', '下雨、排队或约不上时怎么换') else 'tips')
         if kind == 'day':
             number = sum(s['kind'] == 'day' for s, _ in sections[:index]) + 1
-            html = f'<div id="day-{number}" class="day-anchor"><details class="day-detail" open><summary>第 {number} 天 · 查看或收起安排</summary>{html}</details></div>'
+            html = day_cards(section, number, text, inline_images) if section.get("columns", [])[:1] == ["时段"] else f'<div id="day-{number}" class="day-anchor"><details class="day-detail" open><summary>第 {number} 天 · 查看或收起安排</summary>{html}</details></div>'
+        if group == 'tips':
+            html = '<details class="guide-detail"><summary>' + text(section['title']) + '</summary>' + html + '</details>'
         groups[group].append(html)
     groups['overview'].insert(0, coverflow(days, text, inline_images))
+    groups['prepare'].append(preparation_panel(guide, text))
     overview = next((s for s, _ in sections if s['kind'] == 'overview'), {})
+    facts = [r for r in overview.get('rows', []) if r[0] in ('路线', '人数与天数', '日期')]
+    groups['overview'].insert(0, '<dl class="trip-facts">' + ''.join('<div><dt>' + text(r[0]) + '</dt><dd>' + text(r[1]) + '</dd></div>' for r in facts) + '</dl>')
     budget_facts = [r for r in overview.get('rows', []) if '预算' in r[0]]
     groups['budget'].insert(0, budget_panel(meta, days, text) + '<details class="card"><summary>预算口径</summary><ul>' + ''.join('<li>' + text('：'.join(r)) + '</li>' for r in budget_facts) + '<li>综合费用不拆成未经核实的餐饮、酒店报价。</li></ul></details>')
-    groups['days'].insert(0, '<nav class="day-picker" aria-label="选择行程日">' + ''.join(f'<a href="#day-{i}">第 {i} 天</a>' for i in range(1, len(days)+1)) + '</nav>')
+    groups['days'].insert(0, '<header class="daily-heading"><h2>每日行程</h2><p>跟着节奏走，把风景慢慢看。</p><nav class="day-picker" aria-label="选择行程日">' + ''.join(f'<a href="#day-{i}">第 {i} 天<span>{text(next((r[1] for r in day.get("rows", []) if len(r) > 1), "当日安排"))}</span></a>' for i, day in enumerate(days, 1)) + '</nav></header>')
+    groups['tips'].insert(0, '<details class="guide-detail snapshot-info"><summary>方案版本与使用说明</summary><dl class="snapshot-facts"><dt>版本</dt><dd>' + text(guide.get('version', '—')) + '</dd><dt>保存时间</dt><dd>' + text(guide.get('saved_at', '未记录')) + '</dd><dt>已列费用</dt><dd>' + text(meta.get('cost', '请参见预算明细')) + '</dd></dl><p>' + text(guide.get('notice', '')) + '</p></details>')
+    groups['tips'].insert(0, '<header class="daily-heading"><h2>其他攻略</h2><p>交通、住宿与出行注意事项，出发前再看一遍。</p></header>')
+    if not groups['days'][1:]:
+        groups['days'].append('<p class="daily-empty">暂无每日行程，请返回对话补充安排。</p>')
     # Historical snapshots have no place metadata; retain their original stop list.
     for i, day in enumerate(days, 1):
         places = (meta.get('places') or [])
@@ -78,7 +100,7 @@ def result_panels(guide, sections, text, inline_images=False):
         groups['map'].append('</div></section>')
     selected_date = meta.get('start_date') if 'start_date' in meta else next((r[1] for r in overview.get('rows', []) if r[0] == '日期' and '未定' not in r[1]), None)
     if not selected_date:
-        groups['weather'].append('<div class="weather-day" role="status"><h3>尚未选择出行日期</h3><p>请先在快速规划中选择出发日期，或在对话中补充具体日期。确认并保存新方案后，才能查看对应日期的天气。</p><p>当前按第几天展示行程，不提供具体日期的天气预报。</p></div>')
+        groups['weather'].append('<div class="weather-day weather-empty" role="status">' + weather_icon('多云') + '<h3>尚未选择出行日期</h3><p class="muted">补充日期后查看出行天气</p><details class="section-notes"><summary>如何查看天气</summary><p>请先在快速规划中选择出发日期，或在对话中补充具体日期。确认并保存新方案后，才能查看对应日期的天气。</p><p>当前按第几天展示行程，不提供具体日期的天气预报。</p></details></div>')
     else:
         groups['weather'].append(weather_panel(meta, days, selected_date, text))
     for key, title in views:
@@ -217,4 +239,5 @@ if (workspace) {
 from base64 import b64encode
 from hashlib import sha256
 RESULT_JS += CAROUSEL_JS
+RESULT_JS += PREPARATION_JS
 RESULT_SCRIPT_HASH = b64encode(sha256(RESULT_JS.encode('utf-8')).digest()).decode('ascii')

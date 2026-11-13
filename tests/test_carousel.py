@@ -34,45 +34,32 @@ def test_zero_one_two_and_escaping():
     assert '@media print' in CAROUSEL_CSS
 
 
-def test_autoplay_timer_pause_resume_and_accessibility():
+def test_autoplay_only_pauses_when_not_visible():
     import subprocess
     from travelmate.carousel import CAROUSEL_JS
-    stub = r'''
+    stub = r"""
 const assert = require('node:assert/strict');
-const handlers = {}, windowHandlers = {}, documentHandlers = {}, toggleHandlers = {};
-let pending = new Map(), id = 0, visible = true;
-global.setTimeout = (fn, delay) => { assert.equal(delay,4000); pending.set(++id,fn); return id; };
-global.clearTimeout = key => pending.delete(key);
-const radios = [0,1,2].map(i=>({get checked(){return active===i;},set checked(value){if(value)active=i;}}));
-let active = 0;
-const toggle = {hidden:true,addEventListener:(name,fn)=>toggleHandlers[name]=fn,setAttribute:(name,val)=>toggle[name]=val};
-const carousel = {querySelectorAll:()=>radios,querySelector:()=>toggle,
- getClientRects:()=>visible?[{}]:[],contains:node=>node==='inside',addEventListener:(name,fn)=>handlers[name]=fn};
-const motion = {matches:false,addEventListener:(_,fn)=>motion.change=fn};
-global.window = {matchMedia:()=>motion,addEventListener:(name,fn)=>windowHandlers[name]=fn};
-global.document = {hidden:false,querySelectorAll:()=>[carousel],addEventListener:(name,fn)=>documentHandlers[name]=fn};
-function tick(){ assert.equal(pending.size,1); const fn=[...pending.values()][0];pending.clear();fn(); }
-'''
-    checks = r'''
-assert.equal(toggle.hidden,false);assert.equal(toggle['aria-pressed'],'false');
-tick();assert.equal(active,1);tick();tick();assert.equal(active,0);
-handlers.mouseenter();assert.equal(pending.size,0);handlers.mouseleave();assert.equal(pending.size,1);
-handlers.focusin();assert.equal(pending.size,0);handlers.focusout({relatedTarget:'inside'});assert.equal(pending.size,0);
-handlers.focusout({relatedTarget:null});assert.equal(pending.size,1);
-toggleHandlers.click();assert.equal(toggle['aria-pressed'],'true');assert.equal(pending.size,0);
-document.hidden=true;documentHandlers.visibilitychange();toggleHandlers.click();assert.equal(pending.size,0);
-document.hidden=false;documentHandlers.visibilitychange();assert.equal(pending.size,1);
-visible=false;windowHandlers.hashchange();assert.equal(pending.size,0);
-visible=true;windowHandlers.hashchange();assert.equal(pending.size,1);
-active=2;handlers.change();tick();assert.equal(active,0);assert.equal(pending.size,1);
-motion.matches=true;motion.change();assert.equal(pending.size,0);assert.equal(toggle.textContent,'开始自动轮播');
-toggleHandlers.click();assert.equal(pending.size,1);
-windowHandlers.pagehide();assert.equal(pending.size,0);windowHandlers.pageshow();assert.equal(pending.size,1);
-'''
-    subprocess.run(['node', '-e', stub + CAROUSEL_JS + checks], check=True, capture_output=True, text=True)
-    reduced = stub.replace('matches:false', 'matches:true')
-    subprocess.run(['node', '-e', reduced + CAROUSEL_JS + "assert.equal(pending.size,0);assert.equal(toggle['aria-pressed'],'true');"],
-                   check=True, capture_output=True, text=True)
-    single = stub.replace('map(i=>', 'slice(0,1).map(i=>')
-    subprocess.run(['node', '-e', single + CAROUSEL_JS + 'assert.equal(pending.size,0);assert.equal(toggle.hidden,true);'],
-                   check=True, capture_output=True, text=True)
+const win = {}, doc = {}; let callback, active=0, visible=true, pending=new Map(), id=0;
+global.setTimeout=(fn,delay)=>{assert.equal(delay,4000);pending.set(++id,fn);return id;};
+global.clearTimeout=id=>pending.delete(id);
+const radios=[0,1,2].map(i=>({get checked(){return active===i;},set checked(v){if(v)active=i;}}));
+const carousel={querySelectorAll:()=>radios,querySelector:()=>({}),getClientRects:()=>visible?[{}]:[]};
+global.window={addEventListener:(n,f)=>win[n]=f};
+global.document={hidden:false,querySelectorAll:()=>[carousel],addEventListener:(n,f)=>doc[n]=f};
+global.IntersectionObserver=class{constructor(fn){callback=fn;}observe(){}};
+function tick(){assert.equal(pending.size,1);const fn=[...pending.values()][0];pending.clear();fn();}
+"""
+    checks = r"""
+assert.equal(pending.size,0);callback([{isIntersecting:true}]);tick();assert.equal(active,1);
+tick();tick();assert.equal(active,0);
+callback([{isIntersecting:false}]);assert.equal(pending.size,0);
+callback([{isIntersecting:true}]);assert.equal(pending.size,1);
+document.hidden=true;doc.visibilitychange();assert.equal(pending.size,0);
+document.hidden=false;doc.visibilitychange();assert.equal(pending.size,1);
+visible=false;win.hashchange();assert.equal(pending.size,0);
+visible=true;win.hashchange();assert.equal(pending.size,1);
+win.pagehide();assert.equal(pending.size,0);win.pageshow();assert.equal(pending.size,1);
+"""
+    subprocess.run(['node','-e',stub+CAROUSEL_JS+checks],check=True,capture_output=True,text=True)
+    assert 'mouseenter' not in CAROUSEL_JS and 'focusin' not in CAROUSEL_JS
+    assert 'data-carousel-playback' not in coverflow(days(3), escape)
