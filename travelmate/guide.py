@@ -576,6 +576,6 @@ def render_guide(guide, pdf_url=None):
         rendered_sections.append((section, ''.join(section_parts)))
         parts = outer_parts
         section_parts = []
-    parts.append(result_panels(guide, rendered_sections, text))
+    parts.append(result_panels(guide, rendered_sections, text, inline_images=pdf_url is None))
     parts.append('<footer>图为目的地示意图，非实景；价格与开放状态以出行时官方信息为准</footer>')
     return ''.join(parts) + '</main><script type="module">' + RESULT_JS + '</script></body></html>'
