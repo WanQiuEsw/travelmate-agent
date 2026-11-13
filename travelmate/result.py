@@ -166,7 +166,11 @@ def budget_panel(meta, days, text):
 RESULT_JS = r"""for (const button of document.querySelectorAll('[data-carousel-target]')) {
   button.addEventListener('click', () => {
     const radio = document.getElementById(button.dataset.carouselTarget);
-    if (radio) { radio.checked = true; radio.focus({preventScroll:true}); }
+    if (radio) {
+      radio.checked = true;
+      radio.dispatchEvent(new Event('change', {bubbles:true}));
+      radio.focus({preventScroll:true});
+    }
   });
 }
 

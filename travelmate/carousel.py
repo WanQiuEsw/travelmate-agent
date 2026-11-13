@@ -89,6 +89,7 @@ for (const carousel of document.querySelectorAll('.carousel')) {
     schedule();
   });
   observer.observe(carousel.querySelector('.carousel-stage'));
+  carousel.addEventListener('change', schedule);
   document.addEventListener('visibilitychange', schedule);
   window.addEventListener('hashchange', schedule);
   window.addEventListener('pagehide', stop);

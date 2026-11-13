@@ -43,7 +43,7 @@ const win = {}, doc = {}; let callback, active=0, visible=true, pending=new Map(
 global.setTimeout=(fn,delay)=>{assert.equal(delay,4000);pending.set(++id,fn);return id;};
 global.clearTimeout=id=>pending.delete(id);
 const radios=[0,1,2].map(i=>({get checked(){return active===i;},set checked(v){if(v)active=i;}}));
-const carousel={querySelectorAll:()=>radios,querySelector:()=>({}),getClientRects:()=>visible?[{}]:[]};
+const carousel={querySelectorAll:()=>radios,querySelector:()=>({}),getClientRects:()=>visible?[{}]:[],addEventListener(){}};
 global.window={addEventListener:(n,f)=>win[n]=f};
 global.document={hidden:false,querySelectorAll:()=>[carousel],addEventListener:(n,f)=>doc[n]=f};
 global.IntersectionObserver=class{constructor(fn){callback=fn;}observe(){}};
@@ -63,3 +63,55 @@ win.pagehide();assert.equal(pending.size,0);win.pageshow();assert.equal(pending.
     subprocess.run(['node','-e',stub+CAROUSEL_JS+checks],check=True,capture_output=True,text=True)
     assert 'mouseenter' not in CAROUSEL_JS and 'focusin' not in CAROUSEL_JS
     assert 'data-carousel-playback' not in coverflow(days(3), escape)
+
+
+def test_manual_changes_restart_full_autoplay_delay():
+    import subprocess
+    from travelmate.result import RESULT_JS
+
+    stub = r"""
+const assert = require('node:assert/strict');
+let now=0, id=0, active=0, observer;
+const pending=new Map();
+global.setTimeout=(fn,delay)=>{pending.set(++id,{fn,at:now+delay});return id;};
+global.clearTimeout=id=>pending.delete(id);
+function advance(ms){
+  const end=now+ms;
+  while(true){
+    const next=[...pending].sort((a,b)=>a[1].at-b[1].at)[0];
+    if(!next || next[1].at>end) break;
+    now=next[1].at;pending.delete(next[0]);next[1].fn();
+  }
+  now=end;
+}
+const carousel=new EventTarget();
+const radios=[0,1,2].map(i=>({
+  get checked(){return active===i;},set checked(v){if(v)active=i;},
+  focus(){},dispatchEvent(event){if(event.bubbles)carousel.dispatchEvent(event);}
+}));
+Object.assign(carousel,{querySelectorAll:()=>radios,querySelector:()=>({}),getClientRects:()=>[{}]});
+const buttons=[1,2].map(i=>Object.assign(new EventTarget(),{dataset:{carouselTarget:`highlight-${i+1}`}}));
+global.document={hidden:false,addEventListener(){},querySelector:()=>null,
+  querySelectorAll:s=>s==='[data-carousel-target]'?buttons:s==='.carousel'?[carousel]:[],
+  getElementById:id=>radios[Number(id.split('-')[1])-1]};
+global.window={addEventListener(){}};
+global.IntersectionObserver=class{constructor(fn){observer=fn;}observe(){}};
+"""
+    checks = r"""
+observer([{isIntersecting:true}]);
+for(const [button,selected] of [[buttons[0],1],[buttons[1],2]]){
+  active=0;
+  advance(3999);
+  button.dispatchEvent(new Event('click'));
+  assert.equal(active,selected);
+  assert.equal(pending.size,1);
+  advance(1);assert.equal(active,selected,'old timer must not advance the new slide');
+  advance(3998);assert.equal(active,selected,'manual selection gets a full 4 seconds');
+  advance(1);assert.equal(active,(selected+1)%3);
+}
+// Native label and keyboard changes also bubble a change event.
+advance(3999);active=1;carousel.dispatchEvent(new Event('change'));
+advance(3999);assert.equal(active,1);
+advance(1);assert.equal(active,2);assert.equal(pending.size,1);
+"""
+    subprocess.run(['node', '-e', stub + RESULT_JS + checks], check=True, capture_output=True, text=True)
