@@ -5,13 +5,16 @@ from decimal import Decimal
 from urllib.parse import urlencode
 
 from travelmate.daily_ui import CSS as DAILY_CSS, day_cards
+from travelmate.food_ui import CSS as FOOD_CSS, panel as food_panel
 from travelmate.weather_ui import WEATHER_CSS, weather_panel
+from travelmate.lodging_ui import CSS as LODGING_CSS, lodging_cards
 from travelmate.carousel import CAROUSEL_CSS, CAROUSEL_JS, coverflow
 from travelmate.preparation import CSS as PREPARATION_CSS, JS as PREPARATION_JS, panel as preparation_panel
+from travelmate.pitfalls_ui import CSS as PITFALL_CSS, panel as pitfalls_panel
 
 RESULT_CSS = """
 .result-nav a{text-decoration:none;white-space:nowrap;padding:12px 4px;border-bottom:3px solid transparent;color:#63736c}
-.result:not(:has(:target)) a[href="#panel-overview"],.result:has(#panel-overview:target) a[href="#panel-overview"],.result:has(#panel-prepare:target) a[href="#panel-prepare"],.result:has(#panel-budget:target) a[href="#panel-budget"],.result:has(#panel-days:target,.day-anchor:target) a[href="#panel-days"],.result:has(#panel-tips:target) a[href="#panel-tips"]{border-color:#b94d2a;color:#b94d2a;font-weight:700}
+.result:not(:has(:target)) a[href="#panel-overview"],.result:has(#panel-overview:target) a[href="#panel-overview"],.result:has(#panel-prepare:target) a[href="#panel-prepare"],.result:has(#panel-budget:target) a[href="#panel-budget"],.result:has(#panel-days:target,.day-anchor:target) a[href="#panel-days"],.result:has(#panel-lodging:target) a[href="#panel-lodging"],.result:has(#panel-food:target) a[href="#panel-food"],.result:has(#panel-pitfalls:target) a[href="#panel-pitfalls"]{border-color:#b94d2a;color:#b94d2a;font-weight:700}
 body{background:#faf8f3;color:#193c38}main{max-width:1240px;padding:28px 28px 60px}
 .hero img{height:280px}.hero{box-shadow:none}.card{box-shadow:none;border-color:#dedfd5}
 .result{background:#f2f0e8;border:1px solid #dedfd5;border-radius:24px;padding:24px}
@@ -25,9 +28,10 @@ body{background:#faf8f3;color:#193c38}main{max-width:1240px;padding:28px 28px 60
 """
 
 
-RESULT_CSS += DAILY_CSS + WEATHER_CSS + CAROUSEL_CSS + PREPARATION_CSS
+RESULT_CSS += DAILY_CSS + WEATHER_CSS + CAROUSEL_CSS + PREPARATION_CSS + LODGING_CSS + FOOD_CSS
 RESULT_CSS += """
-.trip-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:0 0 20px}.trip-facts>div{background:#eef2e7;padding:14px 20px;border-radius:12px;min-width:0}.trip-facts dt{font-size:12px;color:#63736c}.trip-facts dd{margin:4px 0 0;font-size:17px;overflow-wrap:anywhere}.guide-detail{background:#fffefa;border:1px solid #d8ddcf;border-radius:14px;margin:12px 0;padding:16px 20px}.guide-detail>summary{font-size:17px;color:#285b48}.guide-detail>.card{border:0;padding:12px 0 0;margin:0;background:transparent}.guide-detail>.card>h2{display:none}.snapshot-facts{display:grid;grid-template-columns:auto 1fr;gap:8px 20px;font-size:14px}.snapshot-facts dt{color:#63736c}.snapshot-facts dd{margin:0;overflow-wrap:anywhere}.snapshot-info>p{font-size:13px;color:#63736c}.result-nav a{flex-shrink:0}.panel{min-width:0}.daily-masthead{flex-wrap:wrap}.daily-masthead .actions{flex-shrink:0}.panel-tips .daily-heading{margin-bottom:20px}
+.result-nav a[aria-current=page]{border-color:#b94d2a;color:#b94d2a;font-weight:700}
+.trip-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:0 0 20px}.trip-facts>div{background:#eef2e7;padding:14px 20px;border-radius:12px;min-width:0}.trip-facts dt{font-size:12px;color:#63736c}.trip-facts dd{margin:4px 0 0;font-size:17px;overflow-wrap:anywhere}.guide-detail{background:#fffefa;border:1px solid #d8ddcf;border-radius:14px;margin:12px 0;padding:16px 20px}.guide-detail>summary{font-size:17px;color:#285b48}.guide-detail>.card{border:0;padding:12px 0 0;margin:0;background:transparent}.guide-detail>.card>h2{display:none}.snapshot-facts{display:grid;grid-template-columns:auto 1fr;gap:8px 20px;font-size:14px}.snapshot-facts dt{color:#63736c}.snapshot-facts dd{margin:0;overflow-wrap:anywhere}.snapshot-info>p{font-size:13px;color:#63736c}.result-nav a{flex-shrink:0}.panel{min-width:0}.daily-masthead{flex-wrap:wrap}.daily-masthead .actions{flex-shrink:0}.panel-pitfalls .daily-heading{margin-bottom:20px}
 @media(max-width:700px){.trip-facts{grid-template-columns:1fr;gap:8px}.trip-facts>div{display:flex;align-items:baseline;gap:16px;padding:10px 14px}.trip-facts dt{flex-shrink:0}.trip-facts dd{font-size:14px}.daily-masthead .actions{margin-left:0;width:100%}.daily-masthead strong{font-size:28px}.daily-masthead span{border:0;padding-left:0;font-size:16px}.guide-detail{padding:14px}.result .result-nav{gap:22px;justify-content:flex-start}}
 @media print{.daily-masthead .actions{display:none}.guide-detail::details-content{display:block;content-visibility:visible}.guide-detail{break-inside:avoid}.snapshot-info{font-size:12px}}
 """
@@ -46,27 +50,36 @@ def result_panels(guide, sections, text, inline_images=False, actions=""):
     days = [s for s, _ in sections if s['kind'] == 'day']
     meta = guide.get('result', {})
     out = ['<div class="result" aria-label="旅行方案">']
-    views = [('overview', '行程概览'), ('budget', '预算明细'), ('days', '每日行程'), ('prepare', '行程准备'), ('tips', '其他攻略')]
+    views = [('overview', '行程概览'), ('budget', '预算明细'), ('days', '每日行程'), ('lodging', '住宿推荐'), ('food', '当地美食'), ('pitfalls', '避坑指南'), ('prepare', '行程准备')]
     out.append(f'<header class="daily-masthead"><strong><svg class="budget-brand-mark" viewBox="0 0 60 36" aria-hidden="true"><path d="M2 28 21 5q4-5 8 0l21 23-17-5-12-4Z" fill="#196457"/><path d="m30 12 8-7 20 24-17-5Z" fill="#73947f"/><path d="M10 32q14-13 28-3t20-3q-12 14-28 7t-20-1" fill="#196457"/></svg>TravelMate</strong><span>{text(guide["title"])}</span>{actions}</header>')
     out.append('<svg class="budget-header-art" viewBox="0 0 480 120" aria-hidden="true"><path d="M0 99 66 68l36 13 49-35 33 16 48-25 59 39 49-27 47 22 46-19 47 30v25Z" fill="#cfddd3"/><path d="m0 103 70-16 45 4 64-22 54 10 51-12 60 15 57-14 79 25v17H0Z" fill="#9fb9a1"/><path d="M0 106q120-18 240-1t240-2v17H0Z" fill="#d6e3d9"/><path d="M42 112h190m-135 5h260m-80-9h130" stroke="#8ca9a0" opacity=".5"/><g stroke="#294d43" stroke-width="2" fill="#637d6b"><path d="M350 94h53m-44 0V65h34v29m-39-24h44m-50-6q18 0 28-14 10 14 28 14Zm6 14h42m-28-10v26m-10-26v26"/><path d="M256 69V28m-8 41V36h16v33m-20-30h24m-22-8h20m-17-6h14m-11-5h8" fill="none"/></g><g stroke="#779449" fill="none"><path d="M470 0q-20 37-4 102M452 0q-23 25-24 73m20-73q-4 35-12 57M479 0q-4 56-1 110" stroke-width="2"/><path d="m466 15-9 17m9 3 8 18m-11 4-9 18m-17-54-7 15m0 13-9 17m51-50 7 17" stroke-width="5"/></g></svg>')
     out.append('<nav class="result-nav" aria-label="结果板块">' + ''.join(f'<a href="#panel-{key}">{title}</a>' for key, title in views) + '</nav>')
     groups = {key: [] for key, _ in views}
     groups['map'] = []
+    details = []
     overview = next((s for s, _ in sections if s['kind'] == 'overview'), {})
     selected_date = meta.get('start_date') if 'start_date' in meta else next((r[1] for r in overview.get('rows', []) if r[0] == '日期' and '未定' not in r[1]), None)
     for index, (section, html) in enumerate(sections):
         kind = section['kind']
         if section['title'] == '行前准备':
             continue
-        group = ('budget' if kind == 'budget' else 'days' if kind == 'day' else 'tips'
-                 if kind in ('food', 'traffic', 'pitfalls', 'verify') or section['title'] in
-                 ('交通与已订安排', '住哪里更顺路', '时间安排说明', '下雨、排队或约不上时怎么换') else 'tips')
+        if kind == 'verify':
+            groups['prepare'].append('<details class="guide-detail"><summary>出行待办 · 预约与出发确认</summary><ul>' + ''.join('<li>' + text(row[0]) + ' · ' + text(row[1]) + '</li>' for row in section.get('rows', []) if len(row) >= 2) + '</ul></details>')
+            continue
+        if kind == 'sources':
+            details.append(html)
+            continue
+        group = ('lodging' if section['title'] == '住哪里更顺路' else
+                 kind if kind in ('budget', 'food', 'pitfalls') else
+                 'days' if kind == 'day' or section['title'] == '下雨、排队或约不上时怎么换' else 'overview')
         if kind == 'day':
             if not selected_date:
                 section = dict(section, title=section['title'].split(' · 天气')[0])
             number = sum(s['kind'] == 'day' for s, _ in sections[:index]) + 1
             html = day_cards(section, number, text, inline_images) if section.get("columns", [])[:1] == ["时段"] else f'<div id="day-{number}" class="day-anchor"><details class="day-detail" open><summary>第 {number} 天 · 查看或收起安排</summary>{html}</details></div>'
-        if group == 'tips':
+        if group == 'lodging':
+            html = lodging_cards(section, days, text, inline_images)
+        if group == 'overview' or section['title'] == '下雨、排队或约不上时怎么换':
             html = '<details class="guide-detail"><summary>' + text(section['title']) + '</summary>' + html + '</details>'
         groups[group].append(html)
     groups['overview'].insert(0, coverflow(days, text, inline_images))
@@ -78,9 +91,17 @@ def result_panels(guide, sections, text, inline_images=False, actions=""):
     if meta.get('ledger') is not None:
         groups['budget'] = [groups['budget'][0].replace('<details class="card">', '<details class="budget-source-notes">')] + ['<details class="budget-source-notes"><summary>查看原方案费用表</summary>' + ''.join(groups['budget'][1:]) + '</details>']
     groups['days'].insert(0, '<header class="daily-heading"><h2>每日行程</h2><p>跟着节奏走，把风景慢慢看。</p><nav class="day-picker" aria-label="选择行程日">' + ''.join(f'<a href="#day-{i}">第 {i} 天<span>{text(next((r[1] for r in day.get("rows", []) if len(r) > 1), "当日安排"))}</span></a>' for i, day in enumerate(days, 1)) + '</nav></header>')
-    groups['tips'].insert(0, '<details class="guide-detail snapshot-info"><summary>方案版本与使用说明</summary><dl class="snapshot-facts"><dt>版本</dt><dd>' + text(guide.get('version', '—')) + '</dd><dt>保存时间</dt><dd>' + text(guide.get('saved_at', '未记录')) + '</dd><dt>已列费用</dt><dd>' + text(meta.get('cost', '请参见预算明细')) + '</dd></dl><p>' + text(guide.get('notice', '')) + '</p></details>')
-    groups['tips'].insert(0, '<header class="daily-heading"><h2>其他攻略</h2><p>交通、住宿与出行注意事项，出发前再看一遍。</p></header>')
-    if not groups['days'][1:]:
+    groups['overview'].append('<details class="guide-detail snapshot-info"><summary>方案详情与依据</summary><dl class="snapshot-facts"><dt>版本</dt><dd>' + text(guide.get('version', '—')) + '</dd><dt>保存时间</dt><dd>' + text(guide.get('saved_at', '未记录')) + '</dd><dt>已列费用</dt><dd>' + text(meta.get('cost', '请参见预算明细')) + '</dd></dl><p>' + text(guide.get('notice', '')) + '</p>' + ''.join(details) + '</details>')
+    for key, title, description, empty in (
+        ('lodging', '住宿推荐', '先选顺路片区，再选合适的住处。', '本版尚无住宿建议，可在对话中补充预算与住宿偏好。'),
+        ('food', '当地美食', '跟着路线吃，少绕路，也给用餐留点时间。', '本版尚无美食建议，可在对话中补充口味与忌口。'),
+        ('pitfalls', '避坑指南', '把预约、交通与消费的关键提醒提前看清。', '本版未保存专项避坑建议，请结合每日安排与行前准备确认预约和交通。')):
+        groups[key].insert(0, ('<span class="lodging-eyebrow">01 / 片区优先</span>' if key == 'lodging' else '') + '<header class="daily-heading"><h2>' + title + '</h2><p>' + description + '</p></header>')
+        if len(groups[key]) == 1:
+            groups[key].append('<p class="daily-empty">' + empty + '</p>')
+    groups['food'] = [food_panel([s for s, _ in sections if s['kind'] == 'food'], days, text, inline_images)]
+    groups['pitfalls'] = [pitfalls_panel(guide, sections, text, inline_images)]
+    if not days:
         groups['days'].append('<p class="daily-empty">暂无每日行程，请返回对话补充安排。</p>')
     # Historical snapshots have no place metadata; retain their original stop list.
     for i, day in enumerate(days, 1):
@@ -102,7 +123,7 @@ def result_panels(guide, sections, text, inline_images=False, actions=""):
                 groups['map'].append(f'<a href="{text(url)}" target="_blank" rel="noopener noreferrer">高德地图 ↗</a>')
         groups['map'].append('</div></section>')
     if selected_date:
-        groups['days'].insert(1, '<details class="guide-detail daily-weather" open><summary>每日天气</summary>' + weather_panel(meta, days, selected_date, text) + '</details>')
+        groups['days'].insert(1, '<details class="guide-detail daily-weather"><summary>每日天气 · 展开查看</summary>' + weather_panel(meta, days, selected_date, text) + '</details>')
     if groups['map']:
         groups['days'].append('<details class="guide-detail"><summary>景点地图</summary>' + ''.join(groups['map']) + '</details>')
     for key, title in views:
@@ -165,7 +186,7 @@ body main{max-width:1600px;padding:14px 24px 32px}
 .result .daily-masthead{position:relative;z-index:1;padding:0 12px 12px;border:0}
 .daily-masthead strong{font-size:36px}
 .daily-masthead .actions .btn{background:#fffdf9;color:#165b50;border:1px solid #65958a;border-radius:10px}
-.result .result-nav{position:relative;z-index:1;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;overflow:visible;padding:0;margin:0 0 22px;border-bottom:1px solid #bcc8be}
+.result .result-nav{position:relative;z-index:1;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:12px;overflow:visible;padding:0;margin:0 0 22px;border-bottom:1px solid #bcc8be}
 .result .result-nav a{display:flex;align-items:center;justify-content:center;min-width:0;min-height:48px;font-size:19px;padding:10px 8px;text-align:center}
 @media(max-width:760px){
 body main{padding:12px}
@@ -203,6 +224,7 @@ if (resultNav) {
 }
 """
 RESULT_JS += BUDGET_JS
+RESULT_CSS += PITFALL_CSS
 RESULT_JS += CAROUSEL_JS
 RESULT_JS += PREPARATION_JS
 RESULT_SCRIPT_HASH = b64encode(sha256(RESULT_JS.encode('utf-8')).digest()).decode('ascii')

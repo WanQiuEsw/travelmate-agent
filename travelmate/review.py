@@ -53,7 +53,7 @@ def program_review(requirements, plan, evidence):
         exclusions = requirements.get("exclusions", []) + requirements.get("day_exclusions", {}).get(str(day), [])
         if not any("爬山" in x or "登山" in x for x in exclusions):
             continue
-        for index, stop in enumerate(data["stops"], 1):
+        for index, stop in enumerate([*data["stops"], *data.get("rain_stops", [])], 1):
             text = stop.get("notes", "")
             climbing = "climbing" in stop.get("activities", []) or re.search(r"(?<!不)(?<!无需)(?<!避免)爬山|(?<!不)登山", text)
             if climbing:

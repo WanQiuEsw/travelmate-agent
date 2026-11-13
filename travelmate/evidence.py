@@ -119,7 +119,7 @@ def check_reference(evidence, ref, kind, value, requirements, now=None):
 def validate_evidence(requirements, plan, evidence):
     issues = []
     for day_no, day in enumerate(plan.get("days", []), 1):
-        for stop in day["stops"]:
+        for stop in [*day["stops"], *day.get("rain_stops", [])]:
             refs = stop.get("fact_refs", {})
             for field, ref in refs.items():
                 kind = {"place": "place", "cost": "price", "opening_hours": "opening_hours",

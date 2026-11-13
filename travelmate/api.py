@@ -165,8 +165,8 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
         return FileResponse(Path(__file__).with_name("theme.css"), media_type="text/css")
 
     @app.get("/assets/visual/{filename}", include_in_schema=False)
-    def visual_asset(filename: Literal["companion.webp", "coast.webp", "mountains.webp", "town.webp", "icon.webp"]):
-        return FileResponse(Path(__file__).with_name("images") / filename, media_type="image/webp")
+    def visual_asset(filename: Literal["companion.webp", "coast.webp", "mountains.webp", "town.webp", "icon.webp", "lodging-room.webp", "lodging-city.webp", "lodging-canal.webp", "food-reference.png", "hotel-room.webp"]):
+        return FileResponse(Path(__file__).with_name("images") / filename, media_type="image/png" if filename.endswith('.png') else "image/webp")
 
     @app.get('/assets/visual/cities/{city}.webp', include_in_schema=False)
     def city_visual(city: str):

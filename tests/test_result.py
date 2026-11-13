@@ -9,7 +9,7 @@ def test_result_sections_and_historical_snapshot():
     guide = make_guide(dict(version=1, plan=deepcopy(PLAN), requirements=REQ,
                             saved_at=datetime.now(timezone.utc).isoformat()), {})
     html = render_guide(guide, '/plans/1/pdf')
-    for name in ('overview', 'budget', 'days', 'prepare', 'tips'):
+    for name in ('overview', 'budget', 'days', 'lodging', 'food', 'pitfalls', 'prepare'):
         assert f'id="panel-{name}"' in html
         assert f'href="#panel-{name}"' in html
     assert '知识图谱' not in html
@@ -44,17 +44,17 @@ def test_weather_is_inside_days_and_omitted_without_date_for_new_and_old_version
         if historical:
             guide.pop('result')
         html = render_guide(guide)
-        daily = html.split('id="panel-days"')[1].split('id="panel-prepare"')[0]
+        daily = html.split('id="panel-days"')[1].split('id="panel-lodging"')[0]
         assert '日期未定' in daily
         for value in ('weather-shell', '每日天气', '天气预报', '暂无预报', '尚未选择出行日期'):
             assert value not in daily
         assert 'panel-weather' not in html
     html = render_sample()
-    daily = html.split('id="panel-days"')[1].split('id="panel-prepare"')[0]
+    daily = html.split('id="panel-days"')[1].split('id="panel-lodging"')[0]
     assert 'weather-shell' in daily and '每日天气' in daily
     nav = html.split('<nav class="result-nav"')[1].split('</nav>')[0]
     import re
-    assert re.findall(r'>([^<>]+)</a>', nav) == ['行程概览', '预算明细', '每日行程', '行程准备', '其他攻略']
+    assert re.findall(r'>([^<>]+)</a>', nav) == ['行程概览', '预算明细', '每日行程', '住宿推荐', '当地美食', '避坑指南', '行程准备']
     assert 'panel-map' not in nav and 'panel-weather' not in nav
 
 
@@ -71,10 +71,11 @@ def test_carousel_has_wrapping_controls_and_daily_navigation():
     assert 'href="#day-2"' in html
     budget = html.split('aria-label="预算明细">')[1].split('id="panel-days"')[0]
     assert '逐项费用' in budget and '西湖' in budget and '预算口径' in budget
-    daily = html.split('aria-label="每日行程">')[1].split('id="panel-prepare"')[0]
-    for value in ('交通与已订安排', '住哪里更顺路', '当地特色美食', '下雨、排队或约不上时怎么换'):
+    daily = html.split('aria-label="每日行程">')[1].split('id="panel-lodging"')[0]
+    assert '下雨、排队或约不上时怎么换' in daily
+    for value, panel in [('交通与已订安排', 'overview'), ('住哪里更顺路', 'lodging'), ('当地特色美食', 'food')]:
         assert value not in daily
-        assert value in html.split('id="panel-tips"')[1]
+        assert value in html.split(f'id="panel-{panel}"')[1].split('<section id="panel-')[0]
 
 
 def test_budget_ledger_counts_other_cost_once_and_keeps_unknown_amounts():
@@ -187,36 +188,33 @@ def test_structured_other_expenses_validation_and_display():
     with pytest.raises(ValueError, match='分项之和'):
         Itinerary.model_validate(plan)
 
-def test_daily_layout_and_separate_tips_keep_exports():
+def test_daily_layout_and_modules_keep_exports():
     html = render_sample()
-    daily = html.split('id="panel-days"')[1].split('id="panel-prepare"')[0]
-    tips = html.split('id="panel-tips"')[1]
+    daily = html.split('id="panel-days"')[1].split('id="panel-lodging"')[0]
     assert '<header class="daily-heading">' in daily
     assert 'class="daily-footer"' in daily
-    assert 'href="#panel-tips"' in daily
-    for title in ('交通与已订安排', '住哪里更顺路', '下雨、排队或约不上时怎么换'):
-        assert title not in daily
-        assert title in tips
+    assert 'href="#panel-pitfalls"' in daily
+    assert 'class="day-plan-choice"' in daily
+    assert '原定行程' in daily and '雨天方案' in daily
     masthead = html.split('class="daily-masthead"')[1].split('</header>')[0]
     assert 'TravelMate' in masthead
     assert 'href="/plans/1/pdf"' in masthead
     assert 'href="/plans/1/html"' in masthead
-    assert 'href="#panel-tips">其他攻略</a>' in html
+    assert '其他攻略' not in html and 'panel-tips' not in html
 
 
-def test_all_views_share_header_and_snapshot_details_live_in_tips():
+def test_all_views_share_header_and_snapshot_details_live_in_overview():
     html = render_sample()
     assert '<header class="hero">' not in html
     assert html.count('class="daily-masthead"') == 1
     masthead = html.split('class="daily-masthead"')[1].split('</header>')[0]
     assert '版本' not in masthead and '保存时间' not in masthead
-    tips = html.split('id="panel-tips"')[1]
-    assert '方案版本与使用说明' in tips
-    assert '保存时间' in tips and '已列费用' in tips
     overview = html.split('id="panel-overview"')[1].split('id="panel-budget"')[0]
+    assert '方案详情与依据' in overview
+    assert '保存时间' in overview and '已列费用' in overview
     assert 'trip-facts' in overview and 'carousel-stage' in overview
-    assert '<summary>先说结论</summary>' in tips
-    assert '<summary>旅行概览</summary>' in tips
+    assert '<summary>先说结论</summary>' in overview
+    assert '<summary>旅行概览</summary>' in overview
     from travelmate.result import RESULT_CSS
     assert '.result .daily-masthead{display:flex' in RESULT_CSS
     assert 'body:has(.panel-days:target' not in RESULT_CSS
@@ -228,7 +226,7 @@ def test_navigation_announces_selected_panel_and_day_anchors():
     from travelmate.result import RESULT_JS
     stub = r'''
 const assert = require('node:assert/strict');
-const links = ['overview','budget','days','prepare','tips'].map(id=>({
+const links = ['overview','budget','days','lodging','food','pitfalls','prepare'].map(id=>({
  href:'#panel-'+id, current:null,
  getAttribute(){return this.href},setAttribute(_,value){this.current=value},removeAttribute(){this.current=null}
 }));
@@ -240,7 +238,7 @@ global.document={querySelector:s=>s==='.result-nav'?{querySelectorAll:()=>links}
 '''
     checks = r'''
 assert.equal(links[0].current,'page');
-for(const [hash,index] of [['#panel-budget',1],['#panel-days',2],['#day-2',2],['#panel-prepare',3],['#panel-tips',4],['',0]]){
+for(const [hash,index] of [['#panel-budget',1],['#panel-days',2],['#day-2',2],['#panel-lodging',3],['#panel-food',4],['#panel-pitfalls',5],['#panel-prepare',6],['',0]]){
  location.hash=hash;hashchange();assert.equal(links[index].current,'page');assert.equal(links.filter(l=>l.current==='page').length,1);
 }
 '''

@@ -99,8 +99,11 @@ def public_guide(guide):
     guide = deepcopy(guide)
     guide['sections'] = [section for section in guide['sections'] if not internal_title(section['title'])]
     for section in guide['sections']:
-        if section.get('rows'):
-            section['rows'] = [[public_answer(str(value)) for value in row] for row in section['rows']]
+        for key in ('rows', 'rain_rows'):
+            if section.get(key):
+                section[key] = [[public_answer(str(value)) for value in row] for row in section[key]]
+        if section.get('rain_note'):
+            section['rain_note'] = public_answer(section['rain_note'])
         for item in section['items']:
             item['text'] = public_answer(item['text'])
             if '查看地图' in item.get('link_label', '') or 'uri.amap.com/marker' in (item.get('link') or ''):
@@ -293,6 +296,8 @@ def make_guide(version, evidence):
         summary.append('已列费用 ' + total_cost_label(day['stops'], req, evidence, now=asof))
         notes = [' · '.join(summary)] + (['当日美食：' + '；'.join(meals)] if meals else [])
         section(day_heading(day.get('date'), i, req, evidence, asof), notes, 'day', ['时段', '顺路安排', '吃什么 / 怎么玩', '交通预留', '全员费用'], rows)
+        sections[-1]['rain_rows'] = [[time_label(plan, stop), stop['place'], stop.get('notes') or '按预约和体力调整', modes[stop.get('transport_mode', 'unknown')] + '，' + travel_label(stop), cost_label(stop, req, evidence, asof)] for stop in day.get('rain_stops', [])]
+        sections[-1]['rain_note'] = day.get('rain_note', '')
     foods = plan.get('foods', [])
     if foods:
         rows = [[food['name'], food['description'], (f'第{food["day"]}天 · ' if food.get('day') else '') + food.get('meal', '不限'), food.get('area') or '结合当日片区顺路选择', food.get('tips') or '点单前确认食材与忌口'] for food in foods]
@@ -301,7 +306,7 @@ def make_guide(version, evidence):
     if pitfalls:
         icons = {'严重': '❌', '注意': '⚠️', '技巧': '💡'}
         section('避坑', [f"{icons.get(item['level'], '⚠️')} {item['text']}" for item in pitfalls]
-                + ['以上涉及营业时间、票价与开放状态的条目，出行前请按下方清单通过官方渠道复核。'], 'pitfalls')
+                + ['涉及营业时间、票价与开放状态的条目，请以出行时官方公告为准。'], 'pitfalls')
     alternatives = plan.get('alternatives', [])
     if alternatives:
         rows = [[a['trigger'], a['action'],
@@ -527,7 +532,7 @@ def render_guide(guide, pdf_url=None):
     if pdf_url is not None:
         path = pdf_url.removesuffix('/pdf')
         actions = (f'<div class="actions"><a class="btn" href="{text(pdf_url)}">下载 PDF</a>'
-                   f'<a class="btn ghost" href="{text(path)}/md">Markdown</a>'
+                   f'<a class="btn ghost" href="{text(path)}/md">下载 Markdown</a>'
                    f'<a class="btn ghost" href="{text(path)}/html">HTML</a></div>')
     from travelmate.result import RESULT_CSS, RESULT_JS, result_panels
     parts = [f'<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{text(guide["title"])}</title><style>{GUIDE_CSS}{RESULT_CSS}</style></head><body><main>']

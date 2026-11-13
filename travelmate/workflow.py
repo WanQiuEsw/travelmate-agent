@@ -94,6 +94,8 @@ class Stop(BaseModel):
 class Day(BaseModel):
     date: CalendarDate | None = Field(default=None, description="未提供出发日期时为 null，按列表顺序表示第几天")
     stops: list[Stop] = Field(min_length=1, max_length=20)
+    rain_stops: list[Stop] = Field(default_factory=list, max_length=20, description="普通雨天的完整当日路线；只替换受影响活动，保留餐饮、预订与到离安排。无可靠方案时留空。")
+    rain_note: str = Field(default="", max_length=600, description="说明替换哪些活动、交通与费用变化以及预约要求。")
 
 
 class RailSegment(BaseModel):
@@ -176,7 +178,7 @@ class Itinerary(BaseModel):
         if self.other_cost_items and sum(cents(item.amount) for item in self.other_cost_items) != cents(self.other_cost):
             raise ValueError("其他费用分项之和必须等于other_cost，不能重复计入活动费用")
         for day in self.days:
-            for stop in day.stops:
+            for stop in [*day.stops, *day.rain_stops]:
                 if self.time_granularity == "precise" and (stop.start is None or stop.end is None):
                     raise ValueError("精确行程需同时提供start和end；时间不确定请使用period行程")
                 if self.time_granularity == "period" and (stop.period is None or stop.start is not None or stop.end is not None):
@@ -188,7 +190,7 @@ def period_plan(plan):
     data = deepcopy(plan)
     data["time_granularity"] = "period"
     for day in data["days"]:
-        for stop in day["stops"]:
+        for stop in [*day["stops"], *day.get("rain_stops", [])]:
             if not stop.get("period"):
                 hour = int(stop["start"][:2]) if stop.get("start") else None
                 stop["period"] = ("机动安排" if hour is None else "清晨" if hour < 6 else "上午" if hour < 11
@@ -295,6 +297,15 @@ def validate_plan(requirements, plan):
             if any((stop.end > deadline if plan.time_granularity == "precise" else
                     PERIOD_START[stop.period] >= cutoff) for stop in day.stops):
                 issues.append(f"第{index}天活动超过已订出发或返程时限 {deadline}，请调整并预留交通时间")
+    if any(day.rain_stops for day in plan.days):
+        rain = plan.model_dump(mode="json")
+        for day in rain['days']:
+            day['stops'] = day.pop('rain_stops') or day['stops']
+        rain_issues, _ = validate_plan(requirements, rain)
+        issues.extend('雨天方案：' + issue for issue in rain_issues)
+        mixed_total = plan.other_cost + sum(max(sum(s.cost for s in day.stops), sum(s.cost for s in day.rain_stops)) for day in plan.days)
+        if round(mixed_total, 2) > limit and not any('超过预算' in issue for issue in rain_issues):
+            issues.append('雨天方案：按天切换后的最高全员费用超过预算，请调整费用或预算')
     return issues, total
 
 

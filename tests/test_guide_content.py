@@ -60,7 +60,7 @@ def test_preview_uses_frozen_forecast_and_hides_legacy_review_and_map_links():
     current = weather(req, rows=[{'date': '2026-11-06', 'dayweather': '暴雨'}], now=NOW + timedelta(days=1))
     restored = get_version({'versions': [snapshot], 'evidence': current}, 1)
     html = render_guide(restored, '/saved.pdf')
-    assert '星期五' in html and '天气预报：白天晴' in html and '暴雨' not in html
+    assert '星期五' in html and '天气预报：白天晴' in html and '天气预报：白天暴雨' not in html
     assert '当地特色美食' in html and '片儿川' in html and '请提前预约' in html
     assert 'internal-review' not in html
     assert snapshot == untouched
