@@ -343,6 +343,9 @@ def make_guide(version, evidence):
         'hero': hero_image(req, plan),
         'result': {
             'travelers': req['travelers'],
+            'budget': budget_total(req),
+            'budget_currency': req.get('budget_currency') or 'CNY',
+            'budget_includes': req.get('budget_includes') or '范围待确认',
             'start_date': req.get('start_date'),
             'weather': [dict(daily_forecast(day.get('date'), req, evidence, asof),
                              date=day.get('date'), city=req['destination']) for day in plan['days']],

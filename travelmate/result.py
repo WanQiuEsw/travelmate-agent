@@ -1,7 +1,7 @@
-"""Accessible result navigation over the frozen guide; no scripts or remote assets."""
+"""Accessible result navigation and local interactions over the frozen guide."""
 import re
 from math import isfinite
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 from urllib.parse import urlencode
 
 from travelmate.daily_ui import CSS as DAILY_CSS, day_cards
@@ -20,10 +20,6 @@ body{background:#faf8f3;color:#193c38}main{max-width:1240px;padding:28px 28px 60
 .result-intro{color:#63736c}.day-anchor{scroll-margin-top:20px}.budget-summary{background:#193c38;color:#fff;border-radius:18px;padding:24px;display:flex;gap:36px;flex-wrap:wrap}.budget-summary strong{display:block;font-size:26px}.budget-summary p{margin:0}.weather-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.weather-day{background:#eaf3ee;border:1px solid #cadbd1;padding:24px;border-radius:18px}.weather-day h3{font-size:20px}.route-map{width:100%;height:300px;background:#eaf3ee;border-radius:18px;border:1px solid #cadbd1}.route-map text{font:16px sans-serif;fill:#fff}.route-map circle{fill:#087f7a}.route-map polyline{stroke:#b94d2a;stroke-width:3;fill:none;stroke-dasharray:8 6}.map-stops{display:flex;flex-wrap:wrap;gap:12px;margin:18px 0}.map-stops a{background:#fff;border:1px solid #dedfd5;padding:8px 14px;border-radius:12px}.result .card:first-child{margin-top:0}
 .day-picker{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}.day-picker a{padding:8px 18px;border:1px solid #cadbd1;border-radius:999px;background:#fff;text-decoration:none}.day-detail{margin-bottom:18px}.day-detail>summary{background:#eaf3ee;padding:16px 20px;border:1px solid #cadbd1;border-radius:16px}.day-detail .card{margin-top:10px}.day-anchor:target>.day-detail>summary{border-color:#b94d2a}.result a:focus-visible,.carousel input:focus-visible{outline:3px solid #b94d2a;outline-offset:4px}
 @media print{.day-picker{display:none}}
-.budget-workspace{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:20px;align-items:start;margin-bottom:20px}.budget-table,.budget-totals{background:#fff;border:1px solid #dedfd5;border-radius:18px;padding:20px}.budget-toolbar{display:flex;gap:14px;flex-wrap:wrap;border-bottom:1px solid #dedfd5;padding-bottom:16px}.budget-toolbar select{max-width:170px;border:1px solid #ccd4cb;border-radius:8px;padding:6px;color:#193c38;background:#faf8f3}.budget-table td,.budget-table th{border:0;border-bottom:1px solid #dedfd5}.budget-table input[type=number]{width:108px;max-width:100%;border:1px solid #ccd4cb;border-radius:7px;padding:6px;color:#193c38;background:#faf8f3}.budget-totals{position:sticky;top:20px;background:#193c38;color:#fff}.budget-totals h3{font-size:24px;font-weight:400;margin:0}.ledger-total{font-size:42px;overflow-wrap:anywhere;line-height:1.3;margin:18px 0}.category-totals{display:grid;grid-template-columns:1fr 1fr;gap:16px}.category-totals p{margin:0;border-top:1px solid #ffffff30;padding-top:12px;font-size:13px}.category-totals strong{display:block;font-size:22px;color:#f1c5a7}.budget-totals .muted{color:#d3dfd8}.budget-pagination{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:18px;font-size:13px}.budget-pagination button{padding:8px 16px;border:1px solid #a8c9bd;border-radius:999px;background:#eaf3ee;color:#087f7a;cursor:pointer}.budget-pagination button:disabled{opacity:.4;cursor:default}@media print{.budget-pagination{display:none}.budget-table tr[hidden]{display:table-row!important}}.budget-status{font-size:12px;color:#63736c}.expense-explanation{margin-top:8px;max-width:420px}.expense-explanation summary{font-size:13px;font-weight:500;color:#087f7a;cursor:pointer}.expense-explanation p{margin:8px 0 0;padding:12px;background:#eaf3ee;border-radius:10px;font-size:13px;line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere}.budget-table td:nth-child(3){min-width:180px;width:100%}.budget-table td:not(:nth-child(3)){white-space:nowrap}.budget-table tr:has(input[type=checkbox]:not(:checked)){opacity:.55}
-
-@media(max-width:700px){.budget-workspace{grid-template-columns:1fr}.budget-totals{position:static}}
-@media print{.budget-workspace{display:block}.budget-totals{position:static}}
 @media(max-width:700px){main{padding:12px}.result{padding:14px;border-radius:18px}.result-nav{gap:20px}.highlights,.weather-grid{grid-template-columns:1fr}.hero img{height:230px}.budget-summary{gap:18px}}
 @media print{.result-nav,.result>input{display:none}.panel,.result:has(.day-anchor:target) .panel{display:block!important}.result{padding:0;border:0}.highlight,.weather-day,.card{break-inside:avoid}}
 """
@@ -51,7 +47,8 @@ def result_panels(guide, sections, text, inline_images=False, actions=""):
     meta = guide.get('result', {})
     out = ['<div class="result" aria-label="旅行方案">']
     views = [('overview', '行程概览'), ('budget', '预算明细'), ('map', '景点地图'), ('prepare', '行前准备'), ('days', '每日行程'), ('weather', '天气信息'), ('tips', '其他攻略')]
-    out.append(f'<header class="daily-masthead"><strong>TravelMate</strong><span>{text(guide["title"])}</span>{actions}</header>')
+    out.append(f'<header class="daily-masthead"><strong><svg class="budget-brand-mark" viewBox="0 0 60 36" aria-hidden="true"><path d="M2 28 21 5q4-5 8 0l21 23-17-5-12-4Z" fill="#196457"/><path d="m30 12 8-7 20 24-17-5Z" fill="#73947f"/><path d="M10 32q14-13 28-3t20-3q-12 14-28 7t-20-1" fill="#196457"/></svg>TravelMate</strong><span>{text(guide["title"])}</span>{actions}</header>')
+    out.append('<svg class="budget-header-art" viewBox="0 0 480 120" aria-hidden="true"><path d="M0 99 66 68l36 13 49-35 33 16 48-25 59 39 49-27 47 22 46-19 47 30v25Z" fill="#cfddd3"/><path d="m0 103 70-16 45 4 64-22 54 10 51-12 60 15 57-14 79 25v17H0Z" fill="#9fb9a1"/><path d="M0 106q120-18 240-1t240-2v17H0Z" fill="#d6e3d9"/><path d="M42 112h190m-135 5h260m-80-9h130" stroke="#8ca9a0" opacity=".5"/><g stroke="#294d43" stroke-width="2" fill="#637d6b"><path d="M350 94h53m-44 0V65h34v29m-39-24h44m-50-6q18 0 28-14 10 14 28 14Zm6 14h42m-28-10v26m-10-26v26"/><path d="M256 69V28m-8 41V36h16v33m-20-30h24m-22-8h20m-17-6h14m-11-5h8" fill="none"/></g><g stroke="#779449" fill="none"><path d="M470 0q-20 37-4 102M452 0q-23 25-24 73m20-73q-4 35-12 57M479 0q-4 56-1 110" stroke-width="2"/><path d="m466 15-9 17m9 3 8 18m-11 4-9 18m-17-54-7 15m0 13-9 17m51-50 7 17" stroke-width="5"/></g></svg>')
     out.append('<nav class="result-nav" aria-label="结果板块">' + ''.join(f'<a href="#panel-{key}">{title}</a>' for key, title in views) + '</nav>')
     groups = {key: [] for key, _ in views}
     for index, (section, html) in enumerate(sections):
@@ -74,6 +71,8 @@ def result_panels(guide, sections, text, inline_images=False, actions=""):
     groups['overview'].insert(0, '<dl class="trip-facts">' + ''.join('<div><dt>' + text(r[0]) + '</dt><dd>' + text(r[1]) + '</dd></div>' for r in facts) + '</dl>')
     budget_facts = [r for r in overview.get('rows', []) if '预算' in r[0]]
     groups['budget'].insert(0, budget_panel(meta, days, text) + '<details class="card"><summary>预算口径</summary><ul>' + ''.join('<li>' + text('：'.join(r)) + '</li>' for r in budget_facts) + '<li>综合费用不拆成未经核实的餐饮、酒店报价。</li></ul></details>')
+    if meta.get('ledger') is not None:
+        groups['budget'] = [groups['budget'][0].replace('<details class="card">', '<details class="budget-source-notes">')] + ['<details class="budget-source-notes"><summary>查看原方案费用表</summary>' + ''.join(groups['budget'][1:]) + '</details>']
     groups['days'].insert(0, '<header class="daily-heading"><h2>每日行程</h2><p>跟着节奏走，把风景慢慢看。</p><nav class="day-picker" aria-label="选择行程日">' + ''.join(f'<a href="#day-{i}">第 {i} 天<span>{text(next((r[1] for r in day.get("rows", []) if len(r) > 1), "当日安排"))}</span></a>' for i, day in enumerate(days, 1)) + '</nav></header>')
     groups['tips'].insert(0, '<details class="guide-detail snapshot-info"><summary>方案版本与使用说明</summary><dl class="snapshot-facts"><dt>版本</dt><dd>' + text(guide.get('version', '—')) + '</dd><dt>保存时间</dt><dd>' + text(guide.get('saved_at', '未记录')) + '</dd><dt>已列费用</dt><dd>' + text(meta.get('cost', '请参见预算明细')) + '</dd></dl><p>' + text(guide.get('notice', '')) + '</p></details>')
     groups['tips'].insert(0, '<header class="daily-heading"><h2>其他攻略</h2><p>交通、住宿与出行注意事项，出发前再看一遍。</p></header>')
@@ -136,35 +135,8 @@ def budget_panel(meta, days, text):
     ledger = meta.get('ledger')
     if ledger is None:
         return '<section class="card"><h2>逐项费用</h2><p>历史方案未保存可计算的费用分项，以下保留原有费用表；重新保存方案后可使用分类试算。</p></section>'
-    ledger = split_expenses(ledger)
-    ledger = [dict(row, original_order=i) for i, row in enumerate(ledger)]
-    ledger = sorted(ledger, key=lambda r: (r['amount'] is None, -(r['amount'] or 0)))
-    categories = list(dict.fromkeys(['景点门票', '酒店住宿', '餐饮费用', '交通费用', '活动费用', '综合费用'] + [r['category'] for r in ledger]))
-    cents = lambda value: int((Decimal(str(value)) * 100).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
-    totals = {category: sum(cents(r['amount']) for r in ledger if r['category'] == category and r['amount'] is not None) for category in categories}
-    unknown = sum(r['amount'] is None for r in ledger)
-    amount = sum(totals.values())
-    travelers = meta.get('travelers') or 1
-    out = [f'<div class="budget-workspace" data-travelers="{travelers}"><section class="budget-table"><h2>逐项费用</h2><div class="budget-toolbar"><label>筛选 <select data-budget-filter aria-label="筛选费用类型"><option value="">全部类型</option>' + ''.join(f'<option>{text(c)}</option>' for c in categories) + '</select></label><label>排序 <select data-budget-sort aria-label="排序费用"><option value="desc" selected>金额从高到低</option><option value="original">日程顺序</option><option value="asc">金额从低到高</option></select></label></div><p class="budget-status">金额为全员人民币费用。可修改金额、取消勾选进行本页试算；筛选不改变总额。试算不保存到方案或导出文件。</p><div class="table-scroll"><table><thead><tr><th scope="col">类型</th><th scope="col">天数</th><th scope="col">项目</th><th scope="col">金额（元）</th><th scope="col">计入</th></tr></thead><tbody data-ledger>']
-    for index, row in enumerate(ledger):
-        description = row.get('detail', row['name']).replace('other_cost', '其他费用')
-        name = row['name'] if row.get('split') else '其他综合费用' if row['category'] == '综合费用' else row['name']
-        explanation = (f'<details class="expense-explanation"><summary>费用说明</summary><p>{text(description)}</p></details>'
-                       if row.get('detail') or row['category'] == '综合费用' or len(description) > 80 else '')
-        if len(name) > 80:
-            name = name[:60] + '…'
-
-        value = f'{cents(row["amount"])/100:.2f}' if row['amount'] is not None else ''
-        day = f'第 {row["day"]} 天' if row.get('day') else '全程'
-        out.append(f'<tr data-category="{text(row["category"])}" data-order="{row["original_order"]}"><td>{text(row["category"])}</td><td>{day}</td><td>{text(name)}{explanation}<div class="budget-status">{text(row["status"])}</div></td><td><input type="number" min="0" max="100000000" step="0.01" value="{value}" placeholder="待核实" aria-label="{text(name)}全员费用"></td><td><input type="checkbox" checked aria-label="计入{text(name)}"></td></tr>')
-    label = f'¥{amount/100:.2f}' if amount or not unknown else '待核实'
-    out.append('</tbody></table></div><nav class="budget-pagination" aria-label="费用明细分页"><button type="button" data-page-prev>上一页</button><span data-page-status role="status"></span><button type="button" data-page-next>下一页</button></nav><noscript>启用 JavaScript 后可筛选、排序和试算；当前显示保存时金额。</noscript></section><aside class="budget-totals" aria-label="费用汇总"><h3>预算明细</h3><p class="ledger-total" data-total>' + label + '</p><p>人均已列费用 <strong data-person>' + (f'¥{(Decimal(amount) / travelers / 100).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP):.2f}' if amount or not unknown else '待核实') + '</strong></p><p class="muted" data-budget-notice role="status">已列金额小计；' + str(unknown) + ' 项金额待核实</p><div class="category-totals">')
-    for category in categories:
-        present = any(r['category'] == category for r in ledger)
-        category_unknown = any(r['category'] == category and r['amount'] is None for r in ledger)
-        value = ('待核实' if totals[category] == 0 else f'¥{totals[category]/100:.2f} + 待核实') if category_unknown else f'¥{totals[category]/100:.2f}' if present else '未单列'
-        out.append(f'<p>{text(category)}<strong data-category-total="{text(category)}">{value}</strong></p>')
-    return ''.join(out) + '</div><p class="muted">综合费用只计一次；未知金额不按免费处理。</p><button type="button" data-budget-reset>恢复方案金额</button></aside></div>'
+    from travelmate.budget_ui import panel
+    return panel(dict(meta, ledger=split_expenses(ledger)), text)
 
 
 RESULT_JS = r"""for (const button of document.querySelectorAll('[data-carousel-target]')) {
@@ -173,71 +145,14 @@ RESULT_JS = r"""for (const button of document.querySelectorAll('[data-carousel-t
     if (radio) { radio.checked = true; radio.focus({preventScroll:true}); }
   });
 }
-const workspace = document.querySelector('.budget-workspace');
-if (workspace) {
-  const rows = [...workspace.querySelectorAll('[data-ledger] tr')];
-  const filter = workspace.querySelector('[data-budget-filter]');
-  const sort = workspace.querySelector('[data-budget-sort]');
-  let page = 1;
-  const pageSize = 8;
-  const money = cents => '¥' + (cents / 100).toFixed(2);
-  const amount = row => {
-    const input = row.querySelector('input[type=number]');
-    if (!/^\d+(?:\.\d{1,2})?$/.test(input.value) || !input.validity.valid) return null;
-    const [whole, fraction = ''] = input.value.split('.');
-    return Number(whole) * 100 + Number(fraction.padEnd(2, '0'));
-  };
-  function update() {
-    let total = 0, unknown = 0;
-    const categories = new Map();
-    for (const row of rows) {
-      row.hidden = Boolean(filter.value && row.dataset.category !== filter.value);
-      if (!row.querySelector('input[type=checkbox]').checked) continue;
-      const value = amount(row);
-      const item = categories.get(row.dataset.category) || {total: 0, unknown: 0};
-      if (value === null) { unknown++; item.unknown++; }
-      else { total += value; item.total += value; }
-      categories.set(row.dataset.category, item);
-    }
-    workspace.querySelector('[data-total]').textContent = !total && unknown ? '待核实' : money(total);
-    workspace.querySelector('[data-person]').textContent = !total && unknown ? '待核实' : money(Math.round(total / Number(workspace.dataset.travelers)));
-    workspace.querySelector('[data-budget-notice]').textContent = '本页试算小计；' + unknown + ' 项金额待核实（未保存）';
-    for (const node of workspace.querySelectorAll('[data-category-total]')) {
-      const item = categories.get(node.dataset.categoryTotal);
-      node.textContent = !item ? '未单列' : item.unknown ? (item.total ? money(item.total) + ' + 待核实' : '待核实') : money(item.total);
-    }
-    const ordered = [...rows].sort((a,b) => {
-      if (sort.value === 'original') return Number(a.dataset.order)-Number(b.dataset.order);
-      const x = amount(a), y = amount(b);
-      if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1;
-      return sort.value === 'asc' ? x-y : y-x;
-    });
-    const body = workspace.querySelector('[data-ledger]');
-    const visible = ordered.filter(row => !filter.value || row.dataset.category === filter.value);
-    const pages = Math.max(1, Math.ceil(visible.length / pageSize));
-    page = Math.min(page, pages);
-    for (const row of ordered) { row.hidden = true; body.append(row); }
-    for (const row of visible.slice((page-1)*pageSize, page*pageSize)) row.hidden = false;
-    workspace.querySelector('[data-page-status]').textContent = `第 ${page} / ${pages} 页 · 共 ${visible.length} 项`;
-    workspace.querySelector('[data-page-prev]').disabled = page === 1;
-    workspace.querySelector('[data-page-next]').disabled = page === pages;
-  }
-  workspace.addEventListener('change', () => { page = 1; update(); });
-  workspace.querySelector('[data-page-prev]').addEventListener('click', () => { page = Math.max(1, page-1); update(); });
-  workspace.querySelector('[data-page-next]').addEventListener('click', () => { page++; update(); });
-  workspace.querySelector('[data-budget-reset]').addEventListener('click', () => {
-    for (const row of rows) {
-      const input = row.querySelector('input[type=number]'); input.value = input.defaultValue;
-      row.querySelector('input[type=checkbox]').checked = true;
-    }
-    filter.value = ''; sort.value = 'desc'; page = 1; update();
-  });
-  update();
-}
+
 """
 
 from base64 import b64encode
 from hashlib import sha256
+from travelmate.budget_ui import CSS as BUDGET_CSS, JS as BUDGET_JS
+RESULT_CSS += BUDGET_CSS
+RESULT_JS += BUDGET_JS
 RESULT_JS += CAROUSEL_JS
 RESULT_JS += PREPARATION_JS
 RESULT_SCRIPT_HASH = b64encode(sha256(RESULT_JS.encode('utf-8')).digest()).decode('ascii')

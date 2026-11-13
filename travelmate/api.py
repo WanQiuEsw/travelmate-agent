@@ -64,6 +64,8 @@ class SessionRename(BaseModel):
 
 
 class PreparationItem(BaseModel):
+    detail: str | None = Field(default=None, max_length=500)
+    category: Literal['证件', '随身用品', '出发确认'] | None = None
     id: str = Field(min_length=1, max_length=64, pattern=r'^[a-zA-Z0-9_-]+$')
     text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
     done: bool = Field(strict=True)

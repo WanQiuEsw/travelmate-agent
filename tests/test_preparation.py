@@ -29,12 +29,14 @@ def test_checklist_crud_persistence_versions_exports_and_conflict(tmp_path):
         seed(app.state.agent, 'other')
         saved = client.get(url).json()
         assert saved['revision'] == 0 and len(saved['items']) == 2
-        saved['items'][0].update(done=True, text='身份证与学生证')
+        saved['items'][0].update(done=True, text='身份证与学生证', category='证件')
         saved['items'].pop()
         saved['items'].append({'id':'custom-1','text':'带雨伞<script>','done':False})
         response = client.put(url, json=saved)
         assert response.status_code == 200 and response.json()['revision'] == 1
         assert client.put(url, json=saved).status_code == 409
+        assert client.get(url).json()['items'][0]['category'] == '证件'
+        assert client.put(url, json={'revision':1,'items':[{'id':'bad','text':'测试','done':False,'category':'无效分类'}]}).status_code == 422
         assert client.get('/sessions/trip/plans/2/preparation').json()['revision'] == 0
         assert client.get('/sessions/other/plans/1/preparation').json()['revision'] == 0
         html = client.get('/sessions/trip/plans/1')
@@ -73,3 +75,18 @@ def test_checklist_uses_existing_session_ownership(tmp_path, monkeypatch):
         url = '/sessions/trip/plans/1/preparation'
         assert client.get(url).status_code == 404
         assert client.put(url,json={'revision':0,'items':[]}).status_code == 404
+
+def test_preparation_categories_and_progress():
+    from html import escape
+    from travelmate.preparation import category, panel
+    assert category({'text': '带身份证'}) == '证件'
+    assert category({'text': '充电宝与数据线'}) == '随身用品'
+    assert category({'text': '确认酒店订单'}) == '出发确认'
+    assert category({'text': '确认酒店订单', 'category': '证件'}) == '证件'
+    html = panel({'title': '杭州', 'version': 1, 'preparation': {'revision': 0, 'items': [
+        {'id': 'a', 'text': '<护照>', 'done': True},
+        {'id': 'b', 'text': '充电宝', 'done': False},
+    ]}}, escape)
+    assert '已完成 1 / 2 项' in html
+    assert '&lt;护照&gt;' in html
+    assert all(f'data-category="{name}"' in html for name in ('证件', '随身用品', '出发确认'))

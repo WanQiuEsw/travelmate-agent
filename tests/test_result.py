@@ -91,38 +91,41 @@ def test_budget_browser_calculation_filter_sort_exclude_and_reset():
     from travelmate.result import RESULT_JS
     stub = r'''
 const assert = require('node:assert/strict');
+let moves=0;
+const body = {append(row) { moves++; rows.splice(rows.indexOf(row),1); rows.push(row); }};
 function row(category, value, order) {
- const input = {value, defaultValue:value, validity:{valid:true}}, check = {checked:true};
- return {dataset:{category,order:String(order)},input,check,querySelector:s=>s.includes('number')?input:check};
+ const input = {value, defaultValue:value, validity:{valid:true}}, check = {checked:Boolean(value),defaultChecked:Boolean(value)};
+ return {parentElement:body,dataset:{category,order:String(order)},input,check,querySelector:s=>s.includes('number')?input:check};
 }
 const rows = [row('景点门票','0.10',0),row('综合费用','0.20',1),row('餐饮费用','',2)];
 const total = {}, person = {}, notice = {}, filter = {value:''}, sort = {value:'original'};
 const categories = ['景点门票','综合费用','餐饮费用'].map(c=>({dataset:{categoryTotal:c}}));
+const balance={}, barLabel={}, bar={style:{},querySelector:()=>barLabel}, pending={};
+const limitInput={value:'3.00',defaultValue:'3.00',validity:{valid:true}};
+const segmentLabel={}, segment={dataset:{segment:'景点门票'},style:{},querySelector:()=>segmentLabel};
+const events={};
 let update, reset;
-const body = {append:()=>{}};
-const pager = () => ({addEventListener:function(_, fn){this.click=fn;}});
-const prev=pager(), next=pager(), pageStatus={};
-const nodes = {'[data-page-prev]':prev,'[data-page-next]':next,'[data-page-status]':pageStatus,'[data-total]':total,'[data-person]':person,'[data-budget-notice]':notice,'[data-budget-filter]':filter,'[data-budget-sort]':sort,'[data-ledger]':body,'[data-budget-reset]':{addEventListener:(_,fn)=>reset=fn}};
-const fakeWorkspace = {dataset:{travelers:'2'},querySelector:s=>nodes[s],querySelectorAll:s=>s.includes('tr')?rows:categories,addEventListener:(_,fn)=>update=fn};
+const nodes = {'[data-budget-limit]':limitInput,'[data-total]':total,'[data-person]':person,'[data-unknown]':notice,'[data-budget-filter]':filter,'[data-budget-sort]':sort,'[data-balance]':balance,'[data-balance-bar]':bar,'.budget-pending h3':pending,'[data-budget-reset]':{addEventListener:(_,fn)=>reset=fn}};
+const fakeWorkspace = {dataset:{travelers:'2',limit:'300'},querySelector:s=>nodes[s],querySelectorAll:s=>s.includes('tr[')?rows:s==='[data-ledger]'?[body]:s.includes('category-total')?categories:s==='[data-segment]'?[segment]:[],addEventListener:(name,fn)=>{events[name]=fn;if(name==='change')update=fn;}};
 global.document = {querySelector:()=>fakeWorkspace,querySelectorAll:()=>[]};
 '''
     checks = r'''
-update();assert.equal(total.textContent,'¥0.30');assert.equal(person.textContent,'¥0.15');
-filter.value='景点门票';update();assert.equal(total.textContent,'¥0.30');assert.equal(rows[1].hidden,true);
-rows[1].check.checked=false;update();assert.equal(total.textContent,'¥0.10');
-rows[0].input.value='1e2';update();assert.equal(total.textContent,'待核实');
-rows[0].input.value='12.34';sort.value='desc';update();assert.equal(total.textContent,'¥12.34');
-reset();assert.equal(total.textContent,'¥0.30');assert.equal(filter.value,'');
+update();assert.equal(total.textContent,'¥0.30');assert.equal(person.textContent,'¥0.15');assert.equal(balance.textContent,'¥2.70');
+filter.value='景点门票';update();assert.equal(total.textContent,'¥0.30');assert.equal(rows.find(r=>r.dataset.category==='综合费用').hidden,true);
+const other=rows.find(r=>r.dataset.category==='综合费用'), ticket=rows.find(r=>r.dataset.category==='景点门票'), unknown=rows.find(r=>r.dataset.category==='餐饮费用');
+other.check.checked=false;update();assert.equal(total.textContent,'¥0.10');
+ticket.input.value='1e2';update();assert.equal(total.textContent,'待核实');
+ticket.input.value='12.34';sort.value='desc';update();assert.equal(total.textContent,'¥12.34');assert.equal(balance.textContent,'¥-9.34');assert.equal(rows[0],ticket);
+unknown.input.value='10.00';unknown.check.checked=true;update();assert.equal(total.textContent,'¥22.34');assert.equal(notice.textContent,'0 项待核实');
+const beforeMoves=moves;
+ticket.input.value='2.00';events.input({target:{matches:()=>true}});
+assert.equal(total.textContent,'¥12.00');assert.equal(moves,beforeMoves);assert.equal(segment.style.flexGrow,200);assert.equal(segmentLabel.textContent,'¥2.00');
+limitInput.value='20.00';events.input({target:{matches:()=>true}});
+assert.equal(balance.textContent,'¥8.00');assert.equal(bar.style.flexGrow,800);assert.equal(barLabel.textContent,'¥8.00');
+limitInput.value='';events.input({target:{matches:()=>true}});assert.equal(balance.textContent,'待确认');
+reset();assert.equal(limitInput.value,'3.00');assert.equal(total.textContent,'¥0.30');assert.equal(filter.value,'');assert.equal(unknown.check.checked,false);assert.equal(notice.textContent,'1 项待核实');
 '''
     subprocess.run(['node', '-e', stub + RESULT_JS + checks], check=True, capture_output=True, text=True)
-    pagination = r'''
-update();const before=total.textContent;
-assert.equal(rows.filter(r=>!r.hidden).length,8);assert.equal(prev.disabled,true);
-next.click();assert.equal(rows.filter(r=>!r.hidden).length,4);assert.equal(total.textContent,before);assert.equal(next.disabled,true);
-filter.value='景点门票';update();assert.equal(rows.filter(r=>!r.hidden).length,1);assert.equal(total.textContent,before);
-
-'''
-    subprocess.run(['node', '-e', stub + "for(let i=3;i<12;i++) rows.push(row('交通费用',String(i),i));" + RESULT_JS + pagination], check=True, capture_output=True, text=True)
 
 
 def test_carousel_controls_and_compact_expense_description():
@@ -131,7 +134,8 @@ def test_carousel_controls_and_compact_expense_description():
     description = 'other_cost 600 元 = 住宿；' + '费用构成与估算依据。' * 30 + '<script>alert(1)</script>'
     html = budget_panel({'travelers': 2, 'ledger': [{'category': '综合费用', 'day': None,
                         'name': description, 'amount': 600, 'status': '估算'}]}, [], escape)
-    assert '<td>其他综合费用<details class="expense-explanation">' in html
+    assert '<td>其他综合费用<small>估算</small>' in html
+    assert '<details class="expense-explanation">' in html
     assert '<summary>费用说明</summary>' in html
     assert 'other_cost' not in html and '&lt;script&gt;' in html
     assert 'data-total>¥600.00' in html
@@ -166,8 +170,9 @@ def test_structured_other_expenses_validation_and_display():
     assert [r['amount'] for r in ledger[1:]] == [1600,600]
     assert sum(r['amount'] or 0 for r in ledger) == 2200
     html = render_guide(guide)
-    assert html.index('data-order="1"') < html.index('data-order="2"') < html.index('data-order="0"')
-    assert 'value="desc" selected' in html and '费用明细分页' in html
+    assert 'data-card="酒店住宿"' in html and 'data-card="交通费用"' in html
+    assert all(f'data-order="{i}"' in html for i in range(3))
+    assert 'value="desc" selected' in html and 'class="budget-cards"' in html
     plan['other_cost_items'][0]['amount'] = 1700
     with pytest.raises(ValueError, match='分项之和'):
         Itinerary.model_validate(plan)
