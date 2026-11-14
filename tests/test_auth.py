@@ -44,7 +44,7 @@ def register(app, client, username='alice', code=None):
 def test_all_business_routes_require_login(protected):
     app, client = protected
     for route in app.routes:
-        if route.path in ('/', '/guides', '/login', '/health', '/assets/library.js', '/assets/library.css', '/assets/auth.js', '/assets/markdown.js', '/assets/theme.css', '/auth/register', '/auth/login'):
+        if route.path in ('/', '/guides', '/login', '/health', '/assets/library.js', '/assets/library.css', '/assets/auth.js', '/assets/markdown.js', '/assets/theme.css', '/assets/back-to-top.js', '/auth/register', '/auth/login'):
             continue
         path = route.path.replace('{session_id}', 'private').replace('{message_id}', 'a' * 32).replace('{version}', '1')
         for method in route.methods:
@@ -71,6 +71,10 @@ def test_brand_assets_are_public_but_do_not_expose_other_files(protected):
     stylesheet = client.get('/assets/theme.css')
     assert stylesheet.status_code == 200
     assert stylesheet.headers['content-type'].startswith('text/css')
+    script = client.get('/assets/back-to-top.js')
+    assert script.status_code == 200
+    assert script.headers['content-type'].startswith('text/javascript')
+    assert '返回顶部' in script.text
     assert client.get('/assets/visual/.env').status_code == 401
     assert client.get('/assets/visual/auth.py').status_code == 401
     register(*protected)

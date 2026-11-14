@@ -1,5 +1,6 @@
 """Accessible result navigation and local interactions over the frozen guide."""
 import re
+from pathlib import Path
 from math import isfinite
 from decimal import Decimal
 from urllib.parse import urlencode
@@ -237,4 +238,5 @@ RESULT_CSS += PITFALL_CSS
 RESULT_JS += CAROUSEL_JS
 RESULT_JS += FOOD_JS
 RESULT_JS += PREPARATION_JS
+RESULT_JS += Path(__file__).with_name('back-to-top.js').read_text(encoding='utf-8')
 RESULT_SCRIPT_HASH = b64encode(sha256(RESULT_JS.encode('utf-8')).digest()).decode('ascii')

@@ -186,6 +186,10 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
     def theme_stylesheet():
         return FileResponse(Path(__file__).with_name("theme.css"), media_type="text/css")
 
+    @app.get('/assets/back-to-top.js', include_in_schema=False)
+    def back_to_top_script():
+        return FileResponse(Path(__file__).with_name('back-to-top.js'), media_type='text/javascript')
+
     @app.get("/assets/visual/{filename}", include_in_schema=False)
     def visual_asset(filename: Literal["companion.webp", "coast.webp", "mountains.webp", "town.webp", "icon.webp", "lodging-room.webp", "lodging-city.webp", "lodging-canal.webp", "food-reference.png", "hotel-room.webp"]):
         return FileResponse(Path(__file__).with_name("images") / filename, media_type="image/png" if filename.endswith('.png') else "image/webp")
