@@ -37,7 +37,7 @@ def detail_page(document, item, versions, current):
         <h2>方案版本</h2><label>选择查看版本<select id="guide-version" aria-label="选择攻略版本">{options}</select></label>
         <ol>{timeline}</ol><p>旧版本独立保留。继续调整会生成新版本。</p>
         <a class="back-library" href="/guides">← 返回我的攻略</a>
-        <p class="version-notice">出发前请再次核实票价与开放时间。预算修改后点击保存，可在本版本中再次查看并导出。</p>
+        <p class="version-notice">出发前请再次核实票价与开放时间。预算修改后自动保存，可在本版本中再次查看并导出。</p>
       </aside></div>'''
     template = Path(__file__).with_name('library.html').read_text(encoding='utf-8')
     start, tail = template.split('<!-- BODY_START -->', 1)
