@@ -202,11 +202,13 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
 
     @app.get('/api/places/photo')
     def place_photo(request: Request, city: Annotated[str, Query(min_length=1, max_length=80)],
-                    place: Annotated[str, Query(min_length=1, max_length=120)]):
+                    place: Annotated[str, Query(min_length=1, max_length=120)],
+                    category: Literal['place', 'food'] = 'place'):
         from travelmate.place_photos import get_photo
         if auth_enabled:
             app.state.accounts.throttle('photos:' + request.state.user['id'], 20, 60)
-        photo = get_photo(city.strip(), place.strip())
+        photo = (get_photo(city.strip(), place.strip(), category='food') if category == 'food'
+                 else get_photo(city.strip(), place.strip()))
         if not photo:
             return Response(status_code=404, headers={'Cache-Control': 'private, max-age=600'})
         return Response(photo[0], media_type=photo[1], headers={

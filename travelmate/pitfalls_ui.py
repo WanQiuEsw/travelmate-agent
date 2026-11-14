@@ -8,6 +8,7 @@ def specific_items(guide, sections):
     days = [section for section, _ in sections if section['kind'] == 'day']
     destination = guide.get('result', {}).get('destination') or guide['title'].split(' · ')[0].split(' → ')[-1]
     names = [destination] + [row[1] for _, _, row in highlight_stops(days)]
+    names += [row[0] for section, _ in sections if section['kind'] == 'food' for row in section.get('rows', []) if row]
     seen, saved = set(), []
     for section, _ in sections:
         if section['kind'] != 'pitfalls':

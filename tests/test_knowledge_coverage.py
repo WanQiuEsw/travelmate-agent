@@ -16,19 +16,19 @@ from test_planner import Model
 def test_unusable_rows_leave_gaps(row):
     result = knowledge_coverage({'results': [row]}, {'destination': '杭州'})
     assert result['accepted_results'] == []
-    assert result['missing'] == ['游览路线与景点', '特色美食']
+    assert result['missing'] == ['游览路线与景点', '特色美食', '避坑指南']
 
 
 def test_short_relevant_content_and_partial_coverage():
     data = {'results': [{'source': '杭州', 'content': '游览西湖，顺路吃当地小吃。', 'score': 0.01}]}
     req = {'destination': '杭州', 'interests': ['博物馆'], 'preferences': '少走路'}
     result = knowledge_coverage(data, req)
-    assert result['missing'] == ['博物馆', '少走路']
+    assert result['missing'] == ['避坑指南', '博物馆', '少走路']
     assert result['accepted_results'] == [0]
     assert result['queried_at']
 
 
-@pytest.mark.parametrize('content,needs_gap', [('杭州游览西湖，品尝美食。', False), ('北京旅游攻略' * 50, True)])
+@pytest.mark.parametrize('content,needs_gap', [('杭州游览西湖，品尝美食。西湖避坑指南。', False), ('北京旅游攻略' * 50, True)])
 def test_planner_only_searches_gaps_and_always_checks_dynamic_rules(tmp_path, monkeypatch, content, needs_gap):
     import travelmate.agent as agent_module
     calls = []

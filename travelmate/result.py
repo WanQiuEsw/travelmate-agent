@@ -5,7 +5,7 @@ from decimal import Decimal
 from urllib.parse import urlencode
 
 from travelmate.daily_ui import CSS as DAILY_CSS, day_cards
-from travelmate.food_ui import CSS as FOOD_CSS, panel as food_panel
+from travelmate.food_ui import CSS as FOOD_CSS, FOOD_JS, panel as food_panel
 from travelmate.weather_ui import WEATHER_CSS, weather_panel
 from travelmate.lodging_ui import CSS as LODGING_CSS, lodging_cards
 from travelmate.carousel import CAROUSEL_CSS, CAROUSEL_JS, coverflow
@@ -103,7 +103,8 @@ def result_panels(guide, sections, text, inline_images=False, actions=""):
         groups[key].insert(0, ('<span class="lodging-eyebrow">01 / 片区优先</span>' if key == 'lodging' else '') + '<header class="daily-heading"><h2>' + title + '</h2><p>' + description + '</p></header>')
         if len(groups[key]) == 1:
             groups[key].append('<p class="daily-empty">' + empty + '</p>')
-    groups['food'] = [food_panel([s for s, _ in sections if s['kind'] == 'food'], days, text, inline_images)]
+    groups['food'] = [food_panel([s for s, _ in sections if s['kind'] == 'food'], days, text, inline_images,
+                                 city=meta.get('destination', '') or guide['title'].split(' · ')[0].split(' → ')[-1])]
     groups['pitfalls'] = [pitfalls_panel(guide, sections, text, inline_images)]
     if not days:
         groups['days'].append('<p class="daily-empty">暂无每日行程，请返回对话补充安排。</p>')
@@ -234,5 +235,6 @@ if (resultNav) {
 RESULT_JS += BUDGET_JS
 RESULT_CSS += PITFALL_CSS
 RESULT_JS += CAROUSEL_JS
+RESULT_JS += FOOD_JS
 RESULT_JS += PREPARATION_JS
 RESULT_SCRIPT_HASH = b64encode(sha256(RESULT_JS.encode('utf-8')).digest()).decode('ascii')

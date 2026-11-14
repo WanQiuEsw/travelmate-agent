@@ -199,10 +199,11 @@ def test_planner_xhs_first_bailian_gap_and_export(tmp_path, monkeypatch, mode):
     def search_xiaohongshu(query: str, city: str) -> dict:
         """Offline XHS fixture."""
         calls.append('xhs')
+        assert ('特色美食' if calls.count('xhs') == 1 else '旅游避坑') in query
         if mode == 'failed':
             return {'error': 'login_or_risk_control', 'results': []}
         return {'results': [{'title': '杭州旅行笔记', 'city': city,
-            'content': '杭州西湖游览路线与美食' if mode == 'complete' else '杭州西湖游览路线',
+            'content': '杭州西湖游览路线与美食避坑' if mode == 'complete' else '杭州西湖游览路线',
             'published_at': datetime.now(timezone.utc).isoformat(), 'freshness': '近30天',
             'url': 'https://www.xiaohongshu.com/explore/' + 'a' * 24}]}
 
@@ -210,7 +211,8 @@ def test_planner_xhs_first_bailian_gap_and_export(tmp_path, monkeypatch, mode):
     def search_knowledge(query: str, city: str = '') -> dict:
         """Offline Bailian fixture."""
         calls.append('bailian')
-        return {'results': [{'source': '杭州攻略', 'content': '杭州游览路线与特色美食'}]}
+        assert '避坑指南' in query
+        return {'results': [{'source': '杭州攻略', 'content': '杭州游览路线与特色美食避坑指南'}]}
 
     monkeypatch.setattr(agent_module, 'search_xiaohongshu', search_xiaohongshu)
     monkeypatch.setattr(agent_module, 'create_knowledge_tool', lambda directory: search_knowledge)
@@ -218,7 +220,7 @@ def test_planner_xhs_first_bailian_gap_and_export(tmp_path, monkeypatch, mode):
         chat(agent, 'xhs', '规划杭州')
         state = get_workflow(agent, 'xhs')
         exported = guide_markdown(get_version(state, 1))
-    assert calls == (['xhs'] if mode == 'complete' else ['xhs', 'bailian'])
+    assert calls == (['xhs', 'bailian'] if mode == 'failed' else ['xhs', 'xhs', 'bailian'])
     if mode != 'failed':
         assert '小红书' in exported and '发布时间' in exported
         assert 'https://www.xiaohongshu.com/explore/' in exported

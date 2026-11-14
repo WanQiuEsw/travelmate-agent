@@ -25,3 +25,9 @@ def test_pitfall_export_embeds_assets_without_inventing_destination_facts():
     assert '西湖' not in html and '杭州' not in html
     assert '通用出行建议' not in html
     assert '本版暂无目的地专属避坑信息' in html
+
+
+def test_food_specific_pitfall_is_not_discarded():
+    sections = [({'kind': 'food', 'rows': [['牛肉丸']]}, ''),
+                ({'kind': 'pitfalls', 'items': [{'text': '⚠ 牛肉丸社区反馈排队较久，建议错峰或在同片区替换。'}]}, '')]
+    assert '建议错峰' in panel({'title': '汕头'}, sections, escape)

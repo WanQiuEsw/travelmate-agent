@@ -117,7 +117,7 @@ def test_planning_allowances_add_to_budget_and_do_not_invent_quotes_or_ignored_c
 
 
 def test_knowledge_coverage_skips_duplicate_guides_but_checks_dynamic_rules(tmp_path, monkeypatch):
-    (tmp_path / '杭州.md').write_text('杭州西湖游览路线与当地美食片儿川面馆，' * 20, encoding='utf-8')
+    (tmp_path / '杭州.md').write_text('杭州西湖游览路线与当地美食片儿川面馆，西湖避坑指南：排队过长可错峰游览。' * 20, encoding='utf-8')
     import travelmate.agent as module
     queries = []
 
