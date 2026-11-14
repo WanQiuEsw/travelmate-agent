@@ -27,6 +27,7 @@ from travelmate.auth import CITY_VISUALS, install_auth, require_access
 from travelmate import asr, watch
 from travelmate.tools import search_places, search_web
 from travelmate.preparation import overlay
+from travelmate import library
 
 
 class ChatRequest(BaseModel):
@@ -61,6 +62,11 @@ class SessionPin(SessionSelection):
 
 class SessionRename(BaseModel):
     title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
+
+
+class GuideFavorite(BaseModel):
+    favorite: bool | None = Field(default=None, strict=True)
+    title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)] | None = None
 
 
 class PreparationItem(BaseModel):
@@ -107,6 +113,12 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
                 if not database:
                     raise ValueError('邀请登录需要持久化 SQLite 数据库')
                 app.state.accounts = Accounts(database)
+            library.initialize(agent)
+            owners = None
+            if auth_enabled:
+                with app.state.accounts.connect() as conn:
+                    owners = dict(conn.execute('SELECT session_id, user_id FROM auth_owners').fetchall())
+            library.migrate(agent, owners)
             stop = Event()
             app.state.watch_stop = stop
             watch.start_scheduler(agent, lock, watch_tools, stop)
@@ -143,6 +155,16 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
     def finish_generation(session_id):
         generating.pop(session_id, None)
         lock.release()
+
+    def archive_session(session_id):
+        owner = 'local'
+        if auth_enabled:
+            with app.state.accounts.connect() as conn:
+                row = conn.execute('SELECT user_id FROM auth_owners WHERE session_id=?', (session_id,)).fetchone()
+            if not row:
+                return
+            owner = row[0]
+        library.sync_session(app.state.agent, session_id, owner)
 
     @contextmanager
     def generation_lock(session_id, message, user):
@@ -221,6 +243,7 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
             with generation_lock(request.session_id, request.message, http_request.state.user):
                 reply = chat_reply(app.state.agent, request.session_id, request.message,
                                    **({"interaction_response": request.interaction_response.model_dump()} if request.interaction_response else {}))
+                archive_session(request.session_id)
             return ChatResponse(session_id=request.session_id, **reply)
         except HTTPException:
             raise
@@ -235,12 +258,15 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
         if auth_enabled:
             app.state.accounts.check_sessions(http_request.state.user['id'], request.session_ids)
         with trip_lock():
+            for session_id in request.session_ids:
+                archive_session(session_id)
             delete_sessions(app.state.agent, request.session_ids)
         return {"deleted": list(dict.fromkeys(request.session_ids))}
 
     @app.delete("/sessions/{session_id}")
     def remove_session(session_id: SessionId):
         with trip_lock():
+            archive_session(session_id)
             delete_sessions(app.state.agent, [session_id])
         return {"deleted": [session_id]}
 
@@ -323,11 +349,12 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
                 versions = list(state.get("versions", []))
                 if not versions:
                     versions.append({"version": 1, "plan": state["plan"], "requirements": state.get("plan_requirements", state["requirements"]), "total": state.get("total")})
-                version = len(versions) + 1
+                version = max((v['version'] for v in versions), default=0) + 1
                 versions.append({"version": version, "plan": data, "requirements": state["requirements"], "total": total})
                 state = {**state, "plan": data, "plan_requirements": state["requirements"], "versions": versions,
                          "version": version, "issues": [], "total": total, "status": "review"}
             save_workflow(app.state.agent, session_id, state)
+            archive_session(session_id)
             return state
 
     @app.post("/sessions/{session_id}/trip/confirm")
@@ -342,6 +369,7 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
                 raise HTTPException(409, "行程未通过校验")
             state = {**state, "status": "confirmed", "total": total}
             save_workflow(app.state.agent, session_id, state)
+            archive_session(session_id)
             return state
 
     def load_guide(session_id, version):
@@ -367,10 +395,17 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
             saved = {'revision': current['revision'] + 1, 'items': [item.model_dump() for item in data.items]}
             state['preparation_lists'] = {**state.get('preparation_lists', {}), str(version): saved}
             save_workflow(app.state.agent, session_id, state)
+            archive_session(session_id)
             return saved
 
     @app.get("/sessions/{session_id}/plans/{version}")
-    def preview(session_id: SessionId, version: Annotated[int, PathParam(ge=1)]):
+    def preview(session_id: SessionId, version: Annotated[int, PathParam(ge=1)], http_request: Request,
+                library_view: bool = False):
+        if library_view:
+            with app.state.agent.checkpointer.cursor() as cur:
+                row = cur.execute('SELECT id FROM guide_library WHERE session_id=? AND deleted=0', (session_id,)).fetchone()
+            if row:
+                return library_preview(row[0], version, http_request)
         guide = load_guide(session_id, version)
         guide['_preparation_url'] = f'/sessions/{session_id}/plans/{version}/preparation'
         return HTMLResponse(render_guide(guide, f"/sessions/{session_id}/plans/{version}/pdf"),
@@ -424,6 +459,8 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
                 publish("status", {"text": "正在理解你的旅行需求…"})
                 for event, data in stream_chat(app.state.agent, request.session_id, request.message,
                                               **({"interaction_response": request.interaction_response.model_dump()} if request.interaction_response else {})):
+                    if event == 'done':
+                        archive_session(request.session_id)
                     publish(event, data)
             except Exception:
                 logging.getLogger(__name__).warning("Agent stream failed")
@@ -454,6 +491,136 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
 
         return StreamingResponse(events(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    GuideId = Annotated[str, PathParam(pattern=r'^[a-f0-9]{32}$')]
+    Version = Annotated[int, PathParam(ge=1)]
+
+    def owned_guide(request, guide_id):
+        owner = request.state.user['id'] if auth_enabled else 'local'
+        return library.owned(app.state.agent, guide_id, owner)
+
+    @app.get('/guides', include_in_schema=False)
+    def guide_library_page():
+        return FileResponse(Path(__file__).with_name('library.html'))
+
+    @app.get('/assets/library.css', include_in_schema=False)
+    def library_styles():
+        return FileResponse(Path(__file__).with_name('library.css'), media_type='text/css')
+
+    @app.get('/assets/library.js', include_in_schema=False)
+    def library_script():
+        return FileResponse(Path(__file__).with_name('library.js'), media_type='text/javascript')
+
+    @app.get('/api/guides')
+    def guide_library_list(request: Request):
+        owner = request.state.user['id'] if auth_enabled else 'local'
+        return {'guides': library.listing(app.state.agent, owner)}
+
+    @app.patch('/api/guides/{guide_id}')
+    def update_library_guide(guide_id: GuideId, data: GuideFavorite, request: Request):
+        with trip_lock():
+            item = owned_guide(request, guide_id)
+            with app.state.agent.checkpointer.cursor() as cur:
+                if data.favorite is not None:
+                    cur.execute('UPDATE guide_library SET favorite=? WHERE id=?', (data.favorite, guide_id))
+                if data.title is not None:
+                    meta = json.loads(cur.execute('SELECT metadata FROM guide_library WHERE id=?', (guide_id,)).fetchone()[0])
+                    meta['title'] = data.title
+                    meta['custom_title'] = data.title
+                    cur.execute('UPDATE guide_library SET metadata=? WHERE id=?', (json.dumps(meta, ensure_ascii=False), guide_id))
+            return owned_guide(request, item['id'])
+
+    @app.delete('/api/guides/{guide_id}')
+    def delete_library_guide(guide_id: GuideId, request: Request):
+        with trip_lock():
+            owned_guide(request, guide_id)
+            library.remove(app.state.agent, guide_id)
+        return {'deleted': guide_id}
+
+    @app.post('/api/guides/{guide_id}/resume')
+    def resume_library_guide(guide_id: GuideId, request: Request):
+        from langchain_core.messages import AIMessage
+        with trip_lock():
+            item = owned_guide(request, guide_id)
+            session_id = item['session_id']
+            values = app.state.agent.get_state({'configurable': {'thread_id': session_id}}).values
+            state = get_workflow(app.state.agent, session_id)
+            completed_node = 'present' if 'present' in app.state.agent.nodes else 'model'
+            if not state.get('versions'):
+                snapshots, preparation = [], {}
+                for row in reversed(library.versions(app.state.agent, guide_id)):
+                    snapshot, guide = library.load(app.state.agent, guide_id, row['version'])
+                    snapshots.append(snapshot)
+                    preparation[str(row['version'])] = guide['preparation']
+                latest = snapshots[-1]
+                state = {'requirements': latest['requirements'], 'plan_requirements': latest['requirements'],
+                         'plan': latest['plan'], 'total': latest.get('total'), 'version': latest['version'],
+                         'versions': snapshots, 'status': 'confirmed', 'preparation_lists': preparation}
+                app.state.agent.update_state({'configurable': {'thread_id': session_id}}, {
+                    'workflow': state, 'evidence': latest.get('evidence', {}),
+                    'messages': [AIMessage(content='已从我的攻略恢复方案，可以继续提出调整需求。',
+                                           additional_kwargs={'plan_version': latest['version']})]}, as_node=completed_node)
+            elif not values.get('messages'):
+                app.state.agent.update_state({'configurable': {'thread_id': session_id}}, {
+                    'messages': [AIMessage(content='已打开保存的旅行方案，可以继续提出调整需求。',
+                                           additional_kwargs={'plan_version': item['latest']})]}, as_node=completed_node)
+            # Resume the saved plan rather than a pending task left by an interrupted run.
+            config = {'configurable': {'thread_id': session_id}}
+            if app.state.agent.get_state(config).next:
+                app.state.agent.update_state(config, None, as_node='__end__')
+        return {'session_id': session_id}
+
+    def library_preview(guide_id, version, request):
+        from travelmate.library_ui import detail_page
+        with trip_lock():
+            item = owned_guide(request, guide_id)
+            version = version or item['latest']
+            _, guide = library.load(app.state.agent, guide_id, version)
+            guide['_preparation_url'] = f'/api/guides/{guide_id}/versions/{version}/preparation'
+            document = render_guide(guide, f'/api/guides/{guide_id}/versions/{version}/pdf')
+            return HTMLResponse(detail_page(document, item, library.versions(app.state.agent, guide_id), version),
+                                headers={'Cache-Control': 'no-store'})
+
+    @app.get('/guides/{guide_id}', include_in_schema=False)
+    def library_latest(guide_id: GuideId, request: Request):
+        return library_preview(guide_id, None, request)
+
+    @app.get('/guides/{guide_id}/versions/{version}', include_in_schema=False)
+    def library_version(guide_id: GuideId, version: Version, request: Request):
+        return library_preview(guide_id, version, request)
+
+    @app.get('/api/guides/{guide_id}/versions/{version}/preparation')
+    def library_preparation(guide_id: GuideId, version: Version, request: Request):
+        with trip_lock():
+            owned_guide(request, guide_id)
+            return library.load(app.state.agent, guide_id, version)[1]['preparation']
+
+    @app.put('/api/guides/{guide_id}/versions/{version}/preparation')
+    def save_library_preparation(guide_id: GuideId, version: Version, data: PreparationUpdate, request: Request):
+        with trip_lock():
+            item = owned_guide(request, guide_id)
+            current = library.load(app.state.agent, guide_id, version)[1]['preparation']
+            if data.revision != current['revision']:
+                raise HTTPException(409, '清单已更新，请刷新后重新编辑')
+            saved = {'revision': current['revision'] + 1, 'items': [i.model_dump() for i in data.items]}
+            state = get_workflow(app.state.agent, item['session_id'])
+            if state.get('versions'):
+                state['preparation_lists'] = {**state.get('preparation_lists', {}), str(version): saved}
+                save_workflow(app.state.agent, item['session_id'], state)
+            with app.state.agent.checkpointer.cursor() as cur:
+                cur.execute('UPDATE guide_versions SET preparation=? WHERE guide_id=? AND version=?',
+                            (json.dumps(saved, ensure_ascii=False), guide_id, version))
+            return saved
+
+    @app.get('/api/guides/{guide_id}/versions/{version}/{format}')
+    def library_export(guide_id: GuideId, version: Version, format: Literal['pdf', 'md', 'html'], request: Request):
+        with trip_lock():
+            owned_guide(request, guide_id)
+            _, guide = library.load(app.state.agent, guide_id, version)
+        content = guide_pdf(guide) if format == 'pdf' else guide_markdown(guide) if format == 'md' else render_guide(guide)
+        media = {'pdf': 'application/pdf', 'md': 'text/markdown', 'html': 'text/html'}[format]
+        return Response(content, media_type=media, headers={
+            'Cache-Control': 'no-store', 'Content-Disposition': f'attachment; filename="travelmate-v{version}.{format}"'})
 
     return app
 

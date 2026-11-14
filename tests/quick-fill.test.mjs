@@ -56,7 +56,11 @@ function setup(fetch = async () => ({ok: true, json: async () => ({results: [], 
     dataset: {tripIdea: match[1]}, handlers: {},
     addEventListener(name, handler) { this.handlers[name] = handler; },
   }));
-  vm.runInNewContext(source, {document: {querySelector: id => elements[id.slice(1)], querySelectorAll: () => elements.cards, createElement: element}, Event, fetch});
+  elements.themes = [...html.matchAll(/data-trip-theme="([^"]+)"/g)].map(match => ({
+    dataset: {tripTheme: match[1]}, handlers: {},
+    addEventListener(name, handler) { this.handlers[name] = handler; },
+  }));
+  vm.runInNewContext(source, {document: {querySelector: id => elements[id.slice(1)], querySelectorAll: selector => selector === '[data-trip-theme]' ? elements.themes : elements.cards, createElement: element}, Event, fetch});
   return elements;
 }
 function next(e) { e['trip-form'].handlers.submit({preventDefault() {}}); }
@@ -75,6 +79,20 @@ test('travel inspiration fills editable drafts without sending or changing a bus
   e.input.value = '正在生成，保留草稿';
   e.cards[0].handlers.click();
   assert.equal(e.input.value, '正在生成，保留草稿');
+});
+
+test('travel themes fill drafts and leave a busy draft untouched', () => {
+  const e = setup();
+  assert.equal(e.themes.length, 3);
+  for (const chip of e.themes) {
+    chip.handlers.click();
+    assert.equal(e.input.value, chip.dataset.tripTheme);
+    assert.equal(e.form.submissions.length, 0);
+  }
+  e.send.disabled = true;
+  e.input.value = '保留正在编辑的需求';
+  e.themes[0].handlers.click();
+  assert.equal(e.input.value, '保留正在编辑的需求');
 });
 
 test('wizard gates later steps and waits for final confirmation', () => {

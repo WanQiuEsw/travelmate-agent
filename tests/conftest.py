@@ -2,6 +2,14 @@
 import pytest
 
 
+@pytest.fixture
+def stored_agent(tmp_path):
+    from travelmate.agent import open_agent
+    from test_travelmate import BudgetModel
+    with open_agent(legacy_tool_loop=True, model=BudgetModel(), database=tmp_path / 'app.sqlite') as agent:
+        yield agent
+
+
 @pytest.fixture(autouse=True)
 def isolated_configuration(monkeypatch):
     monkeypatch.setattr("travelmate.agent.load_dotenv", lambda: None)

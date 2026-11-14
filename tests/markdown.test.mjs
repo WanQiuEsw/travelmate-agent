@@ -353,7 +353,7 @@ for (const outcome of ['answer', 'guide', 'error', 'generation failure']) {
     if (guide) {
       assert.ok(elements.messages.textContent.includes('旅行攻略已整理完成'));
       assert.deepEqual(nodes(elements.messages).map(node => node.href).filter(href => href?.startsWith('/sessions/')),
-        ['/sessions/trip/plans/2', '/sessions/trip/plans/2/pdf', '/sessions/trip/plans/2/md', '/sessions/trip/plans/2/html']);
+        ['/sessions/trip/plans/2?library_view=true', '/sessions/trip/plans/2/pdf', '/sessions/trip/plans/2/md', '/sessions/trip/plans/2/html']);
       assert.equal(elements.input.value, '');
     } else if (success) {
       assert.equal(nodes(elements.messages).filter(node => node.className === 'export-pdf').length, 1);
@@ -426,6 +426,61 @@ test('sidebar loads a conversation and new chat clears messages and selection', 
   assert.equal(elements.sidebar.open, false);
 });
 
+
+test('homepage journal uses real history, safe titles and only completed guide versions', async () => {
+  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history', 'sidebar', 'journal-content']
+    .map(id => [id, new Node('div')]));
+  let fail = false;
+  const context = vm.createContext({
+    setTimeout, clearTimeout,
+    document: {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []},
+    renderMarkdown, crypto: {randomUUID: () => 'new-session'},
+    localStorage: {getItem: () => 'old-session', setItem() {}},
+    fetch: async () => ({ok: !fail, json: async () => ({messages: [
+      {role: 'assistant', plan_version: 2},
+      {role: 'assistant', plan_version: 3, generation_failed: true},
+      {role: 'user', plan_version: 4},
+    ]})}),
+  });
+  vm.runInContext(appSource, context);
+  await vm.runInContext('renderJournal([])', context);
+  assert.match(elements['journal-content'].textContent, /从这里开始/);
+  assert.equal(nodes(elements['journal-content']).filter(n => n.tagName === 'A').length, 0);
+  await vm.runInContext('renderJournal([{session_id: "trip-one", title: "杭州<script>"}])', context);
+  const card = elements['journal-content'];
+  assert.equal(nodes(card).find(n => n.tagName === 'H3').textContent, '杭州<script>');
+  assert.equal(nodes(card).some(n => n.tagName === 'SCRIPT'), false);
+  assert.equal(nodes(card).find(n => n.tagName === 'IMG').src, '/assets/visual/cities/hangzhou.webp');
+  assert.equal(nodes(card).find(n => n.tagName === 'A').href, '/sessions/trip-one/plans/2');
+  assert.equal(nodes(card).find(n => n.tagName === 'A').hidden, false);
+  vm.runInContext('busy = true', context);
+  await nodes(card).find(n => n.tagName === 'BUTTON').handlers.click();
+  assert.equal(elements.messages.children.length, 0);
+  fail = true;
+  await vm.runInContext('renderJournal([{session_id: "missing", title: "尚未完成的旅程"}])', context);
+  assert.equal(nodes(card).find(n => n.tagName === 'A').hidden, true);
+  assert.ok(nodes(card).find(n => n.tagName === 'BUTTON'));
+});
+
+test('journal ignores late responses after history is cleared', async () => {
+  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history', 'journal-content']
+    .map(id => [id, new Node('div')]));
+  let resolve;
+  const context = vm.createContext({
+    setTimeout, clearTimeout,
+    document: {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []},
+    renderMarkdown, crypto: {randomUUID: () => 'new-session'},
+    localStorage: {getItem: () => null, setItem() {}},
+    fetch: () => new Promise(done => { resolve = done; }),
+  });
+  vm.runInContext(appSource, context);
+  const loading = vm.runInContext('renderJournal([{session_id: "deleted", title: "旧行程"}])', context);
+  await vm.runInContext('renderJournal([])', context);
+  resolve({ok: true, json: async () => ({messages: [{role: 'assistant', plan_version: 1}]})});
+  await loading;
+  assert.match(elements['journal-content'].textContent, /从这里开始/);
+  assert.equal(nodes(elements['journal-content']).some(n => n.tagName === 'A'), false);
+});
 
 test('closing advice and later headings stay outside collapsed references', () => {
   for (const ending of ['如需把交通改成飞机，告诉我即可调整。', '## 温馨提示\n出行前核实开放时间。']) {
@@ -614,8 +669,8 @@ test('guide links bind to completed answer version and original session', async 
     addExport(appendMessage('TravelMate', '新攻略'), 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', session, 2);`, context);
   const links = nodes(elements.messages).filter(node => node.tagName === 'A');
   assert.deepEqual(links.map(node => node.href), [
-    '/sessions/trip-old/plans/1', '/sessions/trip-old/plans/1/pdf', '/sessions/trip-old/plans/1/md', '/sessions/trip-old/plans/1/html',
-    '/sessions/trip-new/plans/2', '/sessions/trip-new/plans/2/pdf', '/sessions/trip-new/plans/2/md', '/sessions/trip-new/plans/2/html',
+    '/sessions/trip-old/plans/1?library_view=true', '/sessions/trip-old/plans/1/pdf', '/sessions/trip-old/plans/1/md', '/sessions/trip-old/plans/1/html', '/guides',
+    '/sessions/trip-new/plans/2?library_view=true', '/sessions/trip-new/plans/2/pdf', '/sessions/trip-new/plans/2/md', '/sessions/trip-new/plans/2/html', '/guides',
   ]);
   assert.equal(links[0].textContent, '查看图文攻略');
   assert.equal(links[0].target, '_blank');
@@ -628,6 +683,7 @@ test('reload polls an active session even before it appears in history', async (
   let generating = true;
   let ticks = 0;
   const context = vm.createContext({
+    URLSearchParams, window: {location: {search: ''}},
     document: {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []},
     renderMarkdown, crypto: {randomUUID: () => 'new-session'}, localStorage: {getItem: () => 'pending', setItem() {}},
     setInterval() { ticks++; return ticks; }, clearInterval() { ticks--; },

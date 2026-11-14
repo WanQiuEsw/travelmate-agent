@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>我的攻略 · TravelMate</title>
+  <link rel="icon" href="/assets/visual/icon.webp">
+  <!-- GUIDE_STYLES -->
+  <link rel="stylesheet" href="/assets/theme.css"><link rel="stylesheet" href="/assets/library.css">
+</head>
+<body class="library-page">
+  <aside class="library-sidebar" aria-label="旅行导航">
+    <a class="library-brand" href="/"><img src="/assets/visual/icon.webp" width="44" height="44" alt=""><span><strong>TravelMate</strong><small>你的 AI 旅行搭子</small></span></a>
+    <a class="library-new" href="/?new=1">＋ 开启新的旅程</a>
+    <nav class="library-nav"><a href="/">↗ <span>智能规划</span></a><a href="/guides" aria-current="page">▤ <span>我的攻略</span></a></nav>
+    <p class="library-side-note">把行程、预算和旅途期待，<br>一起收进你的攻略。</p>
+    <div class="library-account"><img src="/assets/visual/companion.webp" width="36" height="36" alt=""><div><span id="account-name">旅行者</span><small id="account-quota"></small></div><button id="logout" type="button">退出登录</button></div>
+  </aside>
+  <header class="library-mobile-header"><a class="library-brand" href="/"><img src="/assets/visual/icon.webp" width="36" height="36" alt=""><strong>TravelMate</strong></a><img src="/assets/visual/companion.webp" width="36" height="36" alt="旅行搭子"><nav><a href="/">智能规划</a><a href="/guides" aria-current="page">我的攻略</a></nav></header>
+  <main class="library-main">
+    <!-- BODY_START -->
+    <div class="library-breadcrumb">旅行空间 <span>/</span> 我的攻略</div>
+    <header class="library-heading"><div><h1>我的攻略</h1><p>每一次向往，都值得好好收藏。</p></div><a class="library-new" href="/?new=1">＋ 规划新旅程</a></header>
+    <p class="library-count"><img src="/assets/visual/companion.webp" width="36" height="36" alt=""><span id="guide-count">正在寻找你的旅行攻略…</span></p>
+    <section class="library-tools" aria-label="查找攻略">
+      <div class="library-filters" role="group" aria-label="攻略筛选"><button id="filter-all" type="button" aria-pressed="true">全部攻略 <span>0</span></button><button id="filter-favorite" type="button" aria-pressed="false">已收藏 <span>0</span></button></div>
+      <label class="library-search"><span aria-hidden="true">⌕</span><input id="guide-search" type="search" placeholder="搜索目的地或攻略名称" aria-label="搜索目的地或攻略名称" maxlength="100"></label>
+      <label class="library-sort"><span class="sr-only">攻略排序</span><select id="guide-sort"><option value="updated">最近更新</option><option value="departure">出发日期</option></select></label>
+    </section>
+    <p id="library-status" class="library-status" role="status" aria-live="polite"></p>
+    <section id="guide-grid" class="guide-grid" aria-label="已保存的攻略" aria-busy="true"></section>
+    <footer class="library-footnote">攻略生成后自动保存 · 封面为旅行意境参考图</footer>
+    <div class="library-mobile-create"><a class="library-new" href="/?new=1">＋ 规划新旅程</a><small>攻略生成后，将自动保存在这里</small></div>
+    <!-- BODY_END -->
+  </main>
+  <script type="module" src="/assets/library.js"></script>
+</body>
+</html>

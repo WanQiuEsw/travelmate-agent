@@ -468,7 +468,7 @@ def build_planner(model, saver, knowledge, tools, prompt, review_model=None):
         versions = list(w.get("versions", []))
         if not versions and w.get("plan"):
             versions.append({"version": 1, "plan": w["plan"], "requirements": w.get("plan_requirements", w["requirements"]), "total": w.get("total")})
-        version = len(versions) + 1
+        version = max((v['version'] for v in versions), default=0) + 1
         versions.append({"version": version, "plan": state["candidate"], "requirements": w["requirements"],
                          "total": w["candidate_total"], "saved_at": datetime.now(timezone.utc).isoformat(),
                          "review": w.get("review", {}),
@@ -494,7 +494,7 @@ def build_planner(model, saver, knowledge, tools, prompt, review_model=None):
                          "（预算金额或包含范围、天数、目的地、出发地、交通方式）即可重新规划，也可以稍后重试。\n\n")
         else:
             title = " ".join(saved["guide"]["title"].splitlines())
-            text = f"{title}已整理完成。点击下方按钮查看图文攻略，支持导出 PDF、Markdown 和 HTML。"
+            text = f"{title}已整理完成，已自动保存到「我的攻略」。点击下方按钮查看图文攻略，支持导出 PDF、Markdown 和 HTML。"
         if w.get("degraded"):
             text = ("> 本次生成用时较长，已跳过部分自动复核，先给出当前方案；地点、票价、车次与营业时间请按官方渠道确认。\n\n"
                     + text)

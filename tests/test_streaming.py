@@ -57,14 +57,14 @@ def test_sse_real_tool_loop(tmp_path):
         assert len(client.get("/sessions/sse").json()["messages"]) == 4
 
 
-def test_sse_failure_is_sanitized():
-    class Broken:
-        def stream(self, *args, **kwargs):
-            raise RuntimeError("private-api-key")
+def test_sse_failure_is_sanitized(stored_agent, monkeypatch):
+    def broken(*args, **kwargs):
+        raise RuntimeError("private-api-key")
+    monkeypatch.setattr(stored_agent, 'stream', broken)
 
     @contextmanager
     def factory():
-        yield Broken()
+        yield stored_agent
 
     with TestClient(create_app(factory, auth_enabled=False)) as client:
         response = client.post("/chat/stream", json={"session_id": "bad", "message": "hi"})
