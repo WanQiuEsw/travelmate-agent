@@ -1,0 +1,2 @@
+# Preserve the pinned third-party source and its recorded SHA-256.
+travelmate/vendor/tripstar/xhs_xs_xsc_56.cjs -text -whitespace

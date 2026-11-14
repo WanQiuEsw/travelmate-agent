@@ -44,7 +44,7 @@ def register(app, client, username='alice', code=None):
 def test_all_business_routes_require_login(protected):
     app, client = protected
     for route in app.routes:
-        if route.path in ('/', '/login', '/health', '/assets/auth.js', '/assets/markdown.js', '/assets/theme.css', '/auth/register', '/auth/login'):
+        if route.path in ('/', '/guides', '/login', '/health', '/assets/library.js', '/assets/library.css', '/assets/auth.js', '/assets/markdown.js', '/assets/theme.css', '/auth/register', '/auth/login'):
             continue
         path = route.path.replace('{session_id}', 'private').replace('{message_id}', 'a' * 32).replace('{version}', '1')
         for method in route.methods:
@@ -295,7 +295,8 @@ def test_global_quota_expired_invite_and_disabled_user(protected):
     assert client.post('/auth/login', json={'username': 'alice', 'password': PASSWORD}).status_code == 401
 
 
-def test_expired_login_throttling_and_proxy_headers(protected):
+def test_expired_login_throttling_and_proxy_headers(protected, monkeypatch):
+    monkeypatch.setattr('travelmate.accounts.time', lambda: 1800000000.0)
     app, client = protected
     register(app, client)
     with app.state.accounts.connect() as conn:

@@ -107,14 +107,14 @@ def test_api(tmp_path):
         assert client.post("/chat", json={"session_id": "../bad", "message": "hi"}).status_code == 422
 
 
-def test_api_failure():
-    class BrokenAgent:
-        def invoke(self, *args):
-            raise RuntimeError("secret-token")
+def test_api_failure(stored_agent, monkeypatch):
+    def broken(*args):
+        raise RuntimeError("secret-token")
+    monkeypatch.setattr(stored_agent, 'invoke', broken)
 
     @contextmanager
     def factory():
-        yield BrokenAgent()
+        yield stored_agent
 
     with TestClient(create_app(factory, auth_enabled=False)) as client:
         response = client.post("/chat", json={"session_id": "demo", "message": "hi"})
@@ -122,7 +122,7 @@ def test_api_failure():
         assert "secret-token" not in response.text
 
 
-def test_trip_save_busy_returns_prompt_error(monkeypatch):
+def test_trip_save_busy_returns_prompt_error(monkeypatch, stored_agent):
     from concurrent.futures import ThreadPoolExecutor
     from threading import Event
     import travelmate.api as api
@@ -139,7 +139,7 @@ def test_trip_save_busy_returns_prompt_error(monkeypatch):
 
     @contextmanager
     def factory():
-        yield object()
+        yield stored_agent
 
     with TestClient(create_app(factory, auth_enabled=False)) as client, ThreadPoolExecutor() as pool:
         pending = pool.submit(client.post, '/chat', json={'session_id': 'demo', 'message': '规划'})

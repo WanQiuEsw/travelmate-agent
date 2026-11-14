@@ -192,6 +192,8 @@ def source_note(requirements, evidence, asof):
 
 def make_guide(version, evidence):
     req, plan = version['requirements'], version['plan']
+    from travelmate.dining import complete_meals
+    plan = dict(plan, foods=complete_meals(plan.get('foods', []), len(plan['days']), req.get('dietary', '')))
     if not version.get('saved_at'):
         evidence = {}
     asof = datetime.fromisoformat(version.get('saved_at') or '1970-01-01T00:00:00+00:00')
@@ -347,6 +349,7 @@ def make_guide(version, evidence):
         'saved_at': display_time(version['saved_at']) if version.get('saved_at') else '未记录（历史版本）',
         'hero': hero_image(req, plan),
         'result': {
+            'destination': req['destination'],
             'travelers': req['travelers'],
             'budget': budget_total(req),
             'budget_currency': req.get('budget_currency') or 'CNY',

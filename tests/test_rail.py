@@ -60,7 +60,7 @@ def test_mcp_station_resolution_and_ticket_filters(monkeypatch):
     assert len(result["results"]) == 1
 
 
-def test_rail_api_and_failure_are_sanitized(monkeypatch):
+def test_rail_api_and_failure_are_sanitized(monkeypatch, stored_agent):
     pytest.importorskip("mcp")
     monkeypatch.setenv("RAIL_MCP_URL", "http://127.0.0.1:8081/sse")
     requests = []
@@ -69,7 +69,7 @@ def test_rail_api_and_failure_are_sanitized(monkeypatch):
         return {"results": [], "notice": "无匹配"}
     monkeypatch.setattr(rail, "query_mcp", query)
     @contextmanager
-    def factory(): yield object()
+    def factory(): yield stored_agent
     with TestClient(create_app(factory, auth_enabled=False)) as client:
         body = dict(origin="上海", destination="北京", departure_date=rail.china_today().isoformat(), transport="动车")
         assert client.post("/transport/trains", json=body).json()["results"] == []

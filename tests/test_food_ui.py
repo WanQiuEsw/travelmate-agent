@@ -29,6 +29,22 @@ def test_empty_and_downloadable_food_view():
     assert html.count('data:image/png;base64,') == 1
 
 
+def test_every_day_has_three_meals_without_inventing_prices_or_restaurants():
+    from travelmate.dining import complete_meals
+    foods = [{'name': '片儿川', 'description': '当地面食', 'meal': '不限', 'tips': '确认配料'}]
+    result = complete_meals(foods, 30, '不吃花生')
+    assert len(foods) == 1
+    for day in range(1, 31):
+        assert {f['meal'] for f in result if f.get('day') == day} == {'早餐', '午餐', '晚餐'}
+        assert all('不吃花生' in f['tips'] for f in result if f.get('day') == day)
+    sections = [dict(rows=[['牛肉丸', '当地菜品', '第1天 · 午餐', '老街', '确认食材']], items=[])]
+    html = panel(sections, [dict(rows=[['上午', '车站 → ' + '很长的交通安排' * 20]]), dict(rows=[])], escape)
+    for day in (1, 2):
+        part = html.split(f'id="food-day-{day}"')[1].split('</article>')[0]
+        assert all(meal in part for meal in ('早餐', '午餐', '晚餐'))
+    assert 'food-panel' in __import__('travelmate.food_ui', fromlist=['CSS']).CSS
+
+
 def test_food_reference_is_served_with_correct_type():
     from fastapi.testclient import TestClient
     from travelmate.api import create_app

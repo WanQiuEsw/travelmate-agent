@@ -60,7 +60,9 @@ def test_weather_is_inside_days_and_omitted_without_date_for_new_and_old_version
 
 def test_carousel_has_wrapping_controls_and_daily_navigation():
     plan = deepcopy(PLAN)
-    plan['days'].append(deepcopy(plan['days'][0]))
+    second_day = deepcopy(plan['days'][0])
+    second_day['stops'][0]['place'] = '灵隐寺'
+    plan['days'].append(second_day)
     html = render_sample(plan=plan)
     assert 'name="highlight" id="highlight-1"' in html
     assert 'name="highlight" id="highlight-2"' in html
@@ -73,7 +75,8 @@ def test_carousel_has_wrapping_controls_and_daily_navigation():
     assert '逐项费用' in budget and '西湖' in budget and '预算口径' in budget
     daily = html.split('aria-label="每日行程">')[1].split('id="panel-lodging"')[0]
     assert '下雨、排队或约不上时怎么换' in daily
-    for value, panel in [('交通与已订安排', 'overview'), ('住哪里更顺路', 'lodging'), ('当地特色美食', 'food')]:
+    assert '交通与已订安排' not in html
+    for value, panel in [('住哪里更顺路', 'lodging'), ('当地特色美食', 'food')]:
         assert value not in daily
         assert value in html.split(f'id="panel-{panel}"')[1].split('<section id="panel-')[0]
 
@@ -106,18 +109,19 @@ let moves=0;
 const body = {append(row) { moves++; rows.splice(rows.indexOf(row),1); rows.push(row); }};
 function row(category, value, order) {
  const input = {value, defaultValue:value, validity:{valid:true}}, check = {checked:Boolean(value),defaultChecked:Boolean(value)};
- return {parentElement:body,dataset:{category,order:String(order)},input,check,querySelector:s=>s.includes('number')?input:check};
+ return {parentElement:body,dataset:{category,order:String(order),original:value,originalIncluded:String(Boolean(value))},input,check,querySelector:s=>s.includes('number')?input:check};
 }
 const rows = [row('景点门票','0.10',0),row('综合费用','0.20',1),row('餐饮费用','',2)];
-const total = {}, person = {}, notice = {}, filter = {value:''}, sort = {value:'original'};
+const total = {}, person = {}, notice = {}, filter = {value:''}, sort = {value:'original',matches:()=>false};
 const categories = ['景点门票','综合费用','餐饮费用'].map(c=>({dataset:{categoryTotal:c}}));
 const balance={}, barLabel={}, bar={style:{},querySelector:()=>barLabel}, pending={};
 const limitInput={value:'3.00',defaultValue:'3.00',validity:{valid:true},style:{setProperty(name,value){this[name]=value;}}};
 const segmentLabel={}, segment={dataset:{segment:'景点门票'},style:{},querySelector:()=>segmentLabel};
 const events={};
 let update, reset;
-const nodes = {'[data-budget-limit]':limitInput,'[data-total]':total,'[data-person]':person,'[data-unknown]':notice,'[data-budget-filter]':filter,'[data-budget-sort]':sort,'[data-balance]':balance,'[data-balance-bar]':bar,'.budget-pending h3':pending,'[data-budget-reset]':{addEventListener:(_,fn)=>reset=fn}};
-const fakeWorkspace = {dataset:{travelers:'2',limit:'300'},querySelector:s=>nodes[s],querySelectorAll:s=>s.includes('tr[')?rows:s==='[data-ledger]'?[body]:s.includes('category-total')?categories:s==='[data-segment]'?[segment]:[],addEventListener:(name,fn)=>{events[name]=fn;if(name==='change')update=fn;}};
+const nodes = {'[data-budget-limit]':limitInput,'[data-total]':total,'[data-person]':person,'[data-unknown]':notice,'[data-budget-filter]':filter,'[data-budget-sort]':sort,'[data-balance]':balance,'[data-balance-bar]':bar,'.budget-pending h3':pending,'[data-budget-reset]':{addEventListener:(_,fn)=>reset=fn},'[data-budget-save]':{addEventListener(){}},'[data-budget-save-status]':{}};
+const fakeWorkspace = {dataset:{travelers:'2',limit:'300',originalLimit:'3.00'},querySelector:s=>nodes[s],querySelectorAll:s=>s.includes('tr[')?rows:s==='[data-ledger]'?[body]:s.includes('category-total')?categories:s==='[data-segment]'?[segment]:[],addEventListener:(name,fn)=>{events[name]=fn;if(name==='change')update=()=>fn({target:sort});}};
+global.window={addEventListener(){}};global.localStorage={getItem(){return null;}};
 global.document = {querySelector:s=>s==='.budget-workspace'?fakeWorkspace:null,querySelectorAll:()=>[]};
 '''
     checks = r'''
@@ -131,6 +135,7 @@ unknown.input.value='10.00';unknown.check.checked=true;update();assert.equal(tot
 const beforeMoves=moves;
 ticket.input.value='2.00';events.input({target:{matches:()=>true}});
 assert.equal(total.textContent,'¥12.00');assert.equal(moves,beforeMoves);assert.equal(segment.style.flexGrow,200);assert.equal(segmentLabel.textContent,'¥2.00');
+events.change({target:{matches:()=>true}});assert.equal(moves,beforeMoves);
 limitInput.value='20.00';events.input({target:{matches:()=>true}});
 assert.equal(limitInput.style['--budget-digits'],5);assert.equal(balance.textContent,'¥8.00');assert.equal(bar.style.flexGrow,800);assert.equal(barLabel.textContent,'¥8.00');
 limitInput.value='';events.input({target:{matches:()=>true}});assert.equal(balance.textContent,'待确认');
@@ -213,8 +218,8 @@ def test_all_views_share_header_and_snapshot_details_live_in_overview():
     assert '方案详情与依据' in overview
     assert '保存时间' in overview and '已列费用' in overview
     assert 'trip-facts' in overview and 'carousel-stage' in overview
-    assert '<summary>先说结论</summary>' in overview
-    assert '<summary>旅行概览</summary>' in overview
+    for title in ('先说结论', '旅行概览', '交通与已订安排', '时间安排说明'):
+        assert f'<summary>{title}</summary>' not in overview
     from travelmate.result import RESULT_CSS
     assert '.result .daily-masthead{display:flex' in RESULT_CSS
     assert 'body:has(.panel-days:target' not in RESULT_CSS

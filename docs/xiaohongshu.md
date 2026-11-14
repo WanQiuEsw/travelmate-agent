@@ -4,6 +4,8 @@
 
 ## 配置
 
+本地需要安装 Node.js 20 或更新版本，并确保 `node --version` 可运行。签名通过固定版本的 TripStar JS 引擎生成，只使用 Node 内置依赖，无需 `npm install`；Python 不再使用 `xhshow`。
+
 ```powershell
 uv sync --all-extras
 ```
@@ -29,7 +31,13 @@ uv run --all-extras python -m travelmate.xhs 杭州
 
 此命令只调用小红书，不调用大模型或百炼。成功时打印笔记正文、公开链接、发布时间和新鲜度；空结果也会明确返回。
 
-常见错误：`not_configured` 未配置或已关闭；`invalid_cookie` 缺少必要 Cookie；`missing_dependency` 未安装 xhs extra；`login_or_risk_control` 登录态失效或平台限制；`search_unavailable` 网络或响应异常；`signing_failed` 签名失败。不要将这些错误解释成“该城市没有攻略”。
+常见错误：`not_configured` 未配置或已关闭；`invalid_cookie` 缺少必要 Cookie；`missing_node` 找不到 Node.js；`login_or_risk_control` 登录态失效或平台限制；`session_blocked` 此 Cookie 已在本进程被拒绝，后续调用不再联网；`search_unavailable` 网络或响应异常；`signing_failed` 签名引擎执行失败。不要将这些错误解释成“该城市没有攻略”。
+
+响应中的 `diagnostic` 只保留 `stage`（search/detail）、`http_status` 和数字型 `api_code`，不返回平台原始消息、Cookie 或签名。这样可以区分搜索和详情失败，而不泄露凭证。
+
+一旦遇到登录或风控拒绝，本进程立即停止该 Cookie 的后续请求，不重试、不自动切换签名。先在浏览器确认账号状态，再人工处理；不要反复重启程序尝试同一 Cookie。更换 Cookie 后可重新调用。此保护只覆盖单进程，独立 CLI 调用和服务重启不会共享拦截状态。
+
+请求明确禁用 `HTTP_PROXY`、`HTTPS_PROXY` 等环境代理，保持与 TripStar 的直连行为一致。签名在本地子进程执行，仅通过 stdin 传入路径、请求体和 a1，不把 Cookie 放进命令行参数。其他 Cookie 仅用于发往小红书的 HTTP 请求。
 
 ## 启动完整演示
 
@@ -49,7 +57,10 @@ uv run --all-extras uvicorn travelmate.api:app --host 127.0.0.1 --port 8000
 - 优先采用近30天；近30天有效结果少于2篇时保留近90天内容。发布时间未知会明确标记，超过90天的笔记不使用。
 - 按城市和现有主题覆盖规则过滤，资料不全时补知识库；知识库仍缺少的主题继续联网检索。
 - 发布时间、更新时间、查询时间分开记录；不能保证覆盖全站最新笔记。来源链接可能要求登录，小红书也可能限制直接打开。
-- 不采集图片、评论、视频或图片内文字；本版不把笔记自动写入百炼，不增加后台采集任务。行前刷新继续核实价格、开放和交通，不自动重采社区笔记。
-- 采用与 TripStar 类似的网页接口方式，自有接入代码使用 `xhshow` 签名依赖，无需 Node.js；没有复制 TripStar 的签名资源。网页接口或签名变化可能导致失效，低频个人演示也无法保证持续可用。
+- 行程概览仅显示去重后的核心游玩地点，过滤抵达、用餐、入住与返程等安排。预览切换到景点时，按“目的地 + 景点 + 风景实拍”搜索配图，使用标题包含景点名的笔记图片；不抓详情、不承诺图片一定是该景点实拍。
+- 图片由后端即时下载并在进程内缓存6小时，未找到图片缓存10分钟；最多32项、每张不超过3MB，只允许小红书图片域名，下载媒体时不发送登录 Cookie。图片搜索与正文搜索共享风控停止机制。未匹配或加载失败时显示默认示意图，默认图也不可用时显示空图提示。
+- 独立 HTML 导出使用内嵌默认示意图，打开导出文件不触发小红书请求。不采集评论、视频或图片内文字，不自动写入百炼，不增加后台采集任务。行前刷新继续核实价格、开放和交通，不自动重采社区笔记。
+- 使用 TripStar 固定版本的签名资源，生成相互关联的 `XYS_`、`x-t`、`x-s-common`；最新排序与 TripStar 一样通过 filters 指定。HTTP 浏览器标识与 JS 模拟环境统一为 Edge/Chrome 138。资源来源、固定版本及 GPL-2.0 许可证见 `travelmate/vendor/tripstar/NOTICE.md`、`LICENSE`，对外分发前需核对许可要求。
+- 这仍是非官方网页接口。JS 引擎使用上游模拟环境，离线签名测试通过不代表小红书必定接受，更不保证账号不会退出。首次人工验收应使用可承担会话失效风险的测试账号，遇到拒绝立即停止。
 
 参考：[TripStar](https://github.com/1sdv/TripStar)、[xhshow](https://github.com/Cloxl/xhshow)。

@@ -48,7 +48,9 @@ def coordinates(value):
 
 def result_panels(guide, sections, text, inline_images=False, actions=""):
     days = [s for s, _ in sections if s['kind'] == 'day']
-    meta = guide.get('result', {})
+    meta = dict(guide.get('result', {}))
+    meta['budget_endpoint'] = guide.get('_budget_url', '')
+    meta['budget_key'] = sha256((guide['title'] + str(guide['version']) + guide.get('saved_at', '')).encode()).hexdigest()[:24]
     out = ['<div class="result" aria-label="旅行方案">']
     views = [('overview', '行程概览'), ('budget', '预算明细'), ('days', '每日行程'), ('lodging', '住宿推荐'), ('food', '当地美食'), ('pitfalls', '避坑指南'), ('prepare', '行程准备')]
     out.append(f'<header class="daily-masthead"><strong><svg class="budget-brand-mark" viewBox="0 0 60 36" aria-hidden="true"><path d="M2 28 21 5q4-5 8 0l21 23-17-5-12-4Z" fill="#196457"/><path d="m30 12 8-7 20 24-17-5Z" fill="#73947f"/><path d="M10 32q14-13 28-3t20-3q-12 14-28 7t-20-1" fill="#196457"/></svg>TravelMate</strong><span>{text(guide["title"])}</span>{actions}</header>')
@@ -61,6 +63,8 @@ def result_panels(guide, sections, text, inline_images=False, actions=""):
     selected_date = meta.get('start_date') if 'start_date' in meta else next((r[1] for r in overview.get('rows', []) if r[0] == '日期' and '未定' not in r[1]), None)
     for index, (section, html) in enumerate(sections):
         kind = section['kind']
+        if section['title'] in ('先说结论', '旅行概览', '交通与已订安排', '时间安排说明'):
+            continue
         if section['title'] == '行前准备':
             continue
         if kind == 'verify':
@@ -82,7 +86,7 @@ def result_panels(guide, sections, text, inline_images=False, actions=""):
         if group == 'overview' or section['title'] == '下雨、排队或约不上时怎么换':
             html = '<details class="guide-detail"><summary>' + text(section['title']) + '</summary>' + html + '</details>'
         groups[group].append(html)
-    groups['overview'].insert(0, coverflow(days, text, inline_images))
+    groups['overview'].insert(0, coverflow(days, text, inline_images, city=meta.get('destination', '') or guide['title'].split(' · ')[0].split(' → ')[-1]))
     groups['prepare'].append(preparation_panel(guide, text))
     facts = [r for r in overview.get('rows', []) if r[0] in ('路线', '人数与天数', '日期')]
     groups['overview'].insert(0, '<dl class="trip-facts">' + ''.join('<div><dt>' + text(r[0]) + '</dt><dd>' + text(r[1]) + '</dd></div>' for r in facts) + '</dl>')
@@ -136,7 +140,7 @@ def split_expenses(ledger):
     result = []
     for row in ledger:
         parts = []
-        if row['category'] == '综合费用' and row['amount'] is not None:
+        if row['category'] == '综合费用' and row['amount'] is not None and not row.get('split'):
             match = re.search(r'构成[：:](.+?)(?:合计|总计|$)', row['name'], re.S)
             if match:
                 for section in re.split(r'[；;]', match[1]):
@@ -166,7 +170,11 @@ def budget_panel(meta, days, text):
 RESULT_JS = r"""for (const button of document.querySelectorAll('[data-carousel-target]')) {
   button.addEventListener('click', () => {
     const radio = document.getElementById(button.dataset.carouselTarget);
-    if (radio) { radio.checked = true; radio.focus({preventScroll:true}); }
+    if (radio) {
+      radio.checked = true;
+      radio.dispatchEvent(new Event('change', {bubbles:true}));
+      radio.focus({preventScroll:true});
+    }
   });
 }
 

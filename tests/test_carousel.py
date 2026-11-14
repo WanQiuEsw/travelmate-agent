@@ -34,6 +34,33 @@ def test_zero_one_two_and_escaping():
     assert '@media print' in CAROUSEL_CSS
 
 
+def test_overview_only_shows_unique_attractions_with_photo_fallback():
+    route = [{'rows': [['上午', name, '安排说明'] for name in
+                       ('酒店入住', '早餐', '西湖', '西湖', '午餐', '灵隐寺', '杭州东站返程')]}]
+    html = coverflow(route, escape, city='杭州')
+    assert html.count('class="carousel-slide ') == 2
+    assert '酒店入住' not in html and '杭州东站返程' not in html and '早餐' not in html
+    assert 'data-photo-url="/api/places/photo?' in html
+    assert '暂无景点图片' in html and '默认风景 · 示意图' in html
+    assert 'data-photo-url' not in coverflow(route, escape, True, city='杭州')
+    mixed = coverflow([{'rows': [['上午', '泉州站 → 潮汕站（动车二等座） → 酒店放行李 + 牌坊街漫步', '古城游览']]}], escape)
+    assert '牌坊街' in mixed and '泉州站' not in mixed and '行李' not in mixed
+
+
+def test_already_failed_default_photo_shows_empty_state():
+    import subprocess
+    from travelmate.carousel import CAROUSEL_JS
+    stub = r"""
+const assert = require('node:assert/strict');
+const note = {textContent:'默认风景 · 示意图'};
+const image = {complete:true,naturalWidth:0,hidden:false,addEventListener(){},
+  closest:()=>({querySelector:()=>note})};
+global.document={querySelectorAll:s=>s==='.carousel-photo img'?[image]:[]};
+"""
+    subprocess.run(['node', '-e', stub + CAROUSEL_JS + "\nassert.equal(image.hidden,true);assert.equal(note.textContent,'暂无景点图片');"],
+                   check=True, capture_output=True, text=True)
+
+
 def test_autoplay_only_pauses_when_not_visible():
     import subprocess
     from travelmate.carousel import CAROUSEL_JS
@@ -43,9 +70,9 @@ const win = {}, doc = {}; let callback, active=0, visible=true, pending=new Map(
 global.setTimeout=(fn,delay)=>{assert.equal(delay,4000);pending.set(++id,fn);return id;};
 global.clearTimeout=id=>pending.delete(id);
 const radios=[0,1,2].map(i=>({get checked(){return active===i;},set checked(v){if(v)active=i;}}));
-const carousel={querySelectorAll:()=>radios,querySelector:()=>({}),getClientRects:()=>visible?[{}]:[]};
+const carousel={querySelectorAll:()=>radios,querySelector:()=>({}),getClientRects:()=>visible?[{}]:[],addEventListener(){},dispatchEvent(){}};
 global.window={addEventListener:(n,f)=>win[n]=f};
-global.document={hidden:false,querySelectorAll:()=>[carousel],addEventListener:(n,f)=>doc[n]=f};
+global.document={hidden:false,querySelectorAll:s=>s==='.carousel'?[carousel]:[],addEventListener:(n,f)=>doc[n]=f};
 global.IntersectionObserver=class{constructor(fn){callback=fn;}observe(){}};
 function tick(){assert.equal(pending.size,1);const fn=[...pending.values()][0];pending.clear();fn();}
 """
@@ -63,3 +90,55 @@ win.pagehide();assert.equal(pending.size,0);win.pageshow();assert.equal(pending.
     subprocess.run(['node','-e',stub+CAROUSEL_JS+checks],check=True,capture_output=True,text=True)
     assert 'mouseenter' not in CAROUSEL_JS and 'focusin' not in CAROUSEL_JS
     assert 'data-carousel-playback' not in coverflow(days(3), escape)
+
+
+def test_manual_changes_restart_full_autoplay_delay():
+    import subprocess
+    from travelmate.result import RESULT_JS
+
+    stub = r"""
+const assert = require('node:assert/strict');
+let now=0, id=0, active=0, observer;
+const pending=new Map();
+global.setTimeout=(fn,delay)=>{pending.set(++id,{fn,at:now+delay});return id;};
+global.clearTimeout=id=>pending.delete(id);
+function advance(ms){
+  const end=now+ms;
+  while(true){
+    const next=[...pending].sort((a,b)=>a[1].at-b[1].at)[0];
+    if(!next || next[1].at>end) break;
+    now=next[1].at;pending.delete(next[0]);next[1].fn();
+  }
+  now=end;
+}
+const carousel=new EventTarget();
+const radios=[0,1,2].map(i=>({
+  get checked(){return active===i;},set checked(v){if(v)active=i;},
+  focus(){},dispatchEvent(event){if(event.bubbles)carousel.dispatchEvent(event);}
+}));
+Object.assign(carousel,{querySelectorAll:()=>radios,querySelector:()=>({}),getClientRects:()=>[{}]});
+const buttons=[1,2].map(i=>Object.assign(new EventTarget(),{dataset:{carouselTarget:`highlight-${i+1}`}}));
+global.document={hidden:false,addEventListener(){},querySelector:()=>null,
+  querySelectorAll:s=>s==='[data-carousel-target]'?buttons:s==='.carousel'?[carousel]:[],
+  getElementById:id=>radios[Number(id.split('-')[1])-1]};
+global.window={addEventListener(){}};
+global.IntersectionObserver=class{constructor(fn){observer=fn;}observe(){}};
+"""
+    checks = r"""
+observer([{isIntersecting:true}]);
+for(const [button,selected] of [[buttons[0],1],[buttons[1],2]]){
+  active=0;
+  advance(3999);
+  button.dispatchEvent(new Event('click'));
+  assert.equal(active,selected);
+  assert.equal(pending.size,1);
+  advance(1);assert.equal(active,selected,'old timer must not advance the new slide');
+  advance(3998);assert.equal(active,selected,'manual selection gets a full 4 seconds');
+  advance(1);assert.equal(active,(selected+1)%3);
+}
+// Native label and keyboard changes also bubble a change event.
+advance(3999);active=1;carousel.dispatchEvent(new Event('change'));
+advance(3999);assert.equal(active,1);
+advance(1);assert.equal(active,2);assert.equal(pending.size,1);
+"""
+    subprocess.run(['node', '-e', stub + RESULT_JS + checks], check=True, capture_output=True, text=True)
