@@ -34,6 +34,33 @@ def test_zero_one_two_and_escaping():
     assert '@media print' in CAROUSEL_CSS
 
 
+def test_overview_only_shows_unique_attractions_with_photo_fallback():
+    route = [{'rows': [['上午', name, '安排说明'] for name in
+                       ('酒店入住', '早餐', '西湖', '西湖', '午餐', '灵隐寺', '杭州东站返程')]}]
+    html = coverflow(route, escape, city='杭州')
+    assert html.count('class="carousel-slide ') == 2
+    assert '酒店入住' not in html and '杭州东站返程' not in html and '早餐' not in html
+    assert 'data-photo-url="/api/places/photo?' in html
+    assert '暂无景点图片' in html and '默认风景 · 示意图' in html
+    assert 'data-photo-url' not in coverflow(route, escape, True, city='杭州')
+    mixed = coverflow([{'rows': [['上午', '泉州站 → 潮汕站（动车二等座） → 酒店放行李 + 牌坊街漫步', '古城游览']]}], escape)
+    assert '牌坊街' in mixed and '泉州站' not in mixed and '行李' not in mixed
+
+
+def test_already_failed_default_photo_shows_empty_state():
+    import subprocess
+    from travelmate.carousel import CAROUSEL_JS
+    stub = r"""
+const assert = require('node:assert/strict');
+const note = {textContent:'默认风景 · 示意图'};
+const image = {complete:true,naturalWidth:0,hidden:false,addEventListener(){},
+  closest:()=>({querySelector:()=>note})};
+global.document={querySelectorAll:s=>s==='.carousel-photo img'?[image]:[]};
+"""
+    subprocess.run(['node', '-e', stub + CAROUSEL_JS + "\nassert.equal(image.hidden,true);assert.equal(note.textContent,'暂无景点图片');"],
+                   check=True, capture_output=True, text=True)
+
+
 def test_autoplay_only_pauses_when_not_visible():
     import subprocess
     from travelmate.carousel import CAROUSEL_JS
@@ -43,9 +70,9 @@ const win = {}, doc = {}; let callback, active=0, visible=true, pending=new Map(
 global.setTimeout=(fn,delay)=>{assert.equal(delay,4000);pending.set(++id,fn);return id;};
 global.clearTimeout=id=>pending.delete(id);
 const radios=[0,1,2].map(i=>({get checked(){return active===i;},set checked(v){if(v)active=i;}}));
-const carousel={querySelectorAll:()=>radios,querySelector:()=>({}),getClientRects:()=>visible?[{}]:[],addEventListener(){}};
+const carousel={querySelectorAll:()=>radios,querySelector:()=>({}),getClientRects:()=>visible?[{}]:[],addEventListener(){},dispatchEvent(){}};
 global.window={addEventListener:(n,f)=>win[n]=f};
-global.document={hidden:false,querySelectorAll:()=>[carousel],addEventListener:(n,f)=>doc[n]=f};
+global.document={hidden:false,querySelectorAll:s=>s==='.carousel'?[carousel]:[],addEventListener:(n,f)=>doc[n]=f};
 global.IntersectionObserver=class{constructor(fn){callback=fn;}observe(){}};
 function tick(){assert.equal(pending.size,1);const fn=[...pending.values()][0];pending.clear();fn();}
 """

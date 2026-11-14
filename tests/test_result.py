@@ -60,7 +60,9 @@ def test_weather_is_inside_days_and_omitted_without_date_for_new_and_old_version
 
 def test_carousel_has_wrapping_controls_and_daily_navigation():
     plan = deepcopy(PLAN)
-    plan['days'].append(deepcopy(plan['days'][0]))
+    second_day = deepcopy(plan['days'][0])
+    second_day['stops'][0]['place'] = '灵隐寺'
+    plan['days'].append(second_day)
     html = render_sample(plan=plan)
     assert 'name="highlight" id="highlight-1"' in html
     assert 'name="highlight" id="highlight-2"' in html
@@ -73,7 +75,8 @@ def test_carousel_has_wrapping_controls_and_daily_navigation():
     assert '逐项费用' in budget and '西湖' in budget and '预算口径' in budget
     daily = html.split('aria-label="每日行程">')[1].split('id="panel-lodging"')[0]
     assert '下雨、排队或约不上时怎么换' in daily
-    for value, panel in [('交通与已订安排', 'overview'), ('住哪里更顺路', 'lodging'), ('当地特色美食', 'food')]:
+    assert '交通与已订安排' not in html
+    for value, panel in [('住哪里更顺路', 'lodging'), ('当地特色美食', 'food')]:
         assert value not in daily
         assert value in html.split(f'id="panel-{panel}"')[1].split('<section id="panel-')[0]
 
@@ -215,8 +218,8 @@ def test_all_views_share_header_and_snapshot_details_live_in_overview():
     assert '方案详情与依据' in overview
     assert '保存时间' in overview and '已列费用' in overview
     assert 'trip-facts' in overview and 'carousel-stage' in overview
-    assert '<summary>先说结论</summary>' in overview
-    assert '<summary>旅行概览</summary>' in overview
+    for title in ('先说结论', '旅行概览', '交通与已订安排', '时间安排说明'):
+        assert f'<summary>{title}</summary>' not in overview
     from travelmate.result import RESULT_CSS
     assert '.result .daily-masthead{display:flex' in RESULT_CSS
     assert 'body:has(.panel-days:target' not in RESULT_CSS

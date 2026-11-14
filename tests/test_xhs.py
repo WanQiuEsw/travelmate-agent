@@ -1,17 +1,28 @@
 import json
+import base64
+import shutil
 from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
 from langchain.tools import tool
 
-from travelmate.xhs import search_xiaohongshu, parse_cookie
+from travelmate.xhs import search_xiaohongshu, parse_cookie, sign_headers
 from travelmate.evidence import normalize, model_view
+
+
+@pytest.fixture(autouse=True)
+def reset_blocked_sessions():
+    from travelmate.xhs import _blocked_cookies
+    _blocked_cookies.clear()
+    yield
+    _blocked_cookies.clear()
 
 
 def test_cookie_and_disabled(monkeypatch):
     assert parse_cookie('a1=abc=def; web_session=s') == {'a1': 'abc=def', 'web_session': 's'}
     assert parse_cookie('[{"name":"a1","value":"abc"}]') == {'a1': 'abc'}
+    assert parse_cookie('"a1=abc; web_session=s"') == {'a1': 'abc', 'web_session': 's'}
     assert search_xiaohongshu.invoke({'city': '杭州', 'query': '旅游'})['error'] == 'not_configured'
     monkeypatch.setenv('XHS_COOKIE', 'a1=abc')
     assert search_xiaohongshu.invoke({'city': '杭州', 'query': '旅游'})['error'] == 'invalid_cookie'
@@ -19,10 +30,16 @@ def test_cookie_and_disabled(monkeypatch):
 
 def mock_xhs(monkeypatch, handler):
     # Use the real installed signing engine; only HTTP is replaced.
-    pytest.importorskip('xhshow')
+    if not shutil.which('node'):
+        pytest.skip('Node.js is required for the real offline signer')
     monkeypatch.setenv('XHS_COOKIE', 'a1=' + 'a' * 52 + '; web_session=private-test-cookie; webId=test')
     client = httpx.Client
-    monkeypatch.setattr('travelmate.xhs.httpx.Client', lambda **kwargs: client(transport=httpx.MockTransport(handler), **kwargs))
+
+    def offline_client(**kwargs):
+        assert kwargs['trust_env'] is False
+        return client(transport=httpx.MockTransport(handler), **kwargs)
+
+    monkeypatch.setattr('travelmate.xhs.httpx.Client', offline_client)
 
 
 def test_latest_dates_filtering_and_evidence(monkeypatch):
@@ -33,10 +50,14 @@ def test_latest_dates_filtering_and_evidence(monkeypatch):
 
     def handler(request):
         payload = json.loads(request.content)
-        assert request.headers['x-s'].startswith('XYW_')
+        assert request.headers['x-s'].startswith('XYS_')
+        assert 'web_session=private-test-cookie' in request.headers['cookie']
+        assert 'Chrome/138.' in request.headers['user-agent']
+        assert request.headers['sec-fetch-site'] == 'same-site'
+        assert request.content == json.dumps(payload, ensure_ascii=False, separators=(',', ':')).encode()
         calls.append(payload)
         if request.url.path.endswith('/search/notes'):
-            assert payload['sort'] == 'time_descending'
+            assert payload['sort'] == 'general'
             assert payload['filters'][0]['tags'] == ['time_descending']
             return httpx.Response(200, json={'success': True, 'data': {'items': [
                 {'id': ident, 'model_type': 'note', 'xsec_token': 'private-token'} for ident in ids]}})
@@ -65,6 +86,72 @@ def test_api_failure_is_safe(monkeypatch, status, body, error):
     result = search_xiaohongshu.invoke({'city': '杭州', 'query': '旅游'})
     assert result.get('error') == error
     assert result['results'] == []
+    assert 'private' not in json.dumps(result)
+
+
+def test_native_signature_matches_request_and_common_fields():
+    if not shutil.which('node'):
+        pytest.skip('Node.js is required for the real offline signer')
+    alphabet = 'ZmserbBoHQtNP+wOcza/LpngG8yJq42KWYj0DSfdikx3VT16IlUAFM97hECvuRX5'
+    standard = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+
+    def decode(value):
+        return json.loads(base64.b64decode(value.translate(str.maketrans(alphabet, standard))))
+
+    headers = sign_headers('/api/sns/web/v1/search/notes', {'keyword': '杭州'}, {'a1': 'a' * 52}, 5)
+    signature = decode(headers['x-s'][4:])
+    common = decode(headers['x-s-common'])
+    assert signature['x0'] == common['x1'] == '4.3.2'
+    assert common['x5'] == 'a' * 52
+    assert str(common['x6']) == headers['x-t']
+    assert common['x7'] == headers['x-s']
+    assert common['x8']
+
+
+def test_risk_response_stops_same_cookie_without_leaking_body(monkeypatch):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(406, json={'code': 300011, 'msg': 'private-test-cookie'})
+
+    mock_xhs(monkeypatch, handler)
+    first = search_xiaohongshu.invoke({'city': '杭州', 'query': '旅游'})
+    second = search_xiaohongshu.invoke({'city': '杭州', 'query': '美食'})
+    monkeypatch.setenv('XHS_COOKIE', 'webId=changed; web_session=private-test-cookie; a1=' + 'a' * 52)
+    assert search_xiaohongshu.invoke({'city': '杭州', 'query': '景点'})['error'] == 'session_blocked'
+    assert first['diagnostic'] == {'stage': 'search', 'http_status': 406, 'api_code': '300011'}
+    assert second['error'] == 'session_blocked'
+    assert len(calls) == 1
+    assert 'private' not in json.dumps([first, second])
+
+
+def test_detail_risk_stops_remaining_details_and_next_search(monkeypatch):
+    calls = []
+
+    def handler(request):
+        calls.append(request.url.path)
+        if request.url.path.endswith('/search/notes'):
+            return httpx.Response(200, json={'success': True, 'data': {'items': [
+                {'id': f'{i:024x}', 'model_type': 'note'} for i in range(4)]}})
+        return httpx.Response(200, json={'success': False, 'code': 300011})
+
+    mock_xhs(monkeypatch, handler)
+    first = search_xiaohongshu.invoke({'city': '杭州', 'query': '旅游'})
+    assert first['diagnostic']['stage'] == 'detail'
+    assert first['error'] == 'login_or_risk_control'
+    assert search_xiaohongshu.invoke({'city': '杭州', 'query': '旅游'})['error'] == 'session_blocked'
+    assert len(calls) == 2
+
+
+def test_missing_node_fails_before_http(monkeypatch):
+    def missing(*args, **kwargs):
+        raise FileNotFoundError('private-test-cookie')
+
+    monkeypatch.setenv('XHS_COOKIE', 'a1=' + 'a' * 52 + '; web_session=private-test-cookie')
+    monkeypatch.setattr('travelmate.xhs.subprocess.run', missing)
+    result = search_xiaohongshu.invoke({'city': '杭州', 'query': '旅游'})
+    assert result['error'] == 'missing_node'
     assert 'private' not in json.dumps(result)
 
 

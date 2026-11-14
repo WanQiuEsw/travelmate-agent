@@ -9,7 +9,7 @@ from queue import Queue, Empty
 from time import time
 from typing import Annotated, Literal
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Query
 from fastapi import Path as PathParam
 from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse, Response
 from pydantic import BaseModel, Field, field_validator, StringConstraints
@@ -199,6 +199,18 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
     @app.get("/health")
     def health():
         return {"status": "ok"}
+
+    @app.get('/api/places/photo')
+    def place_photo(request: Request, city: Annotated[str, Query(min_length=1, max_length=80)],
+                    place: Annotated[str, Query(min_length=1, max_length=120)]):
+        from travelmate.place_photos import get_photo
+        if auth_enabled:
+            app.state.accounts.throttle('photos:' + request.state.user['id'], 20, 60)
+        photo = get_photo(city.strip(), place.strip())
+        if not photo:
+            return Response(status_code=404, headers={'Cache-Control': 'private, max-age=600'})
+        return Response(photo[0], media_type=photo[1], headers={
+            'Cache-Control': 'private, max-age=21600', 'X-Content-Type-Options': 'nosniff'})
 
     @app.post("/transport/trains")
     def train_search(request: RailRequest, http_request: Request):

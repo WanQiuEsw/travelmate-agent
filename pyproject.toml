@@ -21,7 +21,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8,<10"]
 rail = ["mcp>=1.26,<2"]
-xhs = ["xhshow>=0.2,<0.3"]
+xhs = []
 aliyun = [
     "alibabacloud-bailian20231229>=2.14.5",
 ]
@@ -33,7 +33,7 @@ travelmate = "travelmate.cli:main"
 include = ["travelmate*"]
 
 [tool.setuptools.package-data]
-travelmate = ["*.html", "*.js", "*.css", "images/*.webp", "images/*.png", "images/cities/*.webp", "prompts/*.txt"]
+travelmate = ["*.html", "*.js", "*.cjs", "*.css", "images/*.webp", "images/*.png", "images/cities/*.webp", "prompts/*.txt", "vendor/tripstar/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -349,6 +349,7 @@ def make_guide(version, evidence):
         'saved_at': display_time(version['saved_at']) if version.get('saved_at') else '未记录（历史版本）',
         'hero': hero_image(req, plan),
         'result': {
+            'destination': req['destination'],
             'travelers': req['travelers'],
             'budget': budget_total(req),
             'budget_currency': req.get('budget_currency') or 'CNY',

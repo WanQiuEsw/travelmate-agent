@@ -1,68 +1,45 @@
-"""Responsive, stage-based reminders using the saved guide content."""
-from base64 import b64encode
-from pathlib import Path
-
-from travelmate.budget_ui import icon as shared_icon
+"""Destination-specific reminders from the saved itinerary."""
 from travelmate.daily_ui import scenery
 from travelmate.evidence import safe_url
+from travelmate.carousel import highlight_stops
 
 
-def icon(kind):
-    paths = {
-        'calendar': '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 2v6m10-6v6M3 11h18"/>',
-        'pin': '<path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
-        'plane': '<path d="m21 3-6 2-4 6-7-2-2 2 7 4-3 5 2 2 5-7 5 6 2-2-2-7 5-5Z"/>',
-        'target': '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
-        'bulb': '<path d="M8 15a7 7 0 1 1 8 0l-1 3H9Zm2 6h4M12 1v1M2 6l2 1m16 0 2-1M2 14l2-1m16 0 2 1"/>',
-    }
-    if kind not in paths:
-        return shared_icon(kind)
-    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + paths[kind] + '</svg>'
+def specific_items(guide, sections):
+    days = [section for section, _ in sections if section['kind'] == 'day']
+    destination = guide.get('result', {}).get('destination') or guide['title'].split(' · ')[0].split(' → ')[-1]
+    names = [destination] + [row[1] for _, _, row in highlight_stops(days)]
+    seen, saved = set(), []
+    for section, _ in sections:
+        if section['kind'] != 'pitfalls':
+            continue
+        for item in section.get('items', []):
+            value = item['text'].strip()
+            if value not in seen and any(name and len(name) >= 2 and name in value for name in names):
+                seen.add(value)
+                saved.append(item)
+    return saved
 
 
 def panel(guide, sections, text, inline_images=False):
-    photo = scenery(guide['title'], inline_images)
-    hotel = Path(__file__).with_name('images') / 'hotel-room.webp'
-    hotel_src = ('data:image/webp;base64,' + b64encode(hotel.read_bytes()).decode('ascii')
-                 if inline_images else '/assets/visual/hotel-room.webp')
-    reminders = [
-        ('bed', '住宿先看取消条款', '与住宿有关', '行程可能因天气或临时安排变化，需要调整住宿。', '预订时先看取消与改期条款，优先选择支持灵活取消的房型。', 'departure'),
-        ('ticket', '提前确认场馆预约', '与景点有关', '热门景点、部分博物馆在旺季可能需要提前预约。', '出发前确认是否需要预约及开放时间，提前完成预约更稳妥。', 'departure'),
-        ('food', '用餐前确认费用与忌口', '与用餐有关', '不同餐厅的收费项目与食材可能不同。', '点餐前确认菜品价格、额外费用，并提前告知同行的忌口。', 'during'),
-        ('train', '给返程留足交通缓冲', '与最后一天有关', '返程当天可能遇到景区人流、交通拥堵，影响赶车或赶机。', '根据实际交通方式，预留充足的路上时间，高峰时段多留一些缓冲。', 'return'),
-    ]
-    out = ['<div class="pitfall-workspace"><header class="pitfall-hero"><img src="' + text(photo) + '" alt="目的地风景示意" width="1000" height="320"><div><p class="pitfall-eyebrow">02 / 出行阶段 <span></span></p><h2>每一步，都少踩一个坑</h2><p class="pitfall-subtitle">从订房到返程，按出行阶段看提醒</p></div></header><fieldset class="pitfall-stages"><legend class="pitfall-sr">选择出行阶段</legend>']
-    for i, (key, label, symbol) in enumerate((('booking', '预订前', 'bed'), ('departure', '出发前', 'calendar'), ('during', '游玩中', 'pin'), ('return', '返程前', 'plane'))):
-        out.append(f'<label class="pitfall-stage"><input type="radio" name="pitfall-stage" value="{key}"' + (' checked' if i == 0 else '') + f'><span>{icon(symbol)}{label}</span></label>')
-    out.append('</fieldset><div class="pitfall-layout"><ol class="pitfall-timeline" aria-label="出行提醒">')
-    for i, (symbol, title, tag, scene, advice, stage) in enumerate(reminders, 1):
-        art = (f'<img src="{text(hotel_src)}" alt="温暖木色的酒店客房示意" width="384" height="240" loading="lazy">' if i == 1 else icon(symbol))
-        out.append(f'<li class="pitfall-item" data-stage="{stage}"><span class="pitfall-number">{i:02}</span><article class="pitfall-card"><div class="pitfall-art{" pitfall-photo" if i == 1 else ""}">{art}</div><div class="pitfall-copy"><header><h3>{title}</h3><span class="pitfall-tag">{icon("plane" if i == 4 else "calendar" if i == 2 else symbol)}{tag}</span></header><p>{icon("target")}<span><strong>场景：</strong>{scene}</span></p><p class="pitfall-advice">{icon("bulb")}<span><strong>建议：</strong>{advice}</span></p></div></article></li>')
-    out.append('</ol><aside class="pitfall-summary"><h3>这次旅行，先看这三条</h3><ol>')
-    for advice in ('住宿尽量选可灵活取消的房型，行程有变也更从容。', '提前确认重点场馆的预约与开放时间，把想去的安排落实好。', '返程当天预留充足交通时间，避免因拥堵或排队耽误行程。'):
-        out.append('<li>' + advice + '</li>')
-    out.append('</ol><a href="#panel-prepare">查看行前准备 <span aria-hidden="true">→</span></a>' + luggage() + '</aside></div>')
-    saved = [item for section, _ in sections if section['kind'] == 'pitfalls' for item in section['items']]
-    if saved:
-        out.append('<section class="pitfall-saved"><h3>本次行程 · 专属提醒</h3><ul>')
-        for item in saved:
-            value, url = item['text'], safe_url(item.get('link'))
-            out.append('<li class="' + ('pitfall-priority' if value.startswith(('❌', '⚠')) else '') + '">' + text(value)
-                       + (f' <a href="{text(url)}" target="_blank" rel="noopener noreferrer">{text(item.get("link_label", "公开来源"))}</a>' if url else '') + '</li>')
-        out.append('</ul></section>')
-    return ''.join(out) + '<div class="pitfall-legend"><span><i></i>优先关注：可能对行程体验影响较大，建议提前安排</span><span><i></i>一般提醒：有助于行程更顺利，可根据实际情况参考</span><small>通用出行建议 · 配图为示意</small></div></div>'
-
-
-def luggage():
-    return '''<svg class="pitfall-luggage" viewBox="0 0 360 200" fill="none" aria-hidden="true"><path d="M0 171q40-15 63-30t58 7q40-64 84-32t59 16q40-25 96 39" fill="#dce3cd"/><path d="M30 190h310" stroke="#c3cfae"/><g stroke="#4c6d48" stroke-width="3"><path d="M236 61V20q0-8 8-8h22q8 0 8 8v41"/><path d="M239 17h32" stroke-width="8" stroke-linecap="round"/><rect x="208" y="52" width="104" height="127" rx="21" fill="#faf9ee"/><rect x="201" y="52" width="104" height="127" rx="21" fill="#f9f9ef"/><path d="M221 72v89m18-89v89m18-89v89m18-89v89" stroke="#a4b28c" stroke-linecap="round"/><circle cx="219" cy="182" r="6" fill="#4c6d48"/><circle cx="288" cy="182" r="6" fill="#4c6d48"/><g transform="rotate(-12 183 161)"><rect x="128" y="139" width="94" height="52" rx="5" fill="#faf9ee"/><path d="M136 149h77m-77 9h34m-34 9h29m-29 9h21m22-25v32" stroke="#93a47c" stroke-width="2"/><path d="m191 162 16-6-7 10 4 10-5-1-5-8-8-1Z" fill="#4c6d48" stroke="none"/></g></g></svg>'''
+    destination = guide.get('result', {}).get('destination') or guide['title'].split(' · ')[0].split(' → ')[-1]
+    saved = specific_items(guide, sections)
+    out = ['<div class="pitfall-workspace"><header class="pitfall-hero"><img src="' + text(scenery(destination, inline_images)) + '" alt="目的地风景示意"><div><p class="pitfall-eyebrow">目的地专属提醒</p><h2>' + text(destination) + ' · 少走弯路</h2><p class="pitfall-subtitle">只看这次目的地与景点需要留意的事</p></div></header>']
+    if not saved:
+        return ''.join(out) + '<p class="daily-empty">本版暂无目的地专属避坑信息。</p></div>'
+    out.append('<section class="pitfall-saved"><h3>本次行程 · 专属提醒</h3><ul>')
+    for item in saved:
+        value, url = item['text'], safe_url(item.get('link'))
+        out.append('<li class="' + ('pitfall-priority' if value.startswith(('❌', '⚠')) else '') + '">' + text(value)
+                   + (f' <a href="{text(url)}" target="_blank" rel="noopener noreferrer">{text(item.get("link_label", "公开来源"))}</a>' if url else '') + '</li>')
+    return ''.join(out) + '</ul></section></div>'
 
 
 CSS = """
-.pitfall-summary li:before{flex:0 0 40px;white-space:nowrap}.pitfall-stages{min-inline-size:0}.pitfall-photo{overflow:hidden}
-.pitfall-workspace{color:#103a34}.pitfall-workspace svg{width:24px;height:24px;flex-shrink:0}.pitfall-hero{position:relative;min-height:177px;isolation:isolate;display:flex;align-items:center}.pitfall-hero>img{position:absolute;right:0;top:-22px;width:61%;height:220px;object-fit:cover;object-position:center 57%;z-index:-1;mask-image:linear-gradient(90deg,transparent,#000 40%),linear-gradient(#000 65%,transparent);mask-composite:intersect;opacity:.9}.pitfall-eyebrow{display:flex;align-items:center;gap:16px;color:#b9451d;font-size:18px;margin:6px 0 8px}.pitfall-eyebrow span{width:65px;height:1px;background:#c55b37}.pitfall-hero h2{font:700 clamp(30px,3.45vw,50px)/1.4 Georgia,'Songti SC',SimSun,serif;letter-spacing:3px;padding:0;border:0;margin:0 0 3px}.pitfall-subtitle{font-size:21px;color:#66645e;margin:0;letter-spacing:1px}.pitfall-stages{display:flex;align-items:center;border:0;padding:18px 0 28px;margin:0 0 0 3%;width:70%}.pitfall-stage{display:flex;align-items:center;flex:1;min-width:0;position:relative;cursor:pointer}.pitfall-stage:not(:last-child):after{content:'';height:1px;background:#92a17e;flex:1;margin:0 14px}.pitfall-stage:not(:last-child):before{content:'';width:7px;height:7px;border:1px solid #7a9270;border-radius:50%;background:#faf8f3;position:absolute;right:calc(14px + 10%);z-index:1}.pitfall-stage>span{display:flex;align-items:center;justify-content:center;gap:14px;white-space:nowrap;font-size:20px;font-weight:600;padding:5px 22px;border-radius:30px;min-height:44px}.pitfall-stage svg{width:32px;height:32px}.pitfall-stage:has(:checked)>span{background:#cbd6a9}.pitfall-stage input,.pitfall-sr{position:absolute;width:1px;height:1px;clip-path:inset(50%);overflow:hidden}.pitfall-stage:has(:focus-visible)>span{outline:3px solid #b94d2a;outline-offset:4px}.pitfall-stage:hover>span{background:#e2e8d2}.pitfall-layout{display:grid;grid-template-columns:minmax(0,2.45fr) minmax(300px,1fr);gap:22px;align-items:stretch}.pitfall-workspace .pitfall-timeline{list-style:none;padding:6px 0 0 58px;margin:0}.pitfall-workspace .pitfall-item{position:relative;border:0;margin:0;padding:0 0 15px;white-space:normal}.pitfall-item:before{content:'';position:absolute;left:-38px;top:30px;bottom:-16px;width:1px;background:#a8ba97}.pitfall-item:last-child{padding-bottom:0}.pitfall-item:last-child:before{display:none}.pitfall-number{position:absolute;left:-57px;top:16px;background:linear-gradient(135deg,#809775,#4d744e);border:4px solid #faf8f3;border-radius:50%;width:44px;height:44px;display:grid;place-items:center;color:#fff;font:24px Georgia,serif}.pitfall-card{border:1px solid #bcc9ab;border-radius:17px;padding:16px;display:flex;gap:26px;align-items:center;min-height:118px;background:#fffdf84d}.pitfall-art{width:112px;height:90px;border-radius:15px;background:#e9edda;display:grid;place-items:center;flex-shrink:0;margin:0 10px 0 20px;color:#4a7047}.pitfall-art svg{width:62px;height:62px;stroke-width:1.2}.pitfall-photo{width:194px;height:102px;margin:0}.pitfall-photo img{display:block;width:100%;height:100%;object-fit:cover;border-radius:14px}.pitfall-copy{min-width:0;flex:1}.pitfall-copy header{display:flex;align-items:center;gap:22px;flex-wrap:wrap;margin-bottom:8px}.pitfall-copy h3{font:700 25px/1.4 Georgia,'Songti SC',SimSun,serif;margin:0}.pitfall-tag{display:inline-flex;align-items:center;gap:8px;padding:1px 16px;border:1px solid #e8aa86;background:#fff0df99;color:#b84a20;border-radius:30px;font-size:15px;white-space:nowrap}.pitfall-tag svg{width:20px;height:20px}.pitfall-copy p{display:flex;align-items:flex-start;gap:10px;margin:5px 0 0;font-size:15px;line-height:1.7;color:#242b25;overflow-wrap:anywhere}.pitfall-copy p>svg{width:20px;height:20px;color:#7a9768;margin-top:3px}.pitfall-copy strong{color:#193c38}.pitfall-copy .pitfall-advice>svg,.pitfall-advice strong{color:#bb4a1c}.pitfall-summary{background:linear-gradient(145deg,#e9eddc,#f5f4e9 60%);border-radius:21px;padding:21px 30px 0;display:flex;flex-direction:column;min-width:0;overflow:hidden}.pitfall-summary h3{font:700 29px/1.5 Georgia,'Songti SC',SimSun,serif;margin:0 0 10px}.pitfall-summary ol{list-style:none;counter-reset:summary;margin:0;padding:0;background:#fffdf64d;border-radius:16px 16px 0 0}.pitfall-workspace .pitfall-summary li{counter-increment:summary;display:flex;gap:18px;align-items:flex-start;margin:0;padding:15px 0;border:0;border-bottom:1px solid #d3d8c1;font-size:17px;line-height:1.6;white-space:normal;color:#202921}.pitfall-summary li:before{content:counter(summary,decimal-leading-zero);color:#bf5829;font:italic 34px/1.3 Georgia,serif}.pitfall-summary>a{display:flex;align-items:center;gap:14px;font-size:17px;margin:16px 0 0;color:#087b6c;text-underline-offset:5px}.pitfall-summary>a span{font-size:27px}.pitfall-workspace .pitfall-luggage{width:100%;height:auto;max-height:210px;margin-top:auto}.pitfall-saved{margin:22px 0 0 58px;padding:18px 24px;border:1px solid #c9d2bc;border-radius:16px;background:#f0f2e6}.pitfall-saved h3{font:700 22px Georgia,'Songti SC',SimSun,serif;margin:0 0 10px}.pitfall-workspace .pitfall-saved li{position:relative;border:0;margin:8px 0;padding:0 0 0 17px;font-size:15px;white-space:pre-wrap}.pitfall-saved li:before{content:'';position:absolute;left:0;top:10px;width:7px;height:7px;background:#a9ba8e;border-radius:50%}.pitfall-saved li.pitfall-priority:before{background:#c45e2c}.pitfall-legend{display:flex;align-items:center;gap:30px;flex-wrap:wrap;color:#343b31;font-size:13px;margin:18px 0 0}.pitfall-legend>span{display:flex;align-items:center;gap:10px}.pitfall-legend i{width:12px;height:12px;border-radius:50%;background:#c65c2c;flex-shrink:0}.pitfall-legend>span+span i{background:#b9c6a4}.pitfall-legend small{margin-left:auto}.pitfall-workspace:has(input[value=departure]:checked) .pitfall-item:not([data-stage=departure]),.pitfall-workspace:has(input[value=during]:checked) .pitfall-item:not([data-stage=during]),.pitfall-workspace:has(input[value=return]:checked) .pitfall-item:not([data-stage=return]){display:none}
-@media(min-width:1400px){.pitfall-card{min-height:123px}.pitfall-copy p{font-size:16px}}
-@media(max-width:1200px){.pitfall-card{gap:16px;padding:14px}.pitfall-art{width:85px;margin:0}.pitfall-photo{width:130px}.pitfall-copy h3{font-size:22px}.pitfall-copy header{gap:10px}.pitfall-layout{grid-template-columns:minmax(0,2fr) minmax(260px,1fr);gap:18px}.pitfall-summary{padding:20px}.pitfall-summary h3{font-size:24px}.pitfall-summary li{font-size:15px}.pitfall-stages{width:100%;margin-left:0}.pitfall-stage>span{padding:5px 18px}}
-@media(max-width:900px){.pitfall-layout{grid-template-columns:1fr}.pitfall-summary{padding:22px 28px;position:relative}.pitfall-summary ol,.pitfall-summary>a{max-width:72%;position:relative;z-index:1}.pitfall-workspace .pitfall-luggage{position:absolute;right:0;bottom:0;width:34%}.pitfall-summary h3{font-size:27px}.pitfall-stage>span{font-size:17px;padding:5px 14px;gap:8px}.pitfall-stage:not(:last-child):after{margin:0 8px}.pitfall-hero>img{width:80%;opacity:.6}.pitfall-hero h2{font-size:38px}.pitfall-saved{margin-left:0}}
-@media(max-width:600px){.pitfall-hero{min-height:195px;align-items:flex-start;padding-top:8px}.pitfall-hero>img{width:100%;height:200px;top:0;opacity:.37;mask-image:linear-gradient(90deg,transparent,#000 65%),linear-gradient(#000,transparent);mask-composite:intersect}.pitfall-eyebrow{font-size:14px;margin-bottom:12px}.pitfall-hero h2{font-size:29px;letter-spacing:0}.pitfall-subtitle{font-size:15px;margin-top:8px}.pitfall-stages{margin-top:-25px;padding:0 0 22px;gap:4px}.pitfall-stage{display:block;flex:1}.pitfall-stage:before,.pitfall-stage:after{display:none!important}.pitfall-stage>span{flex-direction:column;font-size:14px;gap:5px;padding:9px 6px;border-radius:15px;min-height:68px}.pitfall-stage svg{width:27px;height:27px}.pitfall-workspace .pitfall-timeline{padding-left:37px}.pitfall-number{left:-42px;width:34px;height:34px;font-size:19px;top:14px;border-width:3px}.pitfall-item:before{left:-23px}.pitfall-card{align-items:flex-start;gap:12px;padding:14px;min-height:0;border-radius:14px}.pitfall-art{width:48px;height:48px;border-radius:10px;position:absolute;top:15px;left:14px}.pitfall-art svg{width:32px;height:32px}.pitfall-photo img{width:48px;height:48px;border-radius:10px}.pitfall-copy header{padding-left:60px;min-height:54px;display:block;margin-bottom:10px}.pitfall-copy h3{font-size:19px;line-height:1.5}.pitfall-tag{font-size:11px;gap:4px;padding:0 8px;margin-top:5px}.pitfall-tag svg{width:14px;height:14px}.pitfall-copy p{font-size:14px;gap:7px;margin-top:9px}.pitfall-copy p>svg{width:17px;height:17px}.pitfall-summary{padding:20px}.pitfall-summary h3{font-size:25px}.pitfall-summary ol{max-width:100%}.pitfall-summary>a{margin-bottom:86px}.pitfall-workspace .pitfall-luggage{width:180px;max-height:118px}.pitfall-summary li:before{font-size:29px}.pitfall-legend{gap:10px;font-size:11px}.pitfall-legend small{margin:0}.pitfall-saved{padding:18px}.pitfall-saved h3{font-size:20px}}
-@media print{.pitfall-stages{display:none}.pitfall-workspace .pitfall-item{display:block!important;break-inside:avoid}.pitfall-layout{display:block}.pitfall-summary{margin-top:20px}.pitfall-hero>img{display:none}}
+.pitfall-workspace{color:#193c38}.pitfall-hero{position:relative;min-height:210px;display:flex;align-items:center;isolation:isolate;margin-bottom:24px}
+.pitfall-hero>img{position:absolute;inset:0 0 0 auto;width:60%;height:100%;object-fit:cover;z-index:-1;mask-image:linear-gradient(90deg,transparent,#000);opacity:.6;border-radius:20px}
+.pitfall-eyebrow{color:#b94d2a;font-size:14px;letter-spacing:2px}.pitfall-hero h2{font-size:clamp(28px,4vw,44px);border:0;padding:0;margin:8px 0}.pitfall-subtitle{color:#63736c}
+.pitfall-saved{background:#fffefa;border:1px solid #d8ddcf;border-radius:20px;padding:24px 28px}.pitfall-saved h3{margin:0 0 18px;font-size:22px}.pitfall-saved ul{list-style:none;margin:0;padding:0;display:grid;gap:14px}
+.pitfall-saved li{padding:18px 22px;background:#eef2e7;border-left:3px solid #66927d;border-radius:4px 12px 12px 4px;line-height:1.8;overflow-wrap:anywhere}.pitfall-saved li.pitfall-priority{background:#fbf0df;border-left-color:#b94d2a}.pitfall-saved a{color:#285b48}
+@media(max-width:700px){.pitfall-hero{min-height:180px}.pitfall-hero>img{width:75%;opacity:.4}.pitfall-saved{padding:18px}.pitfall-saved li{padding:14px}.pitfall-subtitle{font-size:14px}}
+@media print{.pitfall-saved li{break-inside:avoid}}
 """
