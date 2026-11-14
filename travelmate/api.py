@@ -27,7 +27,7 @@ from travelmate.auth import CITY_VISUALS, install_auth, require_access
 from travelmate import asr, watch
 from travelmate.tools import search_places, search_web
 from travelmate.preparation import overlay
-from travelmate import library
+from travelmate import library, budget
 
 
 class ChatRequest(BaseModel):
@@ -378,7 +378,26 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
         if guide is None:
             raise HTTPException(404, "攻略版本不存在或尚未完成")
         from copy import deepcopy
-        return overlay(deepcopy(guide), state.get('preparation_lists', {}).get(str(version)))
+        guide = overlay(deepcopy(guide), state.get('preparation_lists', {}).get(str(version)))
+        return budget.overlay(guide, state.get('budget_lists', {}).get(str(version)))
+
+    @app.get('/sessions/{session_id}/plans/{version}/budget')
+    def session_budget(session_id: SessionId, version: Annotated[int, PathParam(ge=1)]):
+        with trip_lock():
+            return load_guide(session_id, version)['budget_edit']
+
+    @app.put('/sessions/{session_id}/plans/{version}/budget')
+    def save_session_budget(session_id: SessionId, version: Annotated[int, PathParam(ge=1)], data: budget.BudgetUpdate):
+        with trip_lock():
+            guide = load_guide(session_id, version)
+            if guide['budget_edit']['revision'] != data.revision:
+                raise HTTPException(409, '预算已在其他页面更新，请刷新后重新编辑')
+            saved = budget.validate(guide, data)
+            state = get_workflow(app.state.agent, session_id)
+            state['budget_lists'] = {**state.get('budget_lists', {}), str(version): saved}
+            save_workflow(app.state.agent, session_id, state)
+            archive_session(session_id)
+            return saved
 
     @app.get('/sessions/{session_id}/plans/{version}/preparation')
     def preparation(session_id: SessionId, version: Annotated[int, PathParam(ge=1)]):
@@ -408,6 +427,7 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
                 return library_preview(row[0], version, http_request)
         guide = load_guide(session_id, version)
         guide['_preparation_url'] = f'/sessions/{session_id}/plans/{version}/preparation'
+        guide['_budget_url'] = f'/sessions/{session_id}/plans/{version}/budget'
         return HTMLResponse(render_guide(guide, f"/sessions/{session_id}/plans/{version}/pdf"),
             headers={"Cache-Control": "no-store", "Content-Security-Policy": f"default-src 'none'; connect-src 'self'; script-src 'sha256-{RESULT_SCRIPT_HASH}'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'",
                      "X-Content-Type-Options": "nosniff"})
@@ -547,15 +567,17 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
             state = get_workflow(app.state.agent, session_id)
             completed_node = 'present' if 'present' in app.state.agent.nodes else 'model'
             if not state.get('versions'):
-                snapshots, preparation = [], {}
+                snapshots, preparation, budgets = [], {}, {}
                 for row in reversed(library.versions(app.state.agent, guide_id)):
                     snapshot, guide = library.load(app.state.agent, guide_id, row['version'])
                     snapshots.append(snapshot)
                     preparation[str(row['version'])] = guide['preparation']
+                    if guide['budget_edit']['revision']:
+                        budgets[str(row['version'])] = guide['budget_edit']
                 latest = snapshots[-1]
                 state = {'requirements': latest['requirements'], 'plan_requirements': latest['requirements'],
                          'plan': latest['plan'], 'total': latest.get('total'), 'version': latest['version'],
-                         'versions': snapshots, 'status': 'confirmed', 'preparation_lists': preparation}
+                         'versions': snapshots, 'status': 'confirmed', 'preparation_lists': preparation, 'budget_lists': budgets}
                 app.state.agent.update_state({'configurable': {'thread_id': session_id}}, {
                     'workflow': state, 'evidence': latest.get('evidence', {}),
                     'messages': [AIMessage(content='已从我的攻略恢复方案，可以继续提出调整需求。',
@@ -577,6 +599,7 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
             version = version or item['latest']
             _, guide = library.load(app.state.agent, guide_id, version)
             guide['_preparation_url'] = f'/api/guides/{guide_id}/versions/{version}/preparation'
+            guide['_budget_url'] = f'/api/guides/{guide_id}/versions/{version}/budget'
             document = render_guide(guide, f'/api/guides/{guide_id}/versions/{version}/pdf')
             return HTMLResponse(detail_page(document, item, library.versions(app.state.agent, guide_id), version),
                                 headers={'Cache-Control': 'no-store'})
@@ -594,6 +617,29 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
         with trip_lock():
             owned_guide(request, guide_id)
             return library.load(app.state.agent, guide_id, version)[1]['preparation']
+
+    @app.get('/api/guides/{guide_id}/versions/{version}/budget')
+    def library_budget(guide_id: GuideId, version: Version, request: Request):
+        with trip_lock():
+            owned_guide(request, guide_id)
+            return library.load(app.state.agent, guide_id, version)[1]['budget_edit']
+
+    @app.put('/api/guides/{guide_id}/versions/{version}/budget')
+    def save_library_budget(guide_id: GuideId, version: Version, data: budget.BudgetUpdate, request: Request):
+        with trip_lock():
+            item = owned_guide(request, guide_id)
+            guide = library.load(app.state.agent, guide_id, version)[1]
+            if guide['budget_edit']['revision'] != data.revision:
+                raise HTTPException(409, '预算已在其他页面更新，请刷新后重新编辑')
+            saved = budget.validate(guide, data)
+            state = get_workflow(app.state.agent, item['session_id'])
+            if state.get('versions'):
+                state['budget_lists'] = {**state.get('budget_lists', {}), str(version): saved}
+                save_workflow(app.state.agent, item['session_id'], state)
+            with app.state.agent.checkpointer.cursor() as cur:
+                cur.execute('UPDATE guide_versions SET budget=? WHERE guide_id=? AND version=?',
+                            (json.dumps(saved, ensure_ascii=False), guide_id, version))
+            return saved
 
     @app.put('/api/guides/{guide_id}/versions/{version}/preparation')
     def save_library_preparation(guide_id: GuideId, version: Version, data: PreparationUpdate, request: Request):

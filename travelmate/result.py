@@ -48,7 +48,9 @@ def coordinates(value):
 
 def result_panels(guide, sections, text, inline_images=False, actions=""):
     days = [s for s, _ in sections if s['kind'] == 'day']
-    meta = guide.get('result', {})
+    meta = dict(guide.get('result', {}))
+    meta['budget_endpoint'] = guide.get('_budget_url', '')
+    meta['budget_key'] = sha256((guide['title'] + str(guide['version']) + guide.get('saved_at', '')).encode()).hexdigest()[:24]
     out = ['<div class="result" aria-label="旅行方案">']
     views = [('overview', '行程概览'), ('budget', '预算明细'), ('days', '每日行程'), ('lodging', '住宿推荐'), ('food', '当地美食'), ('pitfalls', '避坑指南'), ('prepare', '行程准备')]
     out.append(f'<header class="daily-masthead"><strong><svg class="budget-brand-mark" viewBox="0 0 60 36" aria-hidden="true"><path d="M2 28 21 5q4-5 8 0l21 23-17-5-12-4Z" fill="#196457"/><path d="m30 12 8-7 20 24-17-5Z" fill="#73947f"/><path d="M10 32q14-13 28-3t20-3q-12 14-28 7t-20-1" fill="#196457"/></svg>TravelMate</strong><span>{text(guide["title"])}</span>{actions}</header>')
@@ -136,7 +138,7 @@ def split_expenses(ledger):
     result = []
     for row in ledger:
         parts = []
-        if row['category'] == '综合费用' and row['amount'] is not None:
+        if row['category'] == '综合费用' and row['amount'] is not None and not row.get('split'):
             match = re.search(r'构成[：:](.+?)(?:合计|总计|$)', row['name'], re.S)
             if match:
                 for section in re.split(r'[；;]', match[1]):

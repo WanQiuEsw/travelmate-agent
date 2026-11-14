@@ -38,7 +38,7 @@ TravelMate 是基于 LangChain / LangGraph 的旅行规划智能体，使用 Fas
 
 ## 使用边界
 
-- **预算试算仅影响当前页面**，不会修改保存的方案或同步改写导出金额。综合费用只有存在明确分项与金额依据时才拆分。
+- **预算修改后需点击保存**，按账号、攻略版本保留，再次查看与 PDF / Markdown / HTML 导出会带上保存的金额和计入状态。用户填写金额不代表已核实报价；原始行程估算保留供参考。综合费用只有存在明确分项与金额依据时才拆分。
 - **雨天切换用于查看备选路线**，预算、地图和 PDF / Markdown 导出仍对应原定行程；需要保存调整时，通过对话生成新版本。
 - **图片是参考素材**，不代表对应目的地、酒店或菜品的真实照片。住宿建议不提供实时可订房态，也没有自动预订功能。
 - **地点地图为坐标连线示意**。默认规划尚未完整接入关键路段的实时路线核验；地点存在性不能证明步行、公交或接驳耗时准确。
@@ -175,7 +175,7 @@ Each saved guide supports PDF, Markdown and standalone HTML exports. Failed revi
 
 ## Limits
 
-Budget edits are page-only calculations. Switching to a rain alternative previews that route; budgets, maps and PDF / Markdown exports still refer to the original itinerary. Request a revised plan in chat to save changes.
+Use Save Budget to retain edited amounts, included items and the spending limit for that account and guide version. Saved edits appear on reopening and in PDF / Markdown / HTML exports; they are user-entered figures, not verified quotes. Rain alternatives remain route previews; request a revised plan in chat to save an itinerary change.
 
 Reference images are illustrative, and images are not generated automatically at runtime. Accommodation suggestions do not provide live availability or automatic booking. Map lines are schematic; place lookup does not verify walking or transit times. Weather requires a date and valid query results, and third-party train results do not guarantee availability.
 

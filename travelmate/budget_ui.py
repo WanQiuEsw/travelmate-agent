@@ -1,4 +1,4 @@
-"""Budget cards and local-only calculations over the saved expense ledger."""
+"""Editable budget cards with version-scoped persistence."""
 from decimal import Decimal, ROUND_HALF_UP
 
 
@@ -25,14 +25,14 @@ def panel(meta, text):
     money = lambda v: f'¥{v / 100:,.2f}'
     known = {r['category'] for r in ledger if r['amount'] is not None}
     pending = {r['category'] for r in ledger if r['amount'] is None}
-    totals = {c: sum(cents(r['amount']) for r in ledger if r['category'] == c and r['amount'] is not None) for c in categories}
+    totals = {c: sum(cents(r['amount']) for r in ledger if r['category'] == c and r['amount'] is not None and r.get('included', True)) for c in categories}
     total = sum(totals.values())
     unknown = sum(r['amount'] is None for r in ledger)
     travelers = meta.get('travelers') or 1
     budget = cents(meta['budget']) if meta.get('budget') is not None and meta.get('budget_currency', 'CNY') == 'CNY' else None
     budget_value = f'{budget / 100:.2f}' if budget is not None else ''
     limit = (f'<label class="budget-limit-value"><span>¥</span><input data-budget-limit style="--budget-digits:{len(budget_value)}" type="number" min="0" max="100000000" step="0.01" value="{budget_value}" aria-label="行程总预算上限"></label>'
-             if budget is not None else '<b>待确认</b>')
+             if meta.get('budget_currency', 'CNY') == 'CNY' else '<b>待确认</b>')
     currency = meta.get('budget_currency', 'CNY')
     scope = ('人民币' if currency == 'CNY' else currency) + ' · ' + meta.get('budget_includes', '范围待确认')
     def expense(row, i):
@@ -42,9 +42,14 @@ def panel(meta, text):
         detail = text(description)
         if len(description) > 90:
             detail = '<details class="expense-explanation"><summary>费用说明</summary><p>' + detail + '</p></details>'
-        return (f'<tr data-category="{text(row["category"])}" data-order="{i}"><td><input type="checkbox" {"checked" if value else ""} aria-label="计入{text(name)}"></td>'
+        original = row.get('original_amount', row['amount'])
+        original_value = f'{cents(original)/100:.2f}' if original is not None else ''
+        original_included = row.get('original_included', original is not None)
+        return (f'<tr data-category="{text(row["category"])}" data-order="{i}" data-original="{original_value}" data-original-included="{str(original_included).lower()}"><td><input type="checkbox" {"checked" if row.get("included", bool(value)) else ""} aria-label="计入{text(name)}"></td>'
                 f'<td>{text(name)}<small>{text(row["status"])}</small></td><td><label class="budget-money"><span>¥</span><input type="number" min="0" max="100000000" step="0.01" value="{value}" placeholder="待核实" aria-label="{text(name)}全员费用"></label></td><td>{detail}</td></tr>')
-    out = [f'<div class="budget-workspace" data-travelers="{travelers}" data-limit="{budget if budget is not None else ""}"><header class="budget-heading"><h2>{icon("coins")}预算明细</h2><p>每一笔心里有数，把钱花在喜欢的地方。</p><span class="budget-leaf">❧ 设计参考</span><span class="budget-scope">预算范围：全员 · {text(scope)}</span><small>ⓘ 含待核实项目，最终费用可能变化。</small></header>',
+    original_budget = meta.get('original_budget', meta.get('budget'))
+    original_limit = f'{original_budget:.2f}' if original_budget is not None else ''
+    out = [f'<div class="budget-workspace" data-endpoint="{text(meta.get("budget_endpoint", ""))}" data-revision="{meta.get("budget_revision", 0)}" data-storage="travelmate-budget-{text(meta.get("budget_key", ""))}" data-original-limit="{original_limit}" data-travelers="{travelers}" data-limit="{budget if budget is not None else ""}"><header class="budget-heading"><h2>{icon("coins")}预算明细</h2><p>每一笔心里有数，把钱花在喜欢的地方。</p><span class="budget-scope">预算范围：全员 · {text(scope)}</span><small>ⓘ 用户填写金额不代表已核实报价，未知费用不按免费处理。</small></header>',
            f'<section class="budget-overview" aria-label="费用汇总"><div class="budget-party">{icon("people")}<strong>{travelers} 人出行</strong></div><div class="budget-limit"><strong>行程总预算（上限）</strong>{limit}</div><div class="budget-distribution"><h3>已列估算费用：<strong data-total>{money(total) if total or not unknown else "待核实"}</strong> <small>（不含待核实项目）</small></h3><div class="budget-bar" aria-label="费用占比">']
     bar_categories = ['交通费用', '酒店住宿', '餐饮费用', '景点门票'] + [c for c in categories if c not in labels]
     for c in bar_categories:
@@ -54,7 +59,7 @@ def panel(meta, text):
     for c in bar_categories:
         out.append(f'<span><i class="budget-color-{categories.index(c) % 6}"></i>{text(labels.get(c, (c,))[0])} <b data-category-total="{text(c)}">{money(totals[c]) if c in known else '待核实' if c in pending else '未单列'}</b></span>')
     out.append(f'<span><i class="budget-color-balance"></i>余量 <b data-balance>{money(balance) if budget is not None else "待确认"}</b></span></div></div><div class="budget-metrics"><p>{icon("people")}人均 <strong data-person>{money(int((Decimal(total) / travelers).quantize(Decimal("1"), rounding=ROUND_HALF_UP))) if total or not unknown else "待核实"}</strong><small>（估算）</small></p><p data-budget-notice role="status">{icon("alert")}<strong data-unknown>{unknown} 项待核实</strong></p></div></section>')
-    out.append('<div class="budget-toolbar"><label>类型筛选：<select data-budget-filter aria-label="筛选费用类型"><option value="">全部类型</option>' + ''.join(f'<option>{text(c)}</option>' for c in categories) + '</select></label><label>排序方式：<select data-budget-sort aria-label="排序费用"><option value="desc" selected>金额从高到低</option><option value="original">日程顺序</option><option value="asc">金额从低到高</option></select></label><small>ⓘ 本页试算，不修改已保存方案。</small><button type="button" data-budget-reset>' + icon('reset') + '恢复方案金额</button></div><div class="budget-cards" aria-label="逐项费用">')
+    out.append('<div class="budget-toolbar"><label>类型筛选：<select data-budget-filter aria-label="筛选费用类型"><option value="">全部类型</option>' + ''.join(f'<option>{text(c)}</option>' for c in categories) + '</select></label><label>排序方式：<select data-budget-sort aria-label="排序费用"><option value="desc" selected>金额从高到低</option><option value="original">日程顺序</option><option value="asc">金额从低到高</option></select></label><small data-budget-save-status role="status">修改后点击保存，再次打开和导出时即可查看。</small><button type="button" data-budget-save>保存预算</button><button type="button" data-budget-reset>' + icon('reset') + '恢复方案金额</button></div><div class="budget-cards" aria-label="逐项费用">')
     for c in categories:
         title, symbol = labels.get(c, (c, 'coins'))
         rows = [(i, r) for i, r in enumerate(ledger) if r['category'] == c and r['amount'] is not None]
@@ -85,6 +90,17 @@ CSS = """
 @media print{.budget-toolbar,.budget-category button,.budget-source-notes{display:none}.budget-cards{grid-template-columns:1fr 1fr}.budget-overview,.budget-category,.budget-pending{break-inside:avoid;box-shadow:none}}
 """
 
+CSS += """
+.budget-toolbar button[data-budget-save]{background:#087f7a;color:white;font-weight:600}
+.budget-toolbar button:disabled{opacity:.55;cursor:wait}
+.budget-toolbar [data-budget-save-status]{white-space:normal;overflow-wrap:anywhere}
+.budget-workspace{container-type:inline-size;container-name:budget-panel}
+.budget-money{padding-inline:5px}
+@container budget-panel (max-width:1100px){.budget-overview{grid-template-columns:150px minmax(0,1fr);gap:18px}.budget-distribution{grid-column:1/-1}.budget-distribution h3{display:flex;gap:8px;flex-wrap:wrap;align-items:baseline}.budget-distribution h3 small{font-size:12px}.budget-metrics{grid-column:1/-1;display:flex;gap:12px;border:0;padding:0}.budget-metrics p{flex:1}.budget-metrics p+p{margin:0}.budget-category>header{gap:8px}.budget-toolbar>small{flex-basis:100%;text-align:left}}
+@container budget-panel (max-width:1000px){.budget-cards{grid-template-columns:minmax(0,1fr)}.budget-category>header{display:flex;flex-wrap:wrap}.budget-category header p{margin-left:12px}.budget-category>header button{margin-left:auto}.budget-workspace th:first-child{width:44px;white-space:nowrap}.budget-workspace th:nth-child(2){width:30%}.budget-workspace th:nth-child(3){width:22%}}
+@container budget-panel (max-width:500px){.budget-overview{grid-template-columns:110px minmax(0,1fr);padding:14px;gap:12px}.budget-party{font-size:16px;padding:0}.budget-party svg{width:25px}.budget-limit>strong{font-size:13px}.budget-metrics{flex-wrap:wrap}.budget-metrics p{flex:1 1 130px}.budget-toolbar{gap:10px}.budget-toolbar label{width:100%;justify-content:space-between;font-size:13px}.budget-toolbar label+label{border:0;padding:0}.budget-toolbar select{width:65%;min-width:0}.budget-category header p{margin-left:0}.budget-category h3{font-size:20px}.budget-category header p strong{font-size:20px}.budget-workspace th:nth-child(2){width:26%}.budget-workspace th:nth-child(3){width:26%}.budget-money{max-width:100%;font-size:12px}}
+"""
+
 JS = r"""
 const workspace = document.querySelector('.budget-workspace');
 if (workspace) {
@@ -93,6 +109,11 @@ if (workspace) {
   const sort = workspace.querySelector('[data-budget-sort]');
   const money = cents => '¥' + (cents / 100).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2});
   const limitInput = workspace.querySelector('[data-budget-limit]');
+  const saveButton = workspace.querySelector('[data-budget-save]');
+  const saveStatus = workspace.querySelector('[data-budget-save-status]');
+  const endpoint = workspace.dataset.endpoint;
+  let revision = Number(workspace.dataset.revision || 0), dirty = false;
+  const markDirty = () => { dirty = true; saveStatus.textContent = '修改尚未保存；导出使用上次保存的金额。'; };
   const inputAmount = input => {
     if (!/^\d+(?:\.\d{1,2})?$/.test(input.value) || !input.validity.valid) return null;
     const [whole, fraction = ''] = input.value.split('.');
@@ -147,20 +168,66 @@ if (workspace) {
     workspace.querySelector('.budget-pending h3').textContent = '待核实项目（' + unknown + ' 项）';
   }
   workspace.addEventListener('input', event => {
-    if (event.target.matches('input[type=number]')) update(false);
+    if (event.target.matches('input[type=number]')) { update(false); markDirty(); }
   });
-  workspace.addEventListener('change', () => update());
+  workspace.addEventListener('change', event => { update(event.target === sort); if (event.target.matches('input')) markDirty(); });
   for (const button of workspace.querySelectorAll('[data-edit-category]')) {
     button.addEventListener('click', () => button.closest('[data-card]').querySelector('input[type=number]')?.focus());
   }
   workspace.querySelector('[data-budget-reset]').addEventListener('click', () => {
     for (const row of rows) {
-      const input = row.querySelector('input[type=number]'); input.value = input.defaultValue;
-      const check = row.querySelector('input[type=checkbox]'); check.checked = check.defaultChecked;
+      const input = row.querySelector('input[type=number]'); input.value = row.dataset.original;
+      const check = row.querySelector('input[type=checkbox]'); check.checked = row.dataset.originalIncluded === 'true';
     }
-    if (limitInput) limitInput.value = limitInput.defaultValue;
-    filter.value = ''; sort.value = 'desc'; update();
+    if (limitInput) limitInput.value = workspace.dataset.originalLimit;
+    filter.value = ''; sort.value = 'desc'; update(); markDirty();
   });
+  saveButton.addEventListener('click', async () => {
+    const inputs = [...workspace.querySelectorAll('input[type=number]')];
+    if (inputs.some(input => input.value !== '' && inputAmount(input) === null)) {
+      saveStatus.textContent = '金额须为 0～100000000 元，最多两位小数。'; return;
+    }
+    const data = {revision, limit_cents: limitInput ? inputAmount(limitInput) : null,
+      items: rows.map(row => ({id: Number(row.dataset.order), amount_cents: amount(row), included: row.querySelector('input[type=checkbox]').checked}))};
+    saveButton.disabled = true;
+    for (const input of workspace.querySelectorAll('input')) input.disabled = true;
+    workspace.querySelector('[data-budget-reset]').disabled = true;
+    try {
+      if (endpoint) {
+        const response = await fetch(endpoint, {method: 'PUT', credentials: 'same-origin',
+          headers: {'Content-Type': 'application/json', 'X-TravelMate-Request': '1'}, body: JSON.stringify(data)});
+        const saved = await response.json();
+        if (!response.ok) throw new Error(typeof saved.detail === 'string' ? saved.detail : '保存失败，请稍后重试');
+        revision = saved.revision;
+        saveStatus.textContent = '预算已保存，再次打开和导出均使用本次金额。';
+      } else {
+        localStorage.setItem(workspace.dataset.storage, JSON.stringify(data));
+        saveStatus.textContent = '已保存在当前浏览器；离线修改不会回传账号或改写已下载文件。';
+      }
+      dirty = false;
+    } catch (error) { saveStatus.textContent = error.message || '预算保存失败，请稍后重试'; }
+    finally {
+      saveButton.disabled = false;
+      for (const input of workspace.querySelectorAll('input')) input.disabled = false;
+      workspace.querySelector('[data-budget-reset]').disabled = false;
+    }
+  });
+  if (!endpoint) {
+    saveStatus.textContent = '离线预算仅保存在当前浏览器，不自动同步账号。';
+    try {
+      const saved = JSON.parse(localStorage.getItem(workspace.dataset.storage) || 'null');
+      if (saved && Array.isArray(saved.items)) {
+        for (const row of rows) {
+          const item = saved.items.find(item => item.id === Number(row.dataset.order));
+          if (!item || (item.amount_cents !== null && (!Number.isSafeInteger(item.amount_cents) || item.amount_cents < 0 || item.amount_cents > 10000000000))) continue;
+          row.querySelector('input[type=number]').value = item.amount_cents === null ? '' : (item.amount_cents / 100).toFixed(2);
+          row.querySelector('input[type=checkbox]').checked = item.included === true;
+        }
+        if (limitInput && (saved.limit_cents === null || Number.isSafeInteger(saved.limit_cents) && saved.limit_cents >= 0 && saved.limit_cents <= 10000000000)) limitInput.value = saved.limit_cents === null ? '' : (saved.limit_cents / 100).toFixed(2);
+      }
+    } catch { saveStatus.textContent = '无法读取浏览器保存的预算，可重新编辑后保存。'; }
+  }
+  window.addEventListener('beforeunload', event => { if (dirty) { event.preventDefault(); event.returnValue = ''; } });
   update();
 }
 """

@@ -11,6 +11,7 @@ from fastapi import HTTPException
 from travelmate.guide import get_version
 from travelmate.preparation import overlay
 from travelmate.public import public_data
+from travelmate.budget import overlay as budget_overlay
 
 
 def initialize(agent):
@@ -25,9 +26,11 @@ def initialize(agent):
             CREATE INDEX IF NOT EXISTS guide_library_user ON guide_library(user_id, deleted, updated_at);
             CREATE TABLE IF NOT EXISTS guide_versions (
                 guide_id TEXT NOT NULL, version INTEGER NOT NULL, snapshot TEXT NOT NULL,
-                preparation TEXT, PRIMARY KEY (guide_id, version)
+                preparation TEXT, budget TEXT, PRIMARY KEY (guide_id, version)
             );
         ''')
+        if 'budget' not in {row[1] for row in cur.execute('PRAGMA table_info(guide_versions)')}:
+            cur.execute('ALTER TABLE guide_versions ADD COLUMN budget TEXT')
 
 
 def sync_session(agent, session_id, user_id, state=None):
@@ -80,12 +83,16 @@ def sync_session(agent, session_id, user_id, state=None):
                                                 if k in version.get('evidence_ids', [])})
                 snapshot['guide'] = version.get('guide') or get_version(
                     {**state, 'versions': [snapshot]}, number)
-                cur.execute('INSERT INTO guide_versions VALUES (?, ?, ?, NULL)',
+                cur.execute('INSERT INTO guide_versions(guide_id, version, snapshot, preparation) VALUES (?, ?, ?, NULL)',
                             (guide_id, number, json.dumps(snapshot, ensure_ascii=False)))
             preparation = state.get('preparation_lists', {}).get(str(number))
             if preparation is not None:
                 cur.execute('UPDATE guide_versions SET preparation=? WHERE guide_id=? AND version=?',
                             (json.dumps(preparation, ensure_ascii=False), guide_id, number))
+            budget = state.get('budget_lists', {}).get(str(number))
+            if budget is not None:
+                cur.execute('UPDATE guide_versions SET budget=? WHERE guide_id=? AND version=?',
+                            (json.dumps(budget, ensure_ascii=False), guide_id, number))
 
 
 def migrate(agent, owners=None):
@@ -137,12 +144,13 @@ def versions(agent, guide_id):
 
 def load(agent, guide_id, number):
     with agent.checkpointer.cursor() as cur:
-        row = cur.execute('SELECT snapshot, preparation FROM guide_versions WHERE guide_id=? AND version=?',
+        row = cur.execute('SELECT snapshot, preparation, budget FROM guide_versions WHERE guide_id=? AND version=?',
                           (guide_id, number)).fetchone()
     if not row:
         raise HTTPException(404, '攻略版本不存在')
     snapshot = json.loads(row[0])
-    return snapshot, overlay(deepcopy(snapshot['guide']), json.loads(row[1]) if row[1] else None)
+    guide = overlay(deepcopy(snapshot['guide']), json.loads(row[1]) if row[1] else None)
+    return snapshot, budget_overlay(guide, json.loads(row[2]) if row[2] else None)
 
 
 def remove(agent, guide_id):
