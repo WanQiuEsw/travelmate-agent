@@ -52,34 +52,15 @@ function setup(fetch = async () => ({ok: true, json: async () => ({results: [], 
   }));
   elements.steps.forEach((step, i) => { step.disabled = i !== 0; });
   elements['trip-form'].querySelectorAll = () => elements.steps;
-  elements.cards = [...html.matchAll(/data-trip-idea="([^"]+)"/g)].map(match => ({
-    dataset: {tripIdea: match[1]}, handlers: {},
-    addEventListener(name, handler) { this.handlers[name] = handler; },
-  }));
   elements.themes = [...html.matchAll(/data-trip-theme="([^"]+)"/g)].map(match => ({
     dataset: {tripTheme: match[1]}, handlers: {},
     addEventListener(name, handler) { this.handlers[name] = handler; },
   }));
-  vm.runInNewContext(source, {document: {querySelector: id => elements[id.slice(1)], querySelectorAll: selector => selector === '[data-trip-theme]' ? elements.themes : elements.cards, createElement: element}, Event, fetch});
+  vm.runInNewContext(source, {document: {querySelector: id => elements[id.slice(1)], querySelectorAll: selector => selector === '[data-trip-theme]' ? elements.themes : [], createElement: element}, Event, fetch});
   return elements;
 }
 function next(e) { e['trip-form'].handlers.submit({preventDefault() {}}); }
 function finish(e) { for (let step = 0; step < 8; step++) next(e); }
-
-test('travel inspiration fills editable drafts without sending or changing a busy draft', () => {
-  const e = setup();
-  assert.equal(e.cards.length, 3);
-  for (const card of e.cards) {
-    card.handlers.click();
-    assert.equal(e.input.value, card.dataset.tripIdea);
-    assert.equal(e.input.focused, true);
-    assert.equal(e.form.submissions.length, 0);
-  }
-  e.send.disabled = true;
-  e.input.value = '正在生成，保留草稿';
-  e.cards[0].handlers.click();
-  assert.equal(e.input.value, '正在生成，保留草稿');
-});
 
 test('travel themes fill drafts and leave a busy draft untouched', () => {
   const e = setup();

@@ -191,7 +191,7 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
         return FileResponse(Path(__file__).with_name('back-to-top.js'), media_type='text/javascript')
 
     @app.get("/assets/visual/{filename}", include_in_schema=False)
-    def visual_asset(filename: Literal["companion.webp", "coast.webp", "mountains.webp", "town.webp", "icon.webp", "lodging-room.webp", "lodging-city.webp", "lodging-canal.webp", "food-reference.png", "hotel-room.webp"]):
+    def visual_asset(filename: Literal["companion.webp", "coast.webp", "mountains.webp", "town.webp", "icon.webp", "lodging-room.webp", "lodging-city.webp", "lodging-canal.webp", "food-reference.png", "hotel-room.webp", "home-panorama.webp", "home-sea.webp", "home-mountain.webp", "home-food.webp", "home-town.webp"]):
         return FileResponse(Path(__file__).with_name("images") / filename, media_type="image/png" if filename.endswith('.png') else "image/webp")
 
     @app.get('/assets/visual/cities/{city}.webp', include_in_schema=False)

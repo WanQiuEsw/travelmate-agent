@@ -57,7 +57,7 @@ def test_all_business_routes_require_login(protected):
 
 def test_brand_assets_are_public_but_do_not_expose_other_files(protected):
     _, client = protected
-    for name in ('companion', 'coast', 'mountains', 'town', 'icon'):
+    for name in ('companion', 'coast', 'mountains', 'town', 'icon', 'home-panorama', 'home-sea', 'home-mountain', 'home-food', 'home-town'):
         response = client.get(f'/assets/visual/{name}.webp')
         assert response.status_code == 200
         assert response.headers['content-type'] == 'image/webp'
