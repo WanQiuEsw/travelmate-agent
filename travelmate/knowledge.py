@@ -32,11 +32,12 @@ def knowledge_coverage(data, requirements):
         texts.append(content)
         accepted.append(index)
     text = '\n'.join(texts)
-    topics = ['特色美食', *requirements.get('interests', [])]
+    topics = ['特色美食', '避坑指南', *requirements.get('interests', [])]
     preferences = requirements.get('preferences', '')
     if preferences and preferences != '无特殊偏好':
         topics.extend(part.strip() for part in re.split(r'[，,、；;。\n]', preferences) if part.strip())
-    aliases = {'特色美食': ('美食', '小吃', '餐饮', '餐厅'), '美食': ('美食', '小吃', '餐饮', '餐厅')}
+    aliases = {'特色美食': ('美食', '小吃', '餐饮', '餐厅'), '美食': ('美食', '小吃', '餐饮', '餐厅'),
+               '避坑指南': ('避坑', '踩坑', '排队', '宰客', '消费陷阱')}
     # shortcut: 词面匹配会多补查同义表达，有固定评估集后再扩充语义匹配。
     missing = [topic for topic in dict.fromkeys(topics)
                if not any(word in text for word in aliases.get(topic, (topic,)))]

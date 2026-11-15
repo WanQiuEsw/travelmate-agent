@@ -18,3 +18,16 @@ def test_daily_cards_preserve_data_and_escape_content():
     assert 'data:image/webp;base64,' in day_cards(day, 1, escape, True)
     assert '当天尚无具体安排' in day_cards({'title': '第1天'}, 1, escape)
     assert '@media print' in CSS and '@media(max-width:420px)' in CSS
+
+
+def test_timeline_preserves_times_and_rain_route_without_inventing_times():
+    day = {'title': '第1天', 'rows': [
+        ['09:00–10:30', '西湖', '散步', '步行', '免费'],
+        ['', '午餐', '用餐', '', '待核实']],
+        'rain_rows': [['10:00', '博物馆', '室内参观', '地铁', '免费']]}
+    html = day_cards(day, 1, escape)
+    assert html.count('aria-label="当日行程时间轴"') == 2
+    assert '<div class="daily-stop-time">09:00–10:30</div>' in html
+    assert '<div class="daily-stop-time">时间待定</div>' in html
+    assert '<div class="daily-stop-time">10:00</div>' in html
+    assert html.index('09:00–10:30') < html.index('午餐') < html.index('博物馆')

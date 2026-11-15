@@ -35,8 +35,8 @@ def require_access(request: Request):
                 or request.headers.get('sec-fetch-site') in ('same-site', 'cross-site')
                 or origin is not None and origin != str(request.base_url).rstrip('/')):
             raise HTTPException(403, '请通过本站页面提交请求')
-    public = {'/', '/guides', '/login', '/assets/library.js', '/assets/library.css', '/assets/markdown.js', '/assets/auth.js', '/assets/theme.css', '/health', '/assets/visual/food-reference.png',
-              *(f'/assets/visual/{name}.webp' for name in ('companion', 'coast', 'mountains', 'town', 'icon', 'lodging-room', 'lodging-city', 'lodging-canal')),
+    public = {'/', '/guides', '/login', '/assets/library.js', '/assets/library.css', '/assets/markdown.js', '/assets/auth.js', '/assets/theme.css', '/assets/back-to-top.js', '/health', '/assets/visual/food-reference.png',
+              *(f'/assets/visual/{name}.webp' for name in ('companion', 'coast', 'mountains', 'town', 'icon', 'lodging-room', 'lodging-city', 'lodging-canal', 'home-panorama', 'home-sea', 'home-mountain', 'home-food', 'home-town')),
               *(f'/assets/visual/cities/{city}.webp' for city in CITY_VISUALS)}
     if request.method in ('GET', 'HEAD') and request.url.path in public:
         return

@@ -90,3 +90,7 @@ def test_preparation_categories_and_progress():
     assert '已完成 1 / 2 项' in html
     assert '&lt;护照&gt;' in html
     assert all(f'data-category="{name}"' in html for name in ('证件', '随身用品', '出发确认'))
+    assert html.count('data-add-category=') == 1
+    assert '<dialog aria-labelledby=' in html
+    assert 'name="category"' in html and all(f'<option>{name}</option>' in html for name in ('证件', '随身用品', '出发确认'))
+    assert 'prep-group-add' not in html

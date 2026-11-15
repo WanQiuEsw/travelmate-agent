@@ -29,7 +29,8 @@ def test_zero_one_two_and_escaping():
     assert 'translateX(-64%)' in two and 'translateX(64%)' not in two
     html = coverflow([{'rows': [['上午', '<img src=x>', '<script>unsafe</script>']]}], escape)
     assert '<img src=x>' not in html and '<script>' not in html
-    assert '&lt;script&gt;' in html
+    assert '&lt;img src=x&gt;' in html
+    assert '<div class="carousel-caption"><strong>&lt;img src=x&gt;</strong></div>' in html
     assert 'prefers-reduced-motion' in CAROUSEL_CSS
     assert '@media print' in CAROUSEL_CSS
 

@@ -24,9 +24,18 @@ def test_food_days_preserve_assignments_shared_rows_and_escape_content():
 def test_empty_and_downloadable_food_view():
     assert '当天尚无用餐建议' in panel([], [], escape)
     html = panel([], [], escape, inline_images=True)
-    assert 'data:image/png;base64,' in html
+    assert '暂无菜品图片' in html
     assert '/assets/visual/' not in html
-    assert html.count('data:image/png;base64,') == 1
+    assert 'data-food-photo' not in html and 'background-image:url' not in html
+
+
+def test_food_photos_use_dish_search_and_keep_empty_fallback():
+    from urllib.parse import unquote_plus
+    sections = [dict(rows=[['牛肉丸', '当地小吃', '第1天 · 午餐', '老街', '确认食材']])]
+    html = panel(sections, [], escape, city='汕头')
+    assert 'category=food' in html and 'place=牛肉丸' in unquote_plus(html)
+    assert '暂无菜品图片' in html and 'food-reference.png' not in html
+    assert 'data-food-photo' not in panel(sections, [], escape, True, city='汕头')
 
 
 def test_every_day_has_three_meals_without_inventing_prices_or_restaurants():

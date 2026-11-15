@@ -186,8 +186,12 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
     def theme_stylesheet():
         return FileResponse(Path(__file__).with_name("theme.css"), media_type="text/css")
 
+    @app.get('/assets/back-to-top.js', include_in_schema=False)
+    def back_to_top_script():
+        return FileResponse(Path(__file__).with_name('back-to-top.js'), media_type='text/javascript')
+
     @app.get("/assets/visual/{filename}", include_in_schema=False)
-    def visual_asset(filename: Literal["companion.webp", "coast.webp", "mountains.webp", "town.webp", "icon.webp", "lodging-room.webp", "lodging-city.webp", "lodging-canal.webp", "food-reference.png", "hotel-room.webp"]):
+    def visual_asset(filename: Literal["companion.webp", "coast.webp", "mountains.webp", "town.webp", "icon.webp", "lodging-room.webp", "lodging-city.webp", "lodging-canal.webp", "food-reference.png", "hotel-room.webp", "home-panorama.webp", "home-sea.webp", "home-mountain.webp", "home-food.webp", "home-town.webp"]):
         return FileResponse(Path(__file__).with_name("images") / filename, media_type="image/png" if filename.endswith('.png') else "image/webp")
 
     @app.get('/assets/visual/cities/{city}.webp', include_in_schema=False)
@@ -202,11 +206,13 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
 
     @app.get('/api/places/photo')
     def place_photo(request: Request, city: Annotated[str, Query(min_length=1, max_length=80)],
-                    place: Annotated[str, Query(min_length=1, max_length=120)]):
+                    place: Annotated[str, Query(min_length=1, max_length=120)],
+                    category: Literal['place', 'food'] = 'place'):
         from travelmate.place_photos import get_photo
         if auth_enabled:
             app.state.accounts.throttle('photos:' + request.state.user['id'], 20, 60)
-        photo = get_photo(city.strip(), place.strip())
+        photo = (get_photo(city.strip(), place.strip(), category='food') if category == 'food'
+                 else get_photo(city.strip(), place.strip()))
         if not photo:
             return Response(status_code=404, headers={'Cache-Control': 'private, max-age=600'})
         return Response(photo[0], media_type=photo[1], headers={

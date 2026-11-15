@@ -103,8 +103,8 @@ def panel(guide, text):
         out.append(f'<section class="prep-group" data-category="{name}"><header>{icon(name)}<h3>{name}</h3><span data-group-count>{sum(i["done"] for i in entries)} / {len(entries)} 项</span><p>{descriptions[index]}</p></header><ul>')
         for item in entries:
             out.append(f'<li data-task-id="{text(item["id"])}" data-detail="{text(item.get("detail") or '')}"><label><input type="checkbox" {"checked" if item["done"] else ""}><span>{text(item["text"])}</span></label><button type="button" data-edit aria-label="修改{text(item["text"])}">{icon("edit")}</button><button type="button" data-delete aria-label="删除{text(item["text"])}">{icon("delete")}</button></li>')
-        out.append(f'</ul><p class="prep-empty" hidden>当前分类暂无事项</p><button class="prep-group-add" type="button" data-add-category="{name}">＋ 添加事项</button></section>')
-    out.append('</div><form data-prep-add hidden><label class="prep-sr-only" for="prep-task-' + key + '">准备事项</label><input id="prep-task-' + key + '" name="task" maxlength="500" required placeholder="补充需要准备的事项…"><input type="hidden" name="category" value="证件"><button type="submit" class="prep-primary" aria-label="确认事项">✓</button><button type="button" data-prep-cancel aria-label="取消编辑">×</button></form>')
+        out.append('</ul><p class="prep-empty" hidden>当前分类暂无事项</p></section>')
+    out.append('</div><dialog aria-labelledby="prep-dialog-' + key + '"><form data-prep-add><h3 id="prep-dialog-' + key + '">新增准备事项</h3><label for="prep-category-' + key + '">所属分类</label><select id="prep-category-' + key + '" name="category">' + ''.join(f'<option>{name}</option>' for name in CATEGORIES) + '</select><label for="prep-task-' + key + '">准备事项</label><input id="prep-task-' + key + '" name="task" maxlength="500" required placeholder="填写需要准备的事项…"><p data-prep-add-error role="alert"></p><div class="prep-dialog-actions"><button type="button" data-prep-cancel>取消</button><button type="submit" class="prep-primary">添加事项</button></div></form></dialog>')
     out.append('<figure class="prep-scenery"><img src="' + text(scenery(guide['title'], not endpoint)) + '" alt="目的地风景示意"><figcaption>目的地 · 风景示意</figcaption></figure>')
     out.append('<footer class="prep-footer"><p class="prep-notice">' + icon('cloud') + ('按本次旅行与方案版本保存到账号' if endpoint else '离线清单仅保存在当前浏览器，不会自动同步到账号。') + '</p><p data-prep-status role="status" aria-live="polite"></p><button type="button" data-prep-retry hidden>重试保存</button><span class="prep-footer-label">' + icon('随身用品') + ' 出发前清单</span></footer><noscript>启用 JavaScript 后可编辑清单。</noscript></section>')
     out.append('<template data-prep-edit-icon>' + icon('edit') + '</template><template data-prep-delete-icon>' + icon('delete') + '</template>')
@@ -114,23 +114,24 @@ def panel(guide, text):
 CSS = """
 .preparation .prep-item-detail{flex-basis:100%;padding-left:31px;color:#63736c;font-size:12px}.prep-item-detail summary{font-size:12px;font-weight:400;cursor:pointer}.prep-item-detail p{margin:6px 0;line-height:1.6;overflow-wrap:anywhere}
 
-.preparation.card{padding:12px 0 0;border:0;background:transparent;margin:0;box-shadow:none}.preparation svg{width:24px;height:24px;flex-shrink:0}.prep-heading{display:flex;align-items:center;gap:24px;margin:4px 0 32px}.prep-title{display:flex;align-items:center;gap:16px;margin-right:auto}.prep-title>svg{width:56px;height:64px;color:#54836a}.prep-heading h2{border:0;padding:0;font-size:38px;line-height:1.25;margin:0 0 4px;letter-spacing:1px}.prep-heading p{font-size:15px;color:#747874;margin:0}.prep-progress{border-left:1px solid #b9cdbc;padding-left:30px;min-width:220px;width:26%}.prep-progress strong{font-size:16px;font-weight:600}.prep-progress progress{display:block;width:100%;height:13px;margin-top:10px;accent-color:#087f7a;border:0;border-radius:20px;overflow:hidden;background:#d3dfcc}.prep-progress progress::-webkit-progress-bar{background:#d3dfcc}.prep-progress progress::-webkit-progress-value{background:linear-gradient(90deg,#008d89,#087d72);border-radius:20px}.prep-filters{display:flex;gap:8px;flex-shrink:0}.preparation button{font:inherit;cursor:pointer;border:1px solid #c2d0bf;border-radius:9px;padding:7px 14px;min-height:36px;background:transparent;color:#285d54;white-space:nowrap}.prep-filters button{border-radius:24px;padding:6px 18px;font-size:14px}.preparation .prep-primary,.preparation [aria-pressed=true]{background:linear-gradient(120deg,#008b86,#0b7369);border-color:#087f7a;color:#fff}.prep-section-title{display:flex;align-items:center;gap:14px;font-size:20px;margin:0}.prep-section-title span{font-weight:400;font-size:13px;color:#7d8980}.prep-groups{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:stretch}.prep-group{border:1px solid #c7d5c1;border-radius:13px;background:#fffefa;padding:0 13px 12px;display:flex;flex-direction:column;min-width:0;min-height:325px}.prep-group:last-child{background:#fffefa;border-color:#e9bfa7}.prep-group>header{background:#edf1e6;border-radius:12px 12px 0 0;margin:0 -13px 12px;padding:16px 19px 12px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}.prep-group header>svg{color:#54836a}.prep-group h3{font-size:22px;margin:0;line-height:1.4}.prep-group [data-group-count]{margin-left:auto;font-size:13px;background:#dfe9d7;border-radius:20px;padding:1px 12px;white-space:nowrap}.prep-group:last-child>header{background:#faece2}.prep-group:last-child header>svg,.prep-group:last-child h3{color:#b94d2a}.prep-group:last-child [data-group-count]{background:#fae1ce;color:#a7431f}.prep-group header p{line-height:1.5;flex-basis:100%;font-size:13px;color:#666f65;margin:0}.preparation .prep-group ul{list-style:none;padding:0;margin:0 0 12px;display:grid;gap:7px}.preparation li{flex-wrap:wrap;margin:0;white-space:normal;display:flex;align-items:center;gap:4px;padding:7px 8px;min-height:42px;border:1px solid #d6dfd9;border-radius:10px;background:#ffffffa6}.preparation li:has(:checked){background:#e8efdf;border-color:transparent}.preparation li label{display:flex;align-items:center;gap:12px;flex:1;min-width:0;font-size:15px;color:#293b35;cursor:pointer}.preparation li span{overflow-wrap:anywhere}.preparation input[type=checkbox]{appearance:none;width:19px;height:19px;margin:0;border:1.5px solid #6c7770;border-radius:4px;background:white;flex-shrink:0;display:grid;place-items:center;cursor:pointer}.preparation input:checked{background:linear-gradient(120deg,#009590,#08776c);border-color:#087f7a}.preparation input:checked:after{content:'✓';color:white;font-size:15px;line-height:1}.preparation input:checked+span{text-decoration:line-through;color:#68756a}.preparation li button{border:0;padding:4px;min-height:28px;color:#587567;display:grid;place-items:center}.preparation li button svg{width:17px;height:17px}.preparation li button:hover{background:#dce8dc;color:#087f7a}.preparation .prep-group-add{margin-top:auto;width:100%;border-color:#77a89a;border-radius:9px;padding:6px 12px;font-weight:600}.prep-empty{font-size:13px;color:#7b867d;text-align:center;padding:16px 0}.preparation form{display:flex;gap:6px;margin:0 0 12px;align-items:center}.preparation input[name=task]{width:100%;min-width:0;border:1px solid #008d86;background:white;border-radius:8px;padding:9px 12px;font:inherit;font-size:14px;color:#193c38}.preparation form button{padding:4px 8px;min-height:32px;font-size:19px}.prep-sr-only{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%)}.prep-scenery{height:100px;position:relative;margin:20px 0 12px;border-radius:12px;overflow:hidden}.prep-scenery img{width:100%;height:100%;object-fit:cover;object-position:center 55%;display:block}.prep-scenery figcaption{position:absolute;right:12px;bottom:10px;background:#fffefaeb;border-radius:7px;padding:3px 10px;font-size:12px;color:#285d54}.prep-footer{display:flex;flex-wrap:wrap;align-items:center;gap:8px;color:#55766a;font-size:12px}.prep-footer p{margin:0}.prep-notice,.prep-footer-label{display:flex;align-items:center;gap:8px}.prep-footer-label{margin-left:auto}.prep-footer svg{width:21px;height:21px}.preparation :focus-visible{outline:3px solid #b94d2a;outline-offset:3px}.preparation [hidden]{display:none!important}.preparation button:disabled{opacity:.5}.preparation [data-prep-status]{color:#63736c}
+.preparation.card{padding:12px 0 0;border:0;background:transparent;margin:0;box-shadow:none}.preparation svg{width:24px;height:24px;flex-shrink:0}.prep-heading{display:flex;align-items:center;gap:24px;margin:4px 0 32px}.prep-title{display:flex;align-items:center;gap:16px;margin-right:auto}.prep-title>svg{width:56px;height:64px;color:#54836a}.prep-heading h2{border:0;padding:0;font-size:38px;line-height:1.25;margin:0 0 4px;letter-spacing:1px}.prep-heading p{font-size:15px;color:#747874;margin:0}.prep-progress{border-left:1px solid #b9cdbc;padding-left:30px;min-width:220px;width:26%}.prep-progress strong{font-size:16px;font-weight:600}.prep-progress progress{display:block;width:100%;height:13px;margin-top:10px;accent-color:#087f7a;border:0;border-radius:20px;overflow:hidden;background:#d3dfcc}.prep-progress progress::-webkit-progress-bar{background:#d3dfcc}.prep-progress progress::-webkit-progress-value{background:linear-gradient(90deg,#008d89,#087d72);border-radius:20px}.prep-filters{display:flex;gap:8px;flex-shrink:0}.preparation button{font:inherit;cursor:pointer;border:1px solid #c2d0bf;border-radius:9px;padding:7px 14px;min-height:36px;background:transparent;color:#285d54;white-space:nowrap}.prep-filters button{border-radius:24px;padding:6px 18px;font-size:14px}.preparation .prep-primary,.preparation [aria-pressed=true]{background:linear-gradient(120deg,#008b86,#0b7369);border-color:#087f7a;color:#fff}.prep-section-title{display:flex;align-items:center;gap:14px;font-size:20px;margin:0}.prep-section-title span{font-weight:400;font-size:13px;color:#7d8980}.prep-groups{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:stretch}.prep-group{border:1px solid #c7d5c1;border-radius:13px;background:#fffefa;padding:0 13px 12px;display:flex;flex-direction:column;min-width:0;min-height:325px}.prep-group:last-child{background:#fffefa;border-color:#e9bfa7}.prep-group>header{background:#edf1e6;border-radius:12px 12px 0 0;margin:0 -13px 12px;padding:16px 19px 12px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}.prep-group header>svg{color:#54836a}.prep-group h3{font-size:22px;margin:0;line-height:1.4}.prep-group [data-group-count]{margin-left:auto;font-size:13px;background:#dfe9d7;border-radius:20px;padding:1px 12px;white-space:nowrap}.prep-group:last-child>header{background:#faece2}.prep-group:last-child header>svg,.prep-group:last-child h3{color:#b94d2a}.prep-group:last-child [data-group-count]{background:#fae1ce;color:#a7431f}.prep-group header p{line-height:1.5;flex-basis:100%;font-size:13px;color:#666f65;margin:0}.preparation .prep-group ul{list-style:none;padding:0;margin:0 0 12px;display:grid;gap:7px}.preparation li{flex-wrap:wrap;margin:0;white-space:normal;display:flex;align-items:center;gap:4px;padding:7px 8px;min-height:42px;border:0;border-radius:0;background:transparent}.preparation li label{display:flex;align-items:center;gap:12px;flex:1;min-width:0;font-size:15px;color:#293b35;cursor:pointer}.preparation li span{overflow-wrap:anywhere}.preparation input[type=checkbox]{appearance:none;width:19px;height:19px;margin:0;border:1.5px solid #6c7770;border-radius:4px;background:white;flex-shrink:0;display:grid;place-items:center;cursor:pointer}.preparation input:checked{background:linear-gradient(120deg,#009590,#08776c);border-color:#087f7a}.preparation input:checked:after{content:'✓';color:white;font-size:15px;line-height:1}.preparation input:checked+span{text-decoration:line-through;color:#68756a}.preparation li button{border:0;padding:4px;min-height:28px;color:#587567;display:grid;place-items:center}.preparation li button svg{width:17px;height:17px}.preparation li button:hover{background:#dce8dc;color:#087f7a}.prep-empty{font-size:13px;color:#7b867d;text-align:center;padding:16px 0}.preparation dialog{width:min(440px,calc(100vw - 40px));max-height:85vh;overflow:auto;box-sizing:border-box;border:1px solid #c7d5c1;border-radius:18px;padding:24px;background:#fffefa;color:#193c38;box-shadow:0 20px 70px #193c3833}.preparation dialog::backdrop{background:#193c3870}.preparation form{display:grid;gap:12px;margin:0}.preparation form h3{margin:0 0 8px;font-size:23px}.preparation form label{font-size:14px}.preparation input[name=task],.preparation select{box-sizing:border-box;width:100%;min-width:0;border:1px solid #9db7a7;background:white;border-radius:8px;padding:10px 12px;font:inherit;color:#193c38}.prep-dialog-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:8px}.preparation [data-prep-add-error]{margin:0;color:#a74324;font-size:13px}.preparation .prep-inline-edit{box-sizing:border-box;width:100%;min-width:0;padding:0;border:0;border-radius:0;background:transparent;font:inherit;color:inherit;box-shadow:none}.preparation .prep-inline-edit:focus-visible{outline:0;border-bottom:1px solid #087f7a}.preparation li label:has(.prep-inline-edit){cursor:text}.prep-sr-only{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%)}.prep-scenery{height:100px;position:relative;margin:20px 0 12px;border-radius:12px;overflow:hidden}.prep-scenery img{width:100%;height:100%;object-fit:cover;object-position:center 55%;display:block}.prep-scenery figcaption{position:absolute;right:12px;bottom:10px;background:#fffefaeb;border-radius:7px;padding:3px 10px;font-size:12px;color:#285d54}.prep-footer{display:flex;flex-wrap:wrap;align-items:center;gap:8px;color:#55766a;font-size:12px}.prep-footer p{margin:0}.prep-notice,.prep-footer-label{display:flex;align-items:center;gap:8px}.prep-footer-label{margin-left:auto}.prep-footer svg{width:21px;height:21px}.preparation :focus-visible{outline:3px solid #b94d2a;outline-offset:3px}.preparation [hidden]{display:none!important}.preparation button:disabled{opacity:.5}.preparation [data-prep-status]{color:#63736c}
 @media(min-width:1400px){.prep-heading h2{border:0;padding:0;font-size:44px}.prep-heading p{font-size:18px}.prep-heading{gap:40px;margin-bottom:36px}.prep-group{min-height:380px}.preparation li label{font-size:18px}.preparation li{min-height:46px}.prep-scenery{height:112px}.prep-group h3{font-size:26px}}
 @media(max-width:1100px){.prep-heading{flex-wrap:wrap;gap:20px}.prep-title{flex:1}.prep-progress{width:35%}.prep-filters{margin-right:auto}.prep-group{padding:0 13px 12px}.prep-group h3{font-size:19px}.prep-group [data-group-count]{padding:1px 7px}.preparation li label{font-size:14px;gap:7px}}
 @media(max-width:760px){.prep-groups{grid-template-columns:1fr}.prep-title{flex-basis:100%}.prep-title>svg{width:44px;height:50px}.prep-heading h2{border:0;padding:0;font-size:32px}.prep-progress{width:100%;border:0;padding:0}.prep-heading{gap:16px;margin-bottom:24px}.prep-group{min-height:220px}.prep-group h3{font-size:22px}.preparation li label{font-size:16px}.prep-filters{gap:5px}.prep-filters button{padding:6px 12px}.prep-section-title span{display:none}.prep-scenery{height:100px}.prep-footer-label{display:none}}
-@media print{.preparation button,.preparation form,.prep-filters,.prep-footer{display:none}.prep-groups{display:block}.prep-group{margin-bottom:12px;min-height:0}.preparation li[hidden]{display:flex!important}.prep-scenery{display:none}}
+@media print{.preparation button,.preparation dialog,.prep-filters,.prep-footer{display:none}.prep-groups{display:block}.prep-group{margin-bottom:12px;min-height:0}.preparation li[hidden]{display:flex!important}.prep-scenery{display:none}}
 """
 
 
 JS = r"""
 for (const box of document.querySelectorAll('.preparation')) {
   const list = box.querySelector('[data-prep-list]'), status = box.querySelector('[data-prep-status]');
-  const form = box.querySelector('form'), retry = box.querySelector('[data-prep-retry]');
+  const form = box.querySelector('form'), dialog = box.querySelector('dialog'), retry = box.querySelector('[data-prep-retry]');
   const endpoint = box.dataset.endpoint;
   let revision = Number(box.dataset.revision), busy = false, dirty = false;
   let filter = 'all', editingId = null;
   let items = [...list.querySelectorAll('li')].map(row => ({id:row.dataset.taskId,text:row.querySelector('span').textContent,done:row.querySelector('input').checked,category:row.closest('[data-category]').dataset.category,detail:row.dataset.detail || null}));
   function render() {
+    editingId = null;
     for (const group of list.children) {
       group.querySelector('ul').replaceChildren();
       const entries = items.filter(i => i.category === group.dataset.category);
@@ -181,19 +182,37 @@ for (const box of document.querySelectorAll('.preparation')) {
       box.querySelectorAll('[data-filter]').forEach(el => el.setAttribute('aria-pressed', String(el === button)));
       render();
     } else {
-      openForm(button.closest('.prep-group') || list.querySelector('[data-category]'), button.dataset.addCategory);
+      form.reset(); form.querySelector('[data-prep-add-error]').textContent = '';
+      dialog.showModal(); form.elements.task.focus();
     }
   });
-  function closeForm() {
-    form.hidden = true; box.append(form); form.reset(); editingId = null;
+  box.querySelector('[data-prep-cancel]').addEventListener('click', () => dialog.close());
+  function editItem(row, item) {
+    editingId = item.id;
+    const input = document.createElement('input'); input.type = 'text';
+    input.className = 'prep-inline-edit'; input.maxLength = 500; input.value = item.text;
+    input.setAttribute('aria-label', '修改准备事项');
+    row.querySelector('label span').replaceWith(input);
+    function finish(cancel = false) {
+      if (editingId !== item.id) return;
+      const value = input.value.trim();
+      if (!cancel && !value) { input.setCustomValidity('请填写准备事项'); input.reportValidity(); input.focus(); return; }
+      editingId = null;
+      const changed = !cancel && value !== item.text;
+      if (changed) item.text = value;
+      const span = document.createElement('span'); span.textContent = item.text; input.replaceWith(span);
+      row.querySelector('[data-edit]').setAttribute('aria-label', '修改' + item.text);
+      row.querySelector('[data-delete]').setAttribute('aria-label', '删除' + item.text);
+      if (changed) save();
+    }
+    input.addEventListener('input', () => input.setCustomValidity(''));
+    input.addEventListener('keydown', event => {
+      if (event.isComposing) return;
+      if (event.key === 'Enter' || event.key === 'Escape') { event.preventDefault(); finish(event.key === 'Escape'); }
+    });
+    input.addEventListener('blur', () => finish());
+    input.focus(); input.select();
   }
-  function openForm(group, category, item = null) {
-    closeForm(); editingId = item ? item.id : null;
-    form.elements.category.value = category; form.elements.task.value = item ? item.text : '';
-    group.insertBefore(form, group.querySelector('.prep-group-add')); form.hidden = false; form.elements.task.focus();
-  }
-  box.querySelector('[data-prep-cancel]').addEventListener('click', closeForm);
-  form.addEventListener('keydown', event => { if (event.key === 'Escape') closeForm(); });
   async function save() {
     if (busy) return;
     busy = true; dirty = true; retry.hidden = true;
@@ -211,7 +230,7 @@ for (const box of document.querySelectorAll('.preparation')) {
     finally { busy = false; box.querySelectorAll('input,button,select').forEach(el => el.disabled = false); }
   }
   list.addEventListener('change', event => {
-    if (busy) return;
+    if (busy || !event.target.matches('input[type=checkbox]')) return;
     const row = event.target.closest('li'), item = items.find(i => i.id === row.dataset.taskId);
     item.done = event.target.checked; render(); save();
   });
@@ -220,18 +239,18 @@ for (const box of document.querySelectorAll('.preparation')) {
     const row = event.target.closest('li'); if (!row) return;
     const item = items.find(i => i.id === row.dataset.taskId);
     if (event.target.closest('[data-edit]')) {
-      openForm(row.closest('.prep-group'), item.category, item); return;
-    } else if (event.target.closest('[data-delete]')) { if (editingId === item.id) closeForm(); items = items.filter(i => i.id !== item.id); }
+      if (!editingId) editItem(row, item); return;
+    } else if (event.target.closest('[data-delete]')) { editingId = null; items = items.filter(i => i.id !== item.id); }
     else return;
     render(); save();
   });
   form.addEventListener('submit', event => {
     event.preventDefault(); if (busy) return;
     const input = form.elements.task, value = input.value.trim();
-    if (!value || value.length > 500 || (!editingId && items.length >= 100)) { status.textContent = '每项1至500字，最多100项。'; return; }
-    if (editingId) items.find(i => i.id === editingId).text = value;
-    else items.push({id:crypto.randomUUID(),text:value,done:false,category:form.elements.category.value});
-    closeForm(); render(); save();
+    if (!value || value.length > 500 || items.length >= 100) { form.querySelector('[data-prep-add-error]').textContent = '每项1至500字，最多100项。'; return; }
+    items.push({id:crypto.randomUUID(),text:value,done:false,category:form.elements.category.value});
+    filter = 'all'; box.querySelectorAll('[data-filter]').forEach(el => el.setAttribute('aria-pressed', String(el.dataset.filter === filter)));
+    dialog.close(); render(); save();
   });
   retry.addEventListener('click', save);
   window.addEventListener('beforeunload', event => { if (dirty) { event.preventDefault(); event.returnValue = ''; } });

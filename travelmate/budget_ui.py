@@ -59,7 +59,7 @@ def panel(meta, text):
     for c in bar_categories:
         out.append(f'<span><i class="budget-color-{categories.index(c) % 6}"></i>{text(labels.get(c, (c,))[0])} <b data-category-total="{text(c)}">{money(totals[c]) if c in known else '待核实' if c in pending else '未单列'}</b></span>')
     out.append(f'<span><i class="budget-color-balance"></i>余量 <b data-balance>{money(balance) if budget is not None else "待确认"}</b></span></div></div><div class="budget-metrics"><p>{icon("people")}人均 <strong data-person>{money(int((Decimal(total) / travelers).quantize(Decimal("1"), rounding=ROUND_HALF_UP))) if total or not unknown else "待核实"}</strong><small>（估算）</small></p><p data-budget-notice role="status">{icon("alert")}<strong data-unknown>{unknown} 项待核实</strong></p></div></section>')
-    out.append('<div class="budget-toolbar"><label>类型筛选：<select data-budget-filter aria-label="筛选费用类型"><option value="">全部类型</option>' + ''.join(f'<option>{text(c)}</option>' for c in categories) + '</select></label><label>排序方式：<select data-budget-sort aria-label="排序费用"><option value="desc" selected>金额从高到低</option><option value="original">日程顺序</option><option value="asc">金额从低到高</option></select></label><small data-budget-save-status role="status">修改后点击保存，再次打开和导出时即可查看。</small><button type="button" data-budget-save>保存预算</button><button type="button" data-budget-reset>' + icon('reset') + '恢复方案金额</button></div><div class="budget-cards" aria-label="逐项费用">')
+    out.append('<div class="budget-toolbar"><label>类型筛选：<select data-budget-filter aria-label="筛选费用类型"><option value="">全部类型</option>' + ''.join(f'<option>{text(c)}</option>' for c in categories) + '</select></label><label>排序方式：<select data-budget-sort aria-label="排序费用"><option value="desc" selected>金额从高到低</option><option value="original">日程顺序</option><option value="asc">金额从低到高</option></select></label><small data-budget-save-status role="status">修改后自动保存，再次打开和导出时即可查看。</small><button type="button" data-budget-reset>' + icon('reset') + '恢复方案金额</button></div><div class="budget-cards" aria-label="逐项费用">')
     for c in categories:
         title, symbol = labels.get(c, (c, 'coins'))
         rows = [(i, r) for i, r in enumerate(ledger) if r['category'] == c and r['amount'] is not None]
@@ -91,7 +91,6 @@ CSS = """
 """
 
 CSS += """
-.budget-toolbar button[data-budget-save]{background:#087f7a;color:white;font-weight:600}
 .budget-toolbar button:disabled{opacity:.55;cursor:wait}
 .budget-toolbar [data-budget-save-status]{white-space:normal;overflow-wrap:anywhere}
 .budget-workspace{container-type:inline-size;container-name:budget-panel}
@@ -109,11 +108,16 @@ if (workspace) {
   const sort = workspace.querySelector('[data-budget-sort]');
   const money = cents => '¥' + (cents / 100).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2});
   const limitInput = workspace.querySelector('[data-budget-limit]');
-  const saveButton = workspace.querySelector('[data-budget-save]');
   const saveStatus = workspace.querySelector('[data-budget-save-status]');
   const endpoint = workspace.dataset.endpoint;
   let revision = Number(workspace.dataset.revision || 0), dirty = false;
-  const markDirty = () => { dirty = true; saveStatus.textContent = '修改尚未保存；导出使用上次保存的金额。'; };
+  let saveTimer, saving = null, edits = 0;
+  const markDirty = (delay = 500) => {
+    dirty = true; edits++;
+    saveStatus.textContent = '等待自动保存…';
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(save, delay);
+  };
   const inputAmount = input => {
     if (!/^\d+(?:\.\d{1,2})?$/.test(input.value) || !input.validity.valid) return null;
     const [whole, fraction = ''] = input.value.split('.');
@@ -170,7 +174,7 @@ if (workspace) {
   workspace.addEventListener('input', event => {
     if (event.target.matches('input[type=number]')) { update(false); markDirty(); }
   });
-  workspace.addEventListener('change', event => { update(event.target === sort); if (event.target.matches('input')) markDirty(); });
+  workspace.addEventListener('change', event => { update(event.target === sort); if (event.target.matches('input')) markDirty(0); });
   for (const button of workspace.querySelectorAll('[data-edit-category]')) {
     button.addEventListener('click', () => button.closest('[data-card]').querySelector('input[type=number]')?.focus());
   }
@@ -180,38 +184,43 @@ if (workspace) {
       const check = row.querySelector('input[type=checkbox]'); check.checked = row.dataset.originalIncluded === 'true';
     }
     if (limitInput) limitInput.value = workspace.dataset.originalLimit;
-    filter.value = ''; sort.value = 'desc'; update(); markDirty();
+    filter.value = ''; sort.value = 'desc'; update(); markDirty(0);
   });
-  saveButton.addEventListener('click', async () => {
-    const inputs = [...workspace.querySelectorAll('input[type=number]')];
-    if (inputs.some(input => input.value !== '' && inputAmount(input) === null)) {
-      saveStatus.textContent = '金额须为 0～100000000 元，最多两位小数。'; return;
-    }
-    const data = {revision, limit_cents: limitInput ? inputAmount(limitInput) : null,
-      items: rows.map(row => ({id: Number(row.dataset.order), amount_cents: amount(row), included: row.querySelector('input[type=checkbox]').checked}))};
-    saveButton.disabled = true;
-    for (const input of workspace.querySelectorAll('input')) input.disabled = true;
-    workspace.querySelector('[data-budget-reset]').disabled = true;
-    try {
-      if (endpoint) {
-        const response = await fetch(endpoint, {method: 'PUT', credentials: 'same-origin',
-          headers: {'Content-Type': 'application/json', 'X-TravelMate-Request': '1'}, body: JSON.stringify(data)});
-        const saved = await response.json();
-        if (!response.ok) throw new Error(typeof saved.detail === 'string' ? saved.detail : '保存失败，请稍后重试');
-        revision = saved.revision;
-        saveStatus.textContent = '预算已保存，再次打开和导出均使用本次金额。';
-      } else {
-        localStorage.setItem(workspace.dataset.storage, JSON.stringify(data));
-        saveStatus.textContent = '已保存在当前浏览器；离线修改不会回传账号或改写已下载文件。';
+  function save() {
+    clearTimeout(saveTimer);
+    if (saving) return saving;
+    if (!dirty) return Promise.resolve();
+    saving = Promise.resolve().then(async () => {
+      try {
+        while (dirty) {
+          const inputs = [...workspace.querySelectorAll('input[type=number]')];
+          if (inputs.some(input => input.validity.badInput || (input.value !== '' && inputAmount(input) === null))) {
+            saveStatus.textContent = '金额须为 0～100000000 元，最多两位小数；修改尚未保存。';
+            return;
+          }
+          const savedEdits = edits;
+          const data = {revision, limit_cents: limitInput ? inputAmount(limitInput) : null,
+            items: rows.map(row => ({id: Number(row.dataset.order), amount_cents: amount(row), included: row.querySelector('input[type=checkbox]').checked}))};
+          saveStatus.textContent = '正在自动保存…';
+          if (endpoint) {
+            const response = await fetch(endpoint, {method: 'PUT', credentials: 'same-origin',
+              headers: {'Content-Type': 'application/json', 'X-TravelMate-Request': '1'}, body: JSON.stringify(data)});
+            const saved = await response.json();
+            if (!response.ok) throw new Error(typeof saved.detail === 'string' ? saved.detail : '自动保存失败，请检查网络后继续编辑');
+            revision = saved.revision;
+          } else {
+            localStorage.setItem(workspace.dataset.storage, JSON.stringify(data));
+          }
+          dirty = edits !== savedEdits;
+        }
+        saveStatus.textContent = endpoint ? '预算已自动保存，再次打开和导出均使用本次金额。'
+          : '已自动保存在当前浏览器；离线修改不会回传账号或改写已下载文件。';
+      } catch (error) {
+        saveStatus.textContent = (error.message || '预算自动保存失败') + '；当前修改尚未保存。';
       }
-      dirty = false;
-    } catch (error) { saveStatus.textContent = error.message || '预算保存失败，请稍后重试'; }
-    finally {
-      saveButton.disabled = false;
-      for (const input of workspace.querySelectorAll('input')) input.disabled = false;
-      workspace.querySelector('[data-budget-reset]').disabled = false;
-    }
-  });
+    }).finally(() => { saving = null; });
+    return saving;
+  }
   if (!endpoint) {
     saveStatus.textContent = '离线预算仅保存在当前浏览器，不自动同步账号。';
     try {
@@ -225,8 +234,16 @@ if (workspace) {
         }
         if (limitInput && (saved.limit_cents === null || Number.isSafeInteger(saved.limit_cents) && saved.limit_cents >= 0 && saved.limit_cents <= 10000000000)) limitInput.value = saved.limit_cents === null ? '' : (saved.limit_cents / 100).toFixed(2);
       }
-    } catch { saveStatus.textContent = '无法读取浏览器保存的预算，可重新编辑后保存。'; }
+    } catch { saveStatus.textContent = '无法读取浏览器保存的预算，重新编辑后将自动保存。'; }
   }
+  document.addEventListener('click', async event => {
+    const link = event.target.closest('a[href]');
+    if (!endpoint || !link || !/\/(pdf|md|html)(?:[?#]|$)/.test(link.href) || !dirty) return;
+    event.preventDefault();
+    await save();
+    if (!dirty) window.location.assign(link.href);
+  });
+  window.addEventListener('online', () => { if (dirty) save(); });
   window.addEventListener('beforeunload', event => { if (dirty) { event.preventDefault(); event.returnValue = ''; } });
   update();
 }

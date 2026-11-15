@@ -1,12 +1,11 @@
 """Daily dining cards rendered from the saved guide, including older snapshots."""
 import re
-from base64 import b64encode
-from pathlib import Path
+from urllib.parse import urlencode
 from travelmate.dining import complete_meals
 
 
 CSS = """
-.food-shell{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;position:relative;min-height:815px;padding:4px 0 0;color:#103d34}.food-content{width:calc(71% - 28px)}.food-heading small{font-size:22px;letter-spacing:2px}.food-heading h2{font:700 52px/1.35 Georgia,'Songti SC',SimSun,serif;border:0;padding:0;margin:6px 0 0}.food-heading p{font-size:20px;letter-spacing:1px;color:#535753;margin:0 0 24px}.food-picker{border:1px solid #a9bdaa;border-radius:17px;display:flex;padding:0;margin:0;width:416px;max-width:100%;overflow:hidden}.food-picker legend{position:absolute;clip-path:inset(50%);width:1px;height:1px;overflow:hidden}.food-picker label{position:relative;flex:1;text-align:center;padding:5px 14px;cursor:pointer;font-size:20px;min-height:44px;white-space:nowrap}.food-picker label+label{border-left:1px solid #a9bdaa}.food-picker label:has(:checked){background:#b95128;color:white;border-radius:16px}.food-picker input{position:absolute;opacity:0;width:1px;height:1px}.food-picker label:has(:focus-visible){outline:3px solid #b95128;outline-offset:-4px}.food-day{display:none}.food-route{margin:0;position:absolute;right:calc(29% + 28px);top:159px;max-width:calc(71% - 470px);border-radius:40px;background:#e5eadb;padding:6px 22px;font-size:19px;font-weight:600;overflow-wrap:anywhere}.food-route svg{width:27px;height:27px;vertical-align:middle;margin-right:10px}.food-meals{position:relative;margin-top:44px;padding-left:110px;display:grid;gap:24px}.food-meals:before{content:'';position:absolute;left:5px;top:54px;bottom:96px;border-left:1px solid #58805c}.food-meal{position:relative;border:1px solid #a9bdaa;border-radius:17px;padding:12px 16px;display:grid;grid-template-columns:24% minmax(0,1fr) 26%;gap:24px;min-height:154px;align-items:center}.food-meal-label{position:absolute;left:-89px;top:32px;border-radius:30px;background:#fae4d5;color:#ae4d25;padding:5px 18px;font:700 20px/1.6 Georgia,'Songti SC',SimSun,serif}.food-meal-label:before{content:'';position:absolute;left:-25px;top:15px;width:11px;height:11px;border:2px solid #49764b;background:#faf8f3;border-radius:50%}.food-meal h3{font:700 28px/1.4 Georgia,'Songti SC',SimSun,serif;margin:0 0 5px}.food-meal p{margin:5px 0;font-size:16px;line-height:1.6;color:#484b46;overflow-wrap:anywhere}.food-meal .food-match{margin-top:10px}.food-match svg{width:19px;height:19px;vertical-align:middle;color:#527b58;margin-right:5px}.food-order{border-left:1px solid #cfcfc1;padding-left:24px;align-self:stretch;display:flex;flex-direction:column;justify-content:center}.food-order>span{background:#41694c;color:white;border-radius:30px;padding:2px 17px;align-self:flex-start;margin-bottom:10px;white-space:nowrap}.food-order strong{font-size:18px}.food-order p{margin:0}.food-photo{position:relative;overflow:hidden;border-radius:14px;aspect-ratio:210/137;align-self:center;min-height:0;background:#e6e8db}.food-photo{background-size:731.43% auto;background-position:13.122% 47.576%;background-repeat:no-repeat}.food-photo.noodles{aspect-ratio:210/128;background-position:13.122% 68.080%}.food-photo.dinner{aspect-ratio:210/119;background-position:13.122% 94.144%}.food-photo.generic{background-image:none;display:grid;place-items:center}.food-photo.generic svg{width:64px;height:64px;color:#58805c}.food-snack{min-height:58px;padding:0 20px;background:#edf0e4;grid-template-columns:120px auto minmax(0,1fr);gap:20px}.food-snack .food-photo{min-height:56px;height:56px;aspect-ratio:auto;border-radius:0}.food-snack .food-photo{background-size:1280% auto;background-position:12.712% 79.339%}.food-snack .food-meal-label{display:none}.food-snack h3{font-size:22px;margin:0}.food-snack>p{border-left:1px solid #b5c4ab;padding-left:20px}.food-aside{position:absolute;top:9px;right:0;width:29%;border:1px solid #afc0ad;border-radius:17px;padding:12px 18px 22px;min-height:815px}.food-aside h3{font:700 32px/1.4 Georgia,'Songti SC',SimSun,serif;margin:0 10px 12px}.food-rhythm{position:relative;height:210px;border-bottom:1px solid #d4d1c4;margin-bottom:6px}.food-landscape{position:absolute;bottom:14px;left:-17px;right:-17px;height:66px;overflow:hidden;opacity:.72}.food-landscape{background-size:364% auto;background-position:98.115% 37.996%;background-repeat:no-repeat}.food-waypoints{display:flex;justify-content:space-around;position:relative;z-index:1;padding-top:25px;gap:8px}.food-waypoint{text-align:center;font-weight:600;max-width:30%;font-size:16px;overflow-wrap:anywhere}.food-waypoint:nth-child(2){transform:translateY(-20px)}.food-waypoint>span{display:grid;place-items:center;background:#edf0df;border-radius:50%;width:54px;height:54px;margin:0 auto 3px;color:#4d7551}.food-waypoint svg{width:32px;height:32px}.food-curve{position:absolute;top:90px;width:100%;height:65px;z-index:1}.food-tip{display:flex;align-items:center;gap:20px;padding:16px 5px;border-bottom:1px solid #dedacf}.food-tip>span{flex-shrink:0;display:grid;place-items:center;width:52px;height:52px;background:#edf0df;border-radius:50%;color:#4c7550}.food-tip svg{width:32px;height:32px}.food-tip h4,.food-preference h4{font:700 22px/1.5 Georgia,'Songti SC',SimSun,serif;margin:0}.food-tip p{margin:0;font-size:16px;line-height:1.5;color:#4a4d47}.food-preference{background:#eaf0df;border-radius:18px;padding:16px 22px;margin-top:22px}.food-preference svg{width:35px;height:35px;vertical-align:middle;margin-right:14px}.food-preference p{margin:12px 0 0;color:#4a4d47;line-height:1.7}.food-disclaimer{font-size:14px;color:#646760;margin:32px 10px 0}.food-image-note{font-size:12px;color:#82857d;margin-top:12px}.food-extra{margin-top:18px;color:#63736c}.food-extra summary{font-size:14px}.food-flexible{font-size:14px;color:#63736c;margin:20px 0 -24px 110px}
+.food-shell{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;position:relative;min-height:815px;padding:4px 0 0;color:#103d34}.food-content{width:calc(71% - 28px)}.food-heading small{font-size:22px;letter-spacing:2px}.food-heading h2{font:700 52px/1.35 Georgia,'Songti SC',SimSun,serif;border:0;padding:0;margin:6px 0 0}.food-heading p{font-size:20px;letter-spacing:1px;color:#535753;margin:0 0 24px}.food-picker{border:1px solid #a9bdaa;border-radius:17px;display:flex;padding:0;margin:0;width:416px;max-width:100%;overflow:hidden}.food-picker legend{position:absolute;clip-path:inset(50%);width:1px;height:1px;overflow:hidden}.food-picker label{position:relative;flex:1;text-align:center;padding:5px 14px;cursor:pointer;font-size:20px;min-height:44px;white-space:nowrap}.food-picker label+label{border-left:1px solid #a9bdaa}.food-picker label:has(:checked){background:#b95128;color:white;border-radius:16px}.food-picker input{position:absolute;opacity:0;width:1px;height:1px}.food-picker label:has(:focus-visible){outline:3px solid #b95128;outline-offset:-4px}.food-day{display:none}.food-route{margin:0;position:absolute;right:calc(29% + 28px);top:159px;max-width:calc(71% - 470px);border-radius:40px;background:#e5eadb;padding:6px 22px;font-size:19px;font-weight:600;overflow-wrap:anywhere}.food-route svg{width:27px;height:27px;vertical-align:middle;margin-right:10px}.food-meals{position:relative;margin-top:44px;padding-left:110px;display:grid;gap:24px}.food-meals:before{content:'';position:absolute;left:5px;top:54px;bottom:96px;border-left:1px solid #58805c}.food-meal{position:relative;border:1px solid #a9bdaa;border-radius:17px;padding:12px 16px;display:grid;grid-template-columns:24% minmax(0,1fr) 26%;gap:24px;min-height:154px;align-items:center}.food-meal-label{position:absolute;left:-89px;top:32px;border-radius:30px;background:#fae4d5;color:#ae4d25;padding:5px 18px;font:700 20px/1.6 Georgia,'Songti SC',SimSun,serif}.food-meal-label:before{content:'';position:absolute;left:-25px;top:15px;width:11px;height:11px;border:2px solid #49764b;background:#faf8f3;border-radius:50%}.food-meal h3{font:700 28px/1.4 Georgia,'Songti SC',SimSun,serif;margin:0 0 5px}.food-meal p{margin:5px 0;font-size:16px;line-height:1.6;color:#484b46;overflow-wrap:anywhere}.food-meal .food-match{margin-top:10px}.food-match svg{width:19px;height:19px;vertical-align:middle;color:#527b58;margin-right:5px}.food-order{border-left:1px solid #cfcfc1;padding-left:24px;align-self:stretch;display:flex;flex-direction:column;justify-content:center}.food-order>span{background:#41694c;color:white;border-radius:30px;padding:2px 17px;align-self:flex-start;margin-bottom:10px;white-space:nowrap}.food-order strong{font-size:18px}.food-order p{margin:0}.food-photo{position:relative;overflow:hidden;border-radius:14px;aspect-ratio:210/137;align-self:center;min-height:0;background:#e6e8db}.food-photo.generic{background-image:none;display:grid;place-items:center}.food-photo.generic svg{width:64px;height:64px;color:#58805c}.food-snack{min-height:58px;padding:0 20px;background:#edf0e4;grid-template-columns:120px auto minmax(0,1fr);gap:20px}.food-snack .food-photo{min-height:56px;height:56px;aspect-ratio:auto;border-radius:0}.food-snack .food-meal-label{display:none}.food-snack h3{font-size:22px;margin:0}.food-snack>p{border-left:1px solid #b5c4ab;padding-left:20px}.food-aside{position:absolute;top:9px;right:0;width:29%;border:1px solid #afc0ad;border-radius:17px;padding:12px 18px 22px;min-height:815px}.food-aside h3{font:700 32px/1.4 Georgia,'Songti SC',SimSun,serif;margin:0 10px 12px}.food-rhythm{position:relative;height:210px;border-bottom:1px solid #d4d1c4;margin-bottom:6px}.food-waypoints{display:flex;justify-content:space-around;position:relative;z-index:1;padding-top:25px;gap:8px}.food-waypoint{text-align:center;font-weight:600;max-width:30%;font-size:16px;overflow-wrap:anywhere}.food-waypoint:nth-child(2){transform:translateY(-20px)}.food-waypoint>span{display:grid;place-items:center;background:#edf0df;border-radius:50%;width:54px;height:54px;margin:0 auto 3px;color:#4d7551}.food-waypoint svg{width:32px;height:32px}.food-curve{position:absolute;top:90px;width:100%;height:65px;z-index:1}.food-tip{display:flex;align-items:center;gap:20px;padding:16px 5px;border-bottom:1px solid #dedacf}.food-tip>span{flex-shrink:0;display:grid;place-items:center;width:52px;height:52px;background:#edf0df;border-radius:50%;color:#4c7550}.food-tip svg{width:32px;height:32px}.food-tip h4,.food-preference h4{font:700 22px/1.5 Georgia,'Songti SC',SimSun,serif;margin:0}.food-tip p{margin:0;font-size:16px;line-height:1.5;color:#4a4d47}.food-preference{background:#eaf0df;border-radius:18px;padding:16px 22px;margin-top:22px}.food-preference svg{width:35px;height:35px;vertical-align:middle;margin-right:14px}.food-preference p{margin:12px 0 0;color:#4a4d47;line-height:1.7}.food-disclaimer{font-size:14px;color:#646760;margin:32px 10px 0}.food-image-note{font-size:12px;color:#82857d;margin-top:12px}.food-extra{margin-top:18px;color:#63736c}.food-extra summary{font-size:14px}.food-flexible{font-size:14px;color:#63736c;margin:20px 0 -24px 110px}
 body:not(.library-page):has(.panel-food:target) main{padding-left:44px;padding-right:20px}body:not(.library-page):has(.panel-food:target) .budget-header-art{display:none}body:not(.library-page):has(.panel-food:target) .result-nav{margin-bottom:25px}body:not(.library-page):has(.panel-food:target) .daily-masthead{border-bottom:1px solid #d6d2c8;padding-bottom:14px}body:not(.library-page):has(.panel-food:target) .result-nav a{font-size:22px;min-height:61px}body:not(.library-page):has(.panel-food:target) .result-nav a[aria-current=page]{position:relative}body:not(.library-page):has(.panel-food:target) .result-nav a[aria-current=page]:after{content:'';position:absolute;bottom:-1px;left:15%;right:15%;height:5px;background:#b95128;border-radius:5px 5px 0 0}
 @media(max-width:1300px){.food-route{position:static;max-width:none;display:table;margin:16px 0 -24px}.food-meals{padding-left:85px;gap:20px}.food-meal{gap:14px;grid-template-columns:25% minmax(0,1fr);padding:12px}.food-order{grid-column:2;border-left:0;border-top:1px solid #d4d1c4;padding:10px 0 0}.food-order>span{margin-bottom:6px}.food-meal-label{left:-72px;padding:5px 12px;font-size:17px}.food-meal-label:before{left:-22px}.food-snack{grid-template-columns:85px 1fr}.food-snack>p{grid-column:2;border:0;padding:0}.food-aside{padding:14px}.food-aside h3{font-size:26px}.food-tip{gap:12px}.food-tip h4,.food-preference h4{font-size:19px}.food-content{width:calc(69% - 22px)}.food-aside{width:31%}.food-heading h2{font-size:44px}}
 @media(max-width:850px){body:not(.library-page):has(.panel-food:target) main{padding:12px}.food-content{width:100%}.food-aside{position:static;width:100%;min-height:0;margin-top:24px}.food-shell{min-height:0}.food-heading h2{font-size:36px}.food-heading p{font-size:16px}.food-rhythm{height:210px;max-width:430px;margin-inline:auto}.food-heading small{font-size:17px}.food-meal h3{font-size:23px}.food-meal p{font-size:14px}.food-aside h3{font-size:28px}.food-meals{margin-top:34px}.food-route{font-size:16px}.food-flexible{margin-left:85px}.food-snack h3{font-size:19px}}
@@ -40,20 +39,18 @@ def icon(name):
     return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICONS[name] + '</svg>'
 
 
-def panel(sections, days, text, inline_images=False):
+def panel(sections, days, text, inline_images=False, city=''):
     rows = [row for section in sections for row in section.get('rows', [])]
     notes = [item['text'] for section in sections for item in section.get('items', [])]
-    asset = '/assets/visual/food-reference.png'
-    if inline_images:
-        asset = 'data:image/png;base64,' + b64encode(Path(__file__).with_name('images').joinpath('food-reference.png').read_bytes()).decode('ascii')
+    def photo(name):
+        image = ''
+        if city and not inline_images and not any(word in name for word in ('附近的', '片区的')):
+            url = '/api/places/photo?' + urlencode({'city': city, 'place': name, 'category': 'food'})
+            image = '<img data-food-photo="' + text(url) + '" alt="' + text(name + ' · 小红书搜索配图') + '" hidden>'
+        return ('<div class="food-photo generic"><span class="food-placeholder">' + icon('bowl')
+                + '<small>暂无菜品图片</small></span>' + image + '</div>')
 
-    def photo(kind):
-        # shortcut: reference photographs are CSS crops; replace with individual dish assets when available.
-        if kind == 'generic':
-            return '<div class="food-photo generic" role="img" aria-label="餐饮示意">' + icon('bowl') + '</div>'
-        return f'<div class="food-photo {kind}" role="img" aria-label="菜品示意图"></div>'
-
-    out = [f"<style>.food-photo:not(.generic),.food-landscape{{background-image:url('{asset}')}}</style>" + '<div class="food-shell"><div class="food-content"><header class="food-heading"><small>02 / 每日用餐</small><h2 aria-label="当地特色美食">今天，顺路吃什么</h2><p>用餐跟着路线走，少绕路，也留一点休息时间</p></header><fieldset class="food-picker"><legend>选择用餐日</legend>']
+    out = ['<div class="food-shell"><div class="food-content"><header class="food-heading"><small>02 / 每日用餐</small><h2 aria-label="当地特色美食">今天，顺路吃什么</h2><p>用餐跟着路线走，少绕路，也留一点休息时间</p></header><fieldset class="food-picker"><legend>选择用餐日</legend>']
     count = max(len(days), 1)
     for number in range(1, count + 1):
         out.append(f'<label><input type="radio" name="food-day" id="food-choice-{number}" aria-controls="food-day-{number}"' + (' checked' if number == 1 else '') + f'>第{number}天</label>')
@@ -97,8 +94,7 @@ def panel(sections, days, text, inline_images=False):
             for name, description, schedule, area, tips in group:
                 meal = next((meal for meal in order if meal in schedule), '推荐')
                 snack = meal in ('加餐', '下午茶')
-                kind = ('breakfast' if any(w in name for w in ('包', '面点', '馒头')) else 'noodles' if any(w in name for w in ('面', '片儿川')) else 'dinner' if any(w in name for w in ('家常', '东坡肉', '红烧肉')) else 'snack' if '定胜糕' in name else 'generic')
-                out.append('<section class="food-meal' + (' food-snack' if snack else '') + '"><span class="food-meal-label">' + text(meal) + '</span>' + photo(kind))
+                out.append('<section class="food-meal' + (' food-snack' if snack else '') + '"><span class="food-meal-label">' + text(meal) + '</span>' + photo(name))
                 if snack:
                     out.append('<h3>加餐 · ' + text(name) + '</h3><p>' + text(description) + '<br>' + text(area) + (' · ' + text(tips) if tips else '') + '</p>')
                 else:
@@ -106,7 +102,7 @@ def panel(sections, days, text, inline_images=False):
                     out.append('<div><h3>' + text(name) + '</h3><p>' + text(description) + '</p><p class="food-match">' + icon('pin') + '路线契合：' + text(area or '结合当天片区顺路选择') + '</p></div><div class="food-order"><span>' + badge + '</span><strong>点单提醒：</strong><p>' + text(tips or '点单前与商家确认食材及口味。') + '</p></div>')
                 out.append('</section>')
             out.append('</div>')
-        out.append('<aside class="food-aside" aria-label="今天的用餐节奏"><h3>今天的用餐节奏</h3><div class="food-rhythm"><div class="food-landscape" aria-hidden="true"></div><div class="food-waypoints">')
+        out.append('<aside class="food-aside" aria-label="今天的用餐节奏"><h3>今天的用餐节奏</h3><div class="food-rhythm"><div class="food-waypoints">')
         for i, place in enumerate(route):
             out.append('<div class="food-waypoint"><span>' + icon('pagoda' if i == 0 else 'gate') + '</span><small title="' + text(place) + '">' + text(place) + '</small></div>')
         out.append('</div><svg class="food-curve" viewBox="0 0 360 70" fill="none" aria-hidden="true"><path d="M25 50C90 60 95 8 170 23S260 70 335 39" stroke="#608564" stroke-width="2"/><g fill="#faf8f3" stroke="#48764e" stroke-width="2.5"><circle cx="25" cy="50" r="6"/><circle cx="170" cy="23" r="6"/><circle cx="335" cy="39" r="6"/></g></svg></div>')
@@ -114,7 +110,43 @@ def panel(sections, days, text, inline_images=False):
             out.append('<div class="food-tip"><span>' + icon(symbol) + '</span><div><h4>' + title + '</h4><p>' + copy + '</p></div></div>')
         dietary = next((note for note in notes if note.startswith('饮食要求')), '')
         out.append('<div class="food-preference"><h4>' + icon('leaf') + ('饮食偏好 · 按需选择' if dietary else '饮食偏好 · 清淡优先') + '</h4><p>' + text(dietary or '以清淡、鲜香为主，少油少辣，更适合本次行程的游玩节奏。') + '</p></div><p class="food-disclaimer">ⓘ　本页为菜品与片区建议，非实时门店推荐。</p></aside></article>')
-    out.append('<p class="food-image-note">图片为菜品示意 · 具体食材请向店家确认</p>')
+    out.append('<p class="food-image-note">图片为小红书搜索配图，未核实为所荐门店实拍；无匹配或加载失败时显示占位图。具体食材请向店家确认。</p>')
     if notes:
         out.append('<details class="food-extra"><summary>用餐说明</summary><ul>' + ''.join('<li>' + text(note) + '</li>' for note in notes) + '</ul></details>')
     return ''.join(out) + '</div></div>'
+
+
+CSS += """
+.food-photo.generic{aspect-ratio:210/137;min-height:80px;background-image:none}
+.food-placeholder{display:grid;justify-items:center;gap:6px;color:#63736c;text-align:center;padding:8px}
+.food-placeholder small{font-size:12px}.food-photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.food-photo img[hidden]{display:none}.food-snack .food-placeholder svg{width:24px;height:24px}
+.food-snack .food-photo.generic{min-height:56px}.food-photo:has(img:not([hidden])) .food-placeholder{visibility:hidden}
+"""
+
+FOOD_JS = r"""
+// Serialize visible dish searches; the placeholder remains on any failure.
+if (document.querySelectorAll('[data-food-photo]').length) {
+let foodPhotoQueue = Promise.resolve();
+const foodPhotoObserver = new IntersectionObserver(entries => {
+  for (const entry of entries) {
+    if (!entry.isIntersecting) continue;
+    const image = entry.target.querySelector('[data-food-photo]');
+    foodPhotoObserver.unobserve(entry.target);
+    foodPhotoQueue = foodPhotoQueue.then(() => new Promise(resolve => {
+      if (!image.parentElement.getClientRects().length) {
+        foodPhotoObserver.observe(image.parentElement);
+        resolve();
+        return;
+      }
+      image.onload = () => { image.hidden = false; resolve(); };
+      image.onerror = () => { image.hidden = true; resolve(); };
+      image.src = image.dataset.foodPhoto;
+    }));
+  }
+});
+for (const image of document.querySelectorAll('[data-food-photo]')) {
+  foodPhotoObserver.observe(image.parentElement);
+}
+}
+"""

@@ -122,7 +122,7 @@ let update, reset;
 const nodes = {'[data-budget-limit]':limitInput,'[data-total]':total,'[data-person]':person,'[data-unknown]':notice,'[data-budget-filter]':filter,'[data-budget-sort]':sort,'[data-balance]':balance,'[data-balance-bar]':bar,'.budget-pending h3':pending,'[data-budget-reset]':{addEventListener:(_,fn)=>reset=fn},'[data-budget-save]':{addEventListener(){}},'[data-budget-save-status]':{}};
 const fakeWorkspace = {dataset:{travelers:'2',limit:'300',originalLimit:'3.00'},querySelector:s=>nodes[s],querySelectorAll:s=>s.includes('tr[')?rows:s==='[data-ledger]'?[body]:s.includes('category-total')?categories:s==='[data-segment]'?[segment]:[],addEventListener:(name,fn)=>{events[name]=fn;if(name==='change')update=()=>fn({target:sort});}};
 global.window={addEventListener(){}};global.localStorage={getItem(){return null;}};
-global.document = {querySelector:s=>s==='.budget-workspace'?fakeWorkspace:null,querySelectorAll:()=>[]};
+global.document = {querySelector:s=>s==='.budget-workspace'?fakeWorkspace:null,querySelectorAll:()=>[],addEventListener(){}};
 '''
     checks = r'''
 update();assert.equal(total.textContent,'¥0.30');assert.equal(person.textContent,'¥0.15');assert.equal(balance.textContent,'¥2.70');

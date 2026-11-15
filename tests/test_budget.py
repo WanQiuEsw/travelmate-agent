@@ -29,7 +29,9 @@ def test_budget_survives_refresh_restart_chat_deletion_and_exports(library_app):
         md = client.get(f'/api/guides/{key}/versions/1/md').text
         assert '用户保存的预算' in md and '¥123.45' in md and '¥2345.67' in md and '不计入' in md
         assert client.get(f'/api/guides/{key}/versions/1/pdf').content.startswith(b'%PDF')
-        assert '2345.67' in client.get(f'/guides/{key}').text
+        page = client.get(f'/guides/{key}').text
+        assert '2345.67' in page and '预算修改后自动保存' in page
+        assert 'data-budget-save>' not in page and '修改后点击保存' not in page
         generate(client)
         assert client.get(f'/api/guides/{key}/versions/2/budget').json()['revision'] == 0
         assert client.delete('/sessions/trip').status_code == 200
