@@ -223,7 +223,7 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
         if not photo:
             return Response(status_code=404, headers={'Cache-Control': 'private, max-age=600'})
         return Response(photo[0], media_type=photo[1], headers={
-            'Cache-Control': 'private, max-age=21600', 'X-Content-Type-Options': 'nosniff'})
+            'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff'})
 
     @app.post("/transport/trains")
     def train_search(request: RailRequest, http_request: Request):

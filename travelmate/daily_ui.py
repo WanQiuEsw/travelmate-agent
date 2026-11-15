@@ -1,6 +1,7 @@
 """Daily itinerary timeline over saved guide rows."""
 from base64 import b64encode
 from pathlib import Path
+from travelmate.carousel import highlight_stops, photo_url
 
 CSS = """
 .day-plan-choice{border:0;padding:0;margin:16px 0;display:flex;gap:10px;flex-wrap:wrap}.day-plan-choice legend{font-size:13px;color:#63736c;margin-bottom:8px}.day-plan-choice label{display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 16px;background:#fffefa;border:1px solid #cadbd1;border-radius:10px;min-height:44px}.day-plan-choice label:has(input:checked){background:#e8efe2;border-color:#287a70;color:#165b50}.day-plan-choice input{accent-color:#287a70}.rain-route{display:none}.daily-view:has(.rain-choice:checked) .original-route{display:none}.daily-view:has(.rain-choice:checked) .rain-route{display:block}.rain-notice{padding:14px 18px;background:#eef2e7;border-radius:12px;line-height:1.8}.daily-view input:focus-visible{outline:3px solid #b94d2a;outline-offset:4px}.rain-note{color:#40604e}.rain-unavailable{color:#63736c}.daily-footer a{color:inherit}@media print{.day-plan-choice{display:none}}
@@ -30,15 +31,22 @@ def scenery(place, inline_images):
     return '/assets/visual/' + name
 
 
-def day_cards(day, number, text, inline_images=False):
+def day_cards(day, number, text, inline_images=False, city=''):
     rows = day.get('rows', [])
     title = next((r[1] for r in rows if len(r) > 1), '当日安排')
     photo = lambda place: text(scenery(place, inline_images))
+    def remote(place):
+        stops = highlight_stops([{'rows': [['', place]]}])
+        return (f' data-photo-url="{text(photo_url(city, stops[0][2][1]))}"'
+                if city and not inline_images and stops else '')
+    core = highlight_stops([day])
+    banner_place = core[0][2][1] if core else title
+    title = banner_place
     out = [f'<style>.panel-days:has(#day-{number}:target) .day-picker a[href="#day-{number}"]' + '{background:#b94d2a;color:#fff;border-color:#b94d2a}</style>', f'<article id="day-{number}" class="day-anchor daily-view" aria-label="第 {number} 天">',
            f'<p class="daily-date">{text(day["title"])}</p>',
            f'<fieldset class="day-plan-choice"><legend>第 {number} 天 · 选择当日路线</legend><label><input type="radio" name="day-plan-{number}" value="original" checked>原定行程</label><label><input class="rain-choice" type="radio" name="day-plan-{number}" value="rain">雨天方案</label></fieldset>',
-           f'<div class="original-route"><header class="daily-banner"><img src="{photo(title)}" alt="风景示意图，非景点实拍"><div class="daily-banner-title"><small>DAY {number:02d}</small><h3>{text(title)}</h3></div><span class="daily-image-note">风景示意</span></header>']
-    out.append(stop_cards(rows, photo, text))
+           f'<div class="original-route"><header class="daily-banner"><img src="{photo(banner_place)}" alt="风景示意图，非景点实拍"{remote(banner_place)}><div class="daily-banner-title"><small>DAY {number:02d}</small><h3>{text(title)}</h3></div><span class="daily-image-note">风景示意</span></header>']
+    out.append(stop_cards(rows, photo, text, remote))
     if not rows:
         out.append('<p class="daily-empty">当天尚无具体安排，可返回对话补充。</p>')
     if day.get('items'):
@@ -46,7 +54,7 @@ def day_cards(day, number, text, inline_images=False):
     out.append('</div><div class="rain-route"><h3>雨天方案 · 当日路线</h3>')
     if day.get('rain_rows'):
         out.append('<p class="rain-note">' + text(day.get('rain_note') or '以下为普通雨天的当日安排，请确认场馆预约后再切换出行。') + '</p>')
-        out.append(stop_cards(day['rain_rows'], photo, text))
+        out.append(stop_cards(day['rain_rows'], photo, text, remote))
     else:
         out.append('<p class="daily-empty rain-unavailable">本版尚无完整雨天路线。请在对话中提出“补充第' + str(number) + '天雨天方案”，保留已订交通、住宿与用餐安排后再调整。</p>')
     # shortcut: rain selection previews the day; sync budget, maps and exports when it becomes a saved plan change.
@@ -54,10 +62,10 @@ def day_cards(day, number, text, inline_images=False):
     return ''.join(out) + '<p class="daily-break">沿途适当休息，给风景留一点时间。</p><aside class="daily-footer" aria-label="当日提示"><p><strong>♧ 当日提醒</strong><span>活动卡片中查看预约与交通提醒，<a href="#panel-pitfalls">查看避坑指南 ↗</a></span></p><p><strong>☂ 雨天方案</strong><span>在当天上方切换查看，出行前确认开放与预约情况。</span></p></aside></article>'
 
 
-def stop_cards(rows, photo, text):
+def stop_cards(rows, photo, text, remote=lambda place: ''):
     out = ['<ol class="daily-stops" aria-label="当日行程时间轴">']
     for row in rows:
         when, place, detail, travel, cost = (list(row) + [''] * 5)[:5]
-        out.append(f'<li class="daily-stop"><div class="daily-stop-time">{text(when or "时间待定")}</div><div class="daily-stop-heading"><h4>{text(place)}</h4></div><div class="daily-stop-content"><div class="daily-stop-photo"><img src="{photo(place)}" alt="风景示意图，非景点实拍" loading="lazy"><span class="daily-image-note">风景示意</span></div><div class="daily-stop-copy"><p>{text(detail).replace(chr(10), "<br>")}</p><p class="daily-travel">{text(travel)}</p><p class="daily-cost">全员费用 · {text(cost)}</p></div></div></li>')
+        out.append(f'<li class="daily-stop"><div class="daily-stop-time">{text(when or "时间待定")}</div><div class="daily-stop-heading"><h4>{text(place)}</h4></div><div class="daily-stop-content"><div class="daily-stop-photo"><img src="{photo(place)}" alt="风景示意图，非景点实拍" loading="lazy"{remote(place)}><span class="daily-image-note">风景示意</span></div><div class="daily-stop-copy"><p>{text(detail).replace(chr(10), "<br>")}</p><p class="daily-travel">{text(travel)}</p><p class="daily-cost">全员费用 · {text(cost)}</p></div></div></li>')
     out.append('</ol>')
     return ''.join(out)

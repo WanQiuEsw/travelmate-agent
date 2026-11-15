@@ -35,6 +35,17 @@ def test_zero_one_two_and_escaping():
     assert '@media print' in CAROUSEL_CSS
 
 
+def test_overview_shows_saved_description_time_and_duration():
+    from travelmate.carousel import visit_duration
+    row = ['09:00–10:30', '西湖', '沿湖漫步，欣赏湖边风光。']
+    html = coverflow([{'rows': [row]}], escape, city='杭州')
+    assert '09:00–10:30 · 1小时30分钟' in html
+    assert '沿湖漫步，欣赏湖边风光。' in html
+    assert visit_duration(['上午', '西湖', '建议游玩2小时']) == '2小时'
+    assert visit_duration(['上午', '西湖', '随意散步']) == '游玩时长待确认'
+    assert visit_duration(['25:00–26:00', '西湖']) == '游玩时长待确认'
+
+
 def test_overview_only_shows_unique_attractions_with_photo_fallback():
     route = [{'rows': [['上午', name, '安排说明'] for name in
                        ('酒店入住', '早餐', '西湖', '西湖', '午餐', '灵隐寺', '杭州东站返程')]}]
@@ -71,7 +82,7 @@ const win = {}, doc = {}; let callback, active=0, visible=true, pending=new Map(
 global.setTimeout=(fn,delay)=>{assert.equal(delay,4000);pending.set(++id,fn);return id;};
 global.clearTimeout=id=>pending.delete(id);
 const radios=[0,1,2].map(i=>({get checked(){return active===i;},set checked(v){if(v)active=i;}}));
-const carousel={querySelectorAll:()=>radios,querySelector:()=>({}),getClientRects:()=>visible?[{}]:[],addEventListener(){},dispatchEvent(){}};
+const carousel={querySelectorAll:()=>radios,querySelector:s=>s.includes(':checked')?null:{},getClientRects:()=>visible?[{}]:[],addEventListener(){},dispatchEvent(){}};
 global.window={addEventListener:(n,f)=>win[n]=f};
 global.document={hidden:false,querySelectorAll:s=>s==='.carousel'?[carousel]:[],addEventListener:(n,f)=>doc[n]=f};
 global.IntersectionObserver=class{constructor(fn){callback=fn;}observe(){}};
@@ -117,7 +128,7 @@ const radios=[0,1,2].map(i=>({
   get checked(){return active===i;},set checked(v){if(v)active=i;},
   focus(){},dispatchEvent(event){if(event.bubbles)carousel.dispatchEvent(event);}
 }));
-Object.assign(carousel,{querySelectorAll:()=>radios,querySelector:()=>({}),getClientRects:()=>[{}]});
+Object.assign(carousel,{querySelectorAll:()=>radios,querySelector:s=>s.includes(':checked')?null:{},getClientRects:()=>[{}]});
 const buttons=[1,2].map(i=>Object.assign(new EventTarget(),{dataset:{carouselTarget:`highlight-${i+1}`}}));
 global.document={hidden:false,addEventListener(){},querySelector:()=>null,
   querySelectorAll:s=>s==='[data-carousel-target]'?buttons:s==='.carousel'?[carousel]:[],
@@ -143,3 +154,59 @@ advance(3999);assert.equal(active,1);
 advance(1);assert.equal(active,2);assert.equal(pending.size,1);
 """
     subprocess.run(['node', '-e', stub + RESULT_JS + checks], check=True, capture_output=True, text=True)
+
+
+def test_photo_loading_is_shared_serial_and_prefetches_only_the_next_slide():
+    import subprocess
+    from travelmate.carousel import CAROUSEL_JS
+    stub = r"""
+import assert from 'node:assert/strict';
+const downloads=[], observers=[], timers=new Map(); let timerId=0, active=0;
+globalThis.setTimeout=(fn,ms)=>{timers.set(++timerId,{fn,ms});return timerId;};
+globalThis.clearTimeout=id=>timers.delete(id);
+globalThis.Image=class { set src(value){this._src=value;if(value)downloads.push(this);} get src(){return this._src;} };
+const carousel=new EventTarget();
+const radios=[1,2,3].map(n=>({id:`highlight-${n}`,get checked(){return active===n-1;},set checked(v){if(v)active=n-1;}}));
+function image(url,owner=carousel){
+  const note={textContent:'默认风景 · 示意图'};
+  return {dataset:{photoUrl:url},hidden:false,alt:'示意图',parentElement:{querySelector:()=>note},
+    closest:()=>owner,getClientRects:()=>[{}],note};
+}
+const photos=[1,2,3].map(n=>image(`/photo/${n}`));
+const daily=image('/photo/1',null);
+Object.assign(carousel,{
+  querySelectorAll:()=>radios,getClientRects:()=>[{}],
+  querySelector:s=>s.includes(':checked')?radios[active]:s.includes('input')?null:
+    s.includes('img[data-photo-url]')?photos[Number(s.match(/slide-(\d)/)[1])-1]:
+    s.includes('.slide-')?{querySelector:()=>photos[Number(s.match(/slide-(\d)/)[1])-1]}:{},
+});
+globalThis.document={hidden:false,addEventListener(){},
+  querySelectorAll:s=>s==='.carousel:has([data-photo-url])'||s==='.carousel'?[carousel]:[]};
+globalThis.window={addEventListener(){}};
+globalThis.IntersectionObserver=class {constructor(fn){observers.push(fn);}observe(){}unobserve(){}};
+const flush=async()=>{for(let i=0;i<12;i++)await Promise.resolve();};
+"""
+    checks = r"""
+observers[0]([{isIntersecting:true}]); // Selected image starts loading.
+observers[1]([{isIntersecting:true}]); // Autoplay sees it loading and waits.
+loadPlacePhoto(daily);
+await flush();
+assert.equal(downloads.length,1,'overview and daily must share one request');
+assert.equal([...timers.values()].some(t=>t.ms===4000),false,'slow image must hold autoplay');
+downloads[0].onload();await flush();
+assert.equal(photos[0].src,'/photo/1');assert.equal(daily.src,'/photo/1');
+assert.equal(daily.note.textContent,'小红书 · 搜索配图');
+assert.equal(downloads.length,2,'preload exactly the next slide');
+assert.equal(photos[2].dataset.photoState,undefined,'do not load the whole itinerary');
+assert.equal([...timers.values()].some(t=>t.ms===4000),true);
+downloads[1].onerror();await flush();
+assert.equal(photos[1].dataset.photoState,'failed');assert.equal(photos[1].src,undefined);
+assert.equal(downloads.length,2,'failure must not fan out or retry');
+active=1;carousel.dispatchEvent(new Event('change'));await flush();
+assert.equal(downloads.length,3);
+const timeout=[...timers.values()].find(t=>t.ms===30000);timeout.fn();await flush();
+assert.equal(photos[2].dataset.photoState,'failed','timeout must release the queue');
+"""
+    result = subprocess.run(['node', '--input-type=module', '-'], input=stub + CAROUSEL_JS + checks,
+                            capture_output=True, text=True, encoding='utf-8', timeout=10)
+    assert result.returncode == 0, result.stderr

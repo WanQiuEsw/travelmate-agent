@@ -45,7 +45,7 @@ def panel(sections, days, text, inline_images=False, city=''):
     def photo(name):
         image = ''
         if city and not inline_images and not any(word in name for word in ('附近的', '片区的')):
-            url = '/api/places/photo?' + urlencode({'city': city, 'place': name, 'category': 'food'})
+            url = '/api/places/photo?' + urlencode({'city': city, 'place': name, 'category': 'food', 'v': 3})
             image = '<img data-food-photo="' + text(url) + '" alt="' + text(name + ' · 小红书搜索配图') + '" hidden>'
         return ('<div class="food-photo generic"><span class="food-placeholder">' + icon('bowl')
                 + '<small>暂无菜品图片</small></span>' + image + '</div>')

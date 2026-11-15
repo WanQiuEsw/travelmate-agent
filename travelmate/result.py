@@ -50,6 +50,7 @@ def coordinates(value):
 def result_panels(guide, sections, text, inline_images=False, actions=""):
     days = [s for s, _ in sections if s['kind'] == 'day']
     meta = dict(guide.get('result', {}))
+    city = meta.get('destination', '') or guide['title'].split(' · ')[0].split(' → ')[-1]
     meta['budget_endpoint'] = guide.get('_budget_url', '')
     meta['budget_key'] = sha256((guide['title'] + str(guide['version']) + guide.get('saved_at', '')).encode()).hexdigest()[:24]
     out = ['<div class="result" aria-label="旅行方案">']
@@ -88,13 +89,13 @@ def result_panels(guide, sections, text, inline_images=False, actions=""):
             if not selected_date:
                 section = dict(section, title=section['title'].split(' · 天气')[0])
             number = sum(s['kind'] == 'day' for s, _ in sections[:index]) + 1
-            html = day_cards(section, number, text, inline_images) if section.get("columns", [])[:1] == ["时段"] else f'<div id="day-{number}" class="day-anchor"><details class="day-detail" open><summary>第 {number} 天 · 查看或收起安排</summary>{html}</details></div>'
+            html = day_cards(section, number, text, inline_images, city=city) if section.get("columns", [])[:1] == ["时段"] else f'<div id="day-{number}" class="day-anchor"><details class="day-detail" open><summary>第 {number} 天 · 查看或收起安排</summary>{html}</details></div>'
         if group == 'lodging':
             html = lodging_cards(section, days, text, inline_images)
         if group == 'overview' or section['title'] == '下雨、排队或约不上时怎么换':
             html = '<details class="guide-detail"><summary>' + text(section['title']) + '</summary>' + html + '</details>'
         groups[group].append(html)
-    groups['overview'].insert(0, coverflow(days, text, inline_images, city=meta.get('destination', '') or guide['title'].split(' · ')[0].split(' → ')[-1]))
+    groups['overview'].insert(0, coverflow(days, text, inline_images, city=city))
     groups['prepare'].append(preparation_panel(guide, text))
     facts = [r for r in overview.get('rows', []) if r[0] in ('路线', '人数与天数', '日期')]
     groups['overview'].insert(0, '<dl class="trip-facts">' + ''.join('<div><dt>' + text(r[0]) + '</dt><dd>' + text(r[1]) + '</dd></div>' for r in facts) + '</dl>')

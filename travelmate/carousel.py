@@ -5,6 +5,24 @@ import re
 from urllib.parse import urlencode
 
 
+def photo_url(city, place):
+    return '/api/places/photo?' + urlencode({'city': city, 'place': place, 'v': 3})
+
+
+def visit_duration(row):
+    detail = row[2] if len(row) > 2 else ''
+    explicit = re.search(r'(?:游玩|游览|参观|停留)(?:时长)?[：:\s约]*(\d+(?:\.\d+)?(?:[～~—–-]\d+(?:\.\d+)?)?\s*(?:小时|分钟))', detail)
+    if explicit:
+        return explicit[1]
+    times = re.fullmatch(r'\s*(\d{1,2}):(\d{2})\s*[–—~～-]\s*(\d{1,2}):(\d{2})\s*', row[0])
+    if times:
+        start_h, start_m, end_h, end_m = map(int, times.groups())
+        minutes = (end_h - start_h) * 60 + end_m - start_m
+        if max(start_h, end_h) < 24 and max(start_m, end_m) < 60 and minutes > 0:
+            return f'{minutes // 60}小时{minutes % 60}分钟' if minutes % 60 and minutes >= 60 else f'{minutes // 60}小时' if minutes >= 60 else f'{minutes}分钟'
+    return '游玩时长待确认'
+
+
 def highlight_stops(days):
     """Exclude trip logistics and meals; show each named attraction once."""
     seen, slides = set(), []
@@ -46,6 +64,12 @@ CAROUSEL_CSS = """
 @media print{.carousel-stage{height:auto;perspective:none}.carousel .carousel-slide{position:static;display:block!important;visibility:visible!important;opacity:1!important;transform:none!important;filter:none!important;width:100%;margin:0 0 20px;break-inside:avoid}.carousel-controls,.carousel>input,.carousel-dots,.carousel-side-select,.carousel-help{display:none!important}.carousel{overflow:visible}.carousel-photo{height:220px}}
 """
 
+CAROUSEL_CSS += """
+.carousel-photo{height:340px}.carousel-caption{padding:65px 24px 20px}.carousel-meta{position:static;color:#285b48;padding:14px 20px 4px;min-height:0}.carousel-meta small:first-child{background:#e7efe5;color:#285b48;border-color:#c9d7c6}.carousel-meta .carousel-time{font-size:12px;color:#63736c}.carousel-copy{padding:6px 20px 18px;min-height:104px}.carousel-copy p{font-size:14px;line-height:1.6;color:#63736c;text-align:left;margin:0 0 10px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.carousel-copy .carousel-cta{display:inline-block;color:#087f7a;font-size:13px;font-weight:600}.carousel-controls{top:490px}.carousel-controls button{top:-300px}.carousel .highlight{min-height:475px}.carousel-photo:has(img[hidden]) .carousel-placeholder{display:grid}
+@media(max-width:700px){.carousel-stage{height:480px}.carousel-photo{height:280px}.carousel .highlight{min-height:425px}.carousel-caption{padding:50px 16px 16px}.carousel-copy{padding:6px 14px 14px;min-height:100px}.carousel-meta{padding:12px 14px 4px}.carousel-controls{top:435px}.carousel-controls button{top:-275px}.carousel-caption strong{font-size:22px}}
+@media print{.carousel-photo{height:220px}.carousel .highlight{min-height:0}.carousel .carousel-meta{display:flex!important}}
+"""
+
 
 def coverflow(days, text, inline_images=False, city=''):
     slides = highlight_stops(days)
@@ -82,9 +106,9 @@ def coverflow(days, text, inline_images=False, city=''):
     out.append('<style>' + ''.join(rules) + '</style><div class="carousel-stage">')
     for n, (i, j, row) in enumerate(slides, 1):
         previous, following = (n-2) % len(slides)+1, n % len(slides)+1
-        photo_url = '/api/places/photo?' + urlencode({'city': city, 'place': row[1], 'v': 2})
-        remote = f' data-photo-url="{text(photo_url)}"' if not inline_images and city else ''
-        out.append(f'<article class="carousel-slide slide-{n}"><a class="highlight" href="#day-{i}"><div class="carousel-photo"><span class="carousel-placeholder">暂无景点图片</span><img src="{text(scenery(row[1]))}" alt="默认风景示意图，非景点实拍"{remote}><span class="carousel-image-note">默认风景 · 示意图</span><div class="carousel-caption"><strong>{text(row[1])}</strong></div></div><div class="carousel-meta"><small>第 {i} 天</small><span class="carousel-cta">查看当日日程 ↗</span></div></a><label class="carousel-side-select" for="highlight-{n}" aria-label="切换至{text(row[1])}"></label><div class="carousel-controls"><button type="button" data-carousel-target="highlight-{previous}" aria-label="上一个景点" {"disabled" if len(slides) == 1 else ""}>←</button><span>{n:02d} / {len(slides):02d}</span><button type="button" data-carousel-target="highlight-{following}" aria-label="下一个景点" {"disabled" if len(slides) == 1 else ""}>→</button></div></article>')
+        remote = f' data-photo-url="{text(photo_url(city, row[1]))}"' if not inline_images and city else ''
+        description = row[2] if len(row) > 2 and row[2].strip() else '查看当天安排，了解游览与交通提醒。'
+        out.append(f'<article class="carousel-slide slide-{n}"><a class="highlight" href="#day-{i}"><div class="carousel-photo"><span class="carousel-placeholder">暂无景点图片</span><img src="{text(scenery(row[1]))}" alt="默认风景示意图，非景点实拍"{remote}><span class="carousel-image-note">默认风景 · 示意图</span><div class="carousel-caption"><strong>{text(row[1])}</strong></div></div><div class="carousel-meta"><small>第 {i} 天</small><span class="carousel-time">{text(row[0])} · {text(visit_duration(row))}</span></div><div class="carousel-copy"><p>{text(description)}</p><span class="carousel-cta">查看当日日程 ↗</span></div></a><label class="carousel-side-select" for="highlight-{n}" aria-label="切换至{text(row[1])}"></label><div class="carousel-controls"><button type="button" data-carousel-target="highlight-{previous}" aria-label="上一个景点" {"disabled" if len(slides) == 1 else ""}>←</button><span>{n:02d} / {len(slides):02d}</span><button type="button" data-carousel-target="highlight-{following}" aria-label="下一个景点" {"disabled" if len(slides) == 1 else ""}>→</button></div></article>')
     out.append('</div><div class="carousel-dots" aria-label="选择景点">')
     out.extend(f'<label class="carousel-dot" for="highlight-{n}" aria-label="选择景点 {n}"></label>' for n in range(1, len(slides)+1))
     out.append('</div><p class="carousel-help">点击两侧卡片或使用方向键切换 · 点击主卡片查看当日日程</p><div class="carousel-days"><h3>每天都有一点期待</h3><div class="carousel-day-links">')
@@ -95,6 +119,42 @@ def coverflow(days, text, inline_images=False, city=''):
 
 
 CAROUSEL_JS = r"""
+// Share one request per place across overview and daily cards; fetch media serially.
+const placePhotos = new Map();
+let placePhotoQueue = Promise.resolve();
+function loadPlacePhoto(image) {
+  if (!image || image.dataset.photoState) return;
+  const url = image.dataset.photoUrl;
+  image.dataset.photoState = 'loading';
+  if (!placePhotos.has(url)) {
+    const task = placePhotoQueue.then(() => new Promise(resolve => {
+      const photo = new Image();
+      const finish = result => {
+        clearTimeout(timeout);
+        photo.onload = photo.onerror = null;
+        resolve(result);
+      };
+      const timeout = setTimeout(() => { finish(null); photo.src = ''; }, 30000);
+      photo.onload = () => finish(photo.src);
+      photo.onerror = () => finish(null);
+      photo.src = url;
+    }));
+    placePhotos.set(url, task);
+    placePhotoQueue = task;
+  }
+  placePhotos.get(url).then(src => {
+    image.dataset.photoState = src ? 'ready' : 'failed';
+    if (src) {
+      image.src = src;
+      image.hidden = false;
+      image.alt = '小红书搜索配图，未核实图片内容';
+      const note = image.parentElement.querySelector('.carousel-image-note, .daily-image-note');
+      if (note) note.textContent = '小红书 · 搜索配图';
+    }
+    image.closest('.carousel')?.dispatchEvent(new Event('photo-ready'));
+  });
+}
+
 for (const image of document.querySelectorAll('.carousel-photo img')) {
   const showEmpty = () => {
     image.hidden = true;
@@ -103,28 +163,44 @@ for (const image of document.querySelectorAll('.carousel-photo img')) {
   image.addEventListener('error', showEmpty);
   if (image.complete && !image.naturalWidth) showEmpty();
 }
-// Load only the selected attraction, so opening a guide cannot fan out searches.
+// Warm only the next attraction after the selected image has settled.
 for (const carousel of document.querySelectorAll('.carousel:has([data-photo-url])')) {
   const loadPhoto = () => {
     if (!carousel.getClientRects().length || document.hidden) return;
     const selected = carousel.querySelector('input[name="highlight"]:checked');
     const slide = selected && carousel.querySelector('.slide-' + selected.id.split('-').pop());
     const image = slide && slide.querySelector('img[data-photo-url]');
-    if (!image || image.dataset.photoRequested) return;
-    image.dataset.photoRequested = 'true';
-    const photo = new Image();
-    photo.onload = () => {
-      image.src = photo.src;
-      image.hidden = false;
-      image.alt = slide.querySelector('.carousel-caption strong').textContent + ' · 小红书搜索配图';
-      slide.querySelector('.carousel-image-note').textContent = '小红书 · 搜索配图';
-    };
-    photo.src = image.dataset.photoUrl;
+    loadPlacePhoto(image);
+    if (!image || image.dataset.photoState === 'loading') return;
+    const radios = [...carousel.querySelectorAll('input[name="highlight"]')];
+    const next = radios[(radios.indexOf(selected) + 1) % radios.length];
+    if (next !== selected) loadPlacePhoto(carousel.querySelector('.slide-' + next.id.split('-').pop() + ' img[data-photo-url]'));
   };
   carousel.addEventListener('change', loadPhoto);
+  carousel.addEventListener('photo-ready', loadPhoto);
   window.addEventListener('hashchange', loadPhoto);
   document.addEventListener('visibilitychange', loadPhoto);
   new IntersectionObserver(entries => { if (entries.some(entry => entry.isIntersecting)) loadPhoto(); }).observe(carousel);
+}
+if (document.querySelectorAll('.daily-view img[data-photo-url]').length) {
+  const dailyPhotoObserver = new IntersectionObserver(entries => {
+    if (document.hidden) return;
+    for (const entry of entries) {
+      if (entry.isIntersecting && entry.target.getClientRects().length) {
+        loadPlacePhoto(entry.target);
+        dailyPhotoObserver.unobserve(entry.target);
+      }
+    }
+  });
+  const observeDailyPhotos = () => {
+    if (document.hidden) return;
+    for (const image of document.querySelectorAll('.daily-view img[data-photo-url]')) {
+      if (!image.dataset.photoState) dailyPhotoObserver.observe(image);
+    }
+  };
+  observeDailyPhotos();
+  window.addEventListener('hashchange', observeDailyPhotos);
+  document.addEventListener('visibilitychange', observeDailyPhotos);
 }
 for (const carousel of document.querySelectorAll('.carousel')) {
   const radios = [...carousel.querySelectorAll('input[name="highlight"]')];
@@ -134,6 +210,9 @@ for (const carousel of document.querySelectorAll('.carousel')) {
   function schedule() {
     stop();
     if (!inView || document.hidden || !carousel.getClientRects().length) return;
+    const selected = carousel.querySelector('input[name="highlight"]:checked');
+    const image = selected && carousel.querySelector('.slide-' + selected.id.split('-').pop() + ' img[data-photo-url]');
+    if (image?.dataset.photoState === 'loading') return;
     timer = setTimeout(() => {
       const index = radios.findIndex(radio => radio.checked);
       radios[(index + 1) % radios.length].checked = true;
@@ -147,6 +226,7 @@ for (const carousel of document.querySelectorAll('.carousel')) {
   });
   observer.observe(carousel.querySelector('.carousel-stage'));
   carousel.addEventListener('change', schedule);
+  carousel.addEventListener('photo-ready', schedule);
   document.addEventListener('visibilitychange', schedule);
   window.addEventListener('hashchange', schedule);
   window.addEventListener('pagehide', stop);
