@@ -85,10 +85,11 @@ def test_preparation_categories_and_progress():
     assert category({'text': '确认酒店订单', 'category': '证件'}) == '证件'
     html = panel({'title': '杭州', 'version': 1, 'preparation': {'revision': 0, 'items': [
         {'id': 'a', 'text': '<护照>', 'done': True},
-        {'id': 'b', 'text': '充电宝', 'done': False},
+        {'id': 'b', 'text': '充电宝', 'done': False, 'detail': '备用"<充电器>'},
     ]}}, escape)
     assert '已完成 1 / 2 项' in html
     assert '&lt;护照&gt;' in html
+    assert 'data-detail="备用&quot;&lt;充电器&gt;"' in html
     assert all(f'data-category="{name}"' in html for name in ('证件', '随身用品', '出发确认'))
     assert html.count('data-add-category=') == 1
     assert '<dialog aria-labelledby=' in html

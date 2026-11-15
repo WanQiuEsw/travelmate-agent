@@ -57,7 +57,8 @@ def panel(meta, text):
     balance = max(0, (budget or total) - total)
     out.append(f'<span data-balance-bar style="flex-grow:{balance}" class="budget-color-balance"><span class="budget-segment-label">{money(balance)}</span></span></div><div class="budget-legend">')
     for c in bar_categories:
-        out.append(f'<span><i class="budget-color-{categories.index(c) % 6}"></i>{text(labels.get(c, (c,))[0])} <b data-category-total="{text(c)}">{money(totals[c]) if c in known else '待核实' if c in pending else '未单列'}</b></span>')
+        category_total = money(totals[c]) if c in known else '待核实' if c in pending else '未单列'
+        out.append(f'<span><i class="budget-color-{categories.index(c) % 6}"></i>{text(labels.get(c, (c,))[0])} <b data-category-total="{text(c)}">{category_total}</b></span>')
     out.append(f'<span><i class="budget-color-balance"></i>余量 <b data-balance>{money(balance) if budget is not None else "待确认"}</b></span></div></div><div class="budget-metrics"><p>{icon("people")}人均 <strong data-person>{money(int((Decimal(total) / travelers).quantize(Decimal("1"), rounding=ROUND_HALF_UP))) if total or not unknown else "待核实"}</strong><small>（估算）</small></p><p data-budget-notice role="status">{icon("alert")}<strong data-unknown>{unknown} 项待核实</strong></p></div></section>')
     out.append('<div class="budget-toolbar"><label>类型筛选：<select data-budget-filter aria-label="筛选费用类型"><option value="">全部类型</option>' + ''.join(f'<option>{text(c)}</option>' for c in categories) + '</select></label><label>排序方式：<select data-budget-sort aria-label="排序费用"><option value="desc" selected>金额从高到低</option><option value="original">日程顺序</option><option value="asc">金额从低到高</option></select></label><small data-budget-save-status role="status">修改后自动保存，再次打开和导出时即可查看。</small><button type="button" data-budget-reset>' + icon('reset') + '恢复方案金额</button></div><div class="budget-cards" aria-label="逐项费用">')
     for c in categories:
