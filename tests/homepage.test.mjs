@@ -15,11 +15,11 @@ function setup() {
     setCustomValidity(message) { this.validationMessage = message; },
     focus() { this.focused = true; }, scrollIntoView() {},
   });
-  const fields = Object.fromEntries(Object.entries({origin: '', destination: '', days: '3', budget: '3000', preference: '自然风光', people: '2'}).map(([key, value]) => [key, element(value)]));
+  const fields = Object.fromEntries(Object.entries({origin: '', destination: '', date: '2026-12-10', days: '3', budget: '3000', preference: '放松散心', people: '2'}).map(([key, value]) => [key, element(value)]));
   fields.budget.selectedOptions = [{textContent: '¥2000–3000'}];
   const elements = Object.fromEntries(['home-planner', 'planner-status', 'home-generate', 'send', 'random-destination', 'form'].map(id => [id, element()]));
   elements['home-planner'].elements = fields;
-  elements['home-planner'].reportValidity = () => !fields.destination.validationMessage;
+  elements['home-planner'].reportValidity = () => !fields.destination.validationMessage && !fields.date.validationMessage;
   elements.form.submissions = [];
   const tripInput = element();
   elements.form.requestSubmit = () => elements.form.submissions.push(tripInput.value);
@@ -29,6 +29,7 @@ function setup() {
     document: {querySelector: id => elements[id.slice(1)], querySelectorAll: () => cards, createElement: () => element()},
     MutationObserver: class { constructor(callback) { sync = callback; } observe() {} },
     tripInput, matchMedia: () => ({matches: true}),
+    Date: class { getFullYear() { return 2026; } getMonth() { return 10; } getDate() { return 15; } },
     fillTripDraft(text) { if (elements.send.disabled || tripInput.disabled) return false; tripInput.value = text; return true; },
   });
   return {fields, elements, cards, tripInput, sync,
@@ -48,7 +49,9 @@ test('planner initializes real select options and sends one complete request wit
   assert.match(elements.form.submissions[0], /4人.*上海.*杭州.*5天/);
   assert.match(elements.form.submissions[0], /全员总预算【20000元】/);
   assert.match(elements.form.submissions[0], /美食寻味/);
-  assert.match(elements.form.submissions[0], /出发日期待定/);
+  assert.match(elements.form.submissions[0], /2026-12-10/);
+  assert.doesNotMatch(elements.form.submissions[0], /日期待定/);
+  assert.match(elements.form.submissions[0], /不要把季节气候当作实时预报/);
 });
 
 test('recommendation cards choose destination and preference without sending or replacing the draft', () => {
@@ -63,6 +66,8 @@ test('recommendation cards choose destination and preference without sending or 
     assert.equal(cards.filter(item => item['aria-pressed'] === 'true').length, 1);
     assert.equal(elements.form.submissions.length, 0);
     assert.equal(tripInput.value, '已有草稿');
+    assert.equal(fields.date.value, '2026-12-10');
+    assert.equal(fields.people.value, '2');
   }
   tripInput.disabled = true;
   cards[0].handlers.click();
@@ -99,4 +104,30 @@ test('same-city validation can recover and unavailable generation never overwrit
   elements.send.disabled = false; sync(); submit();
   assert.equal(elements['home-generate'].disabled, false);
   assert.equal(elements.form.submissions.length, 1);
+});
+
+test('departure date is required, rejects past dates and accepts today after correcting the input', () => {
+  const {fields, elements, submit} = setup();
+  assert.equal(fields.date.min, '2026-11-15');
+  for (const value of ['', '2026-11-14']) {
+    fields.date.value = value; submit();
+    assert.ok(fields.date.validationMessage);
+    assert.equal(elements.form.submissions.length, 0);
+  }
+  fields.date.value = '2026-11-15'; fields.date.handlers.input();
+  assert.equal(fields.date.validationMessage, '');
+  submit();
+  assert.equal(elements.form.submissions.length, 1);
+  assert.match(elements.form.submissions[0], /2026-11-15/);
+});
+
+test('preferences describe general interests and all recommendations map to a supported preference', () => {
+  const choices = html.match(/<select name="preference"[^>]*>([\s\S]*?)<\/select>/)[1];
+  assert.match(choices, /美食寻味/);
+  assert.match(choices, /名胜古迹/);
+  assert.match(choices, /放松散心/);
+  assert.doesNotMatch(choices, /海边|山野|古城/);
+  for (const [, preference] of html.matchAll(/data-preference="([^"]+)"/g)) {
+    assert.ok(choices.includes(`<option>${preference}</option>`), preference);
+  }
 });

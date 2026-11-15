@@ -292,22 +292,19 @@
   .hero-copy .intro { margin: 0; color: #fffdf7; font: 21px/1.8 Georgia, 'Songti SC', SimSun, serif; letter-spacing: .08em; }
   #home-planner { margin: 0 4.4% 30px; padding: 22px 30px 16px; color: #11382a; border: 1px solid #fff9eea6; border-radius: 28px; background: #fffaf2f7; box-shadow: 0 12px 40px #102e2514; }
   #home-planner:focus-within { box-shadow: 0 12px 40px #102e2526; }
-  .planner-fields { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(180px, 1.2fr); align-items: end; gap: 22px; }
+  .planner-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; gap: 20px 22px; }
   .planner-fields > label { display: grid; min-width: 0; gap: 8px; position: relative; }
-  .planner-fields > label:not(:nth-last-child(2))::after { content: ''; position: absolute; right: -12px; height: 56px; width: 1px; bottom: 0; background: #d8d2c7; }
   .planner-fields label > span { display: flex; align-items: center; gap: 8px; padding-left: 8px; font-size: 17px; font-weight: 600; }
   #home-planner select { appearance: none; min-width: 0; width: 100%; min-height: 44px; border: 1px solid #d5cec2; border-radius: 12px; padding: 7px 32px 7px 14px; font: inherit; font-size: 18px; color: #192b21; cursor: pointer; background: #fffdf74d url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2311382a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") right 12px center / 16px no-repeat; }
   #home-planner select:hover { border-color: #7b9a86; }
-  #home-planner select:focus-visible { outline: 3px solid #51836e; outline-offset: 3px; }
+  #home-planner input[type=date] { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; padding: 7px 14px; border: 1px solid #d5cec2; border-radius: 12px; font: inherit; font-size: 18px; color: #192b21; background: #fffdf74d; }
+  #home-planner select:focus-visible, #home-planner input:focus-visible { outline: 3px solid #51836e; outline-offset: 3px; }
   #home-generate { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 58px; padding: 10px 14px; border: 0; border-radius: 16px; background: linear-gradient(130deg, #38674a, #123b27); color: #fffdf2; white-space: nowrap; font: 600 23px/1.4 Georgia, 'Songti SC', SimSun, serif; box-shadow: 0 3px 8px #21442c12; }
   #home-generate:hover:enabled { background: #224f36; }
   #home-generate .ui-icon { color: #eee8aa; }
   .planner-footer { position: relative; display: flex; align-items: center; justify-content: center; gap: 20px; margin-top: 18px; min-height: 28px; }
   .planner-footer p { display: flex; align-items: center; gap: 20px; margin: 0; color: #47614c; font: 17px/1.7 Georgia, 'Songti SC', SimSun, serif; letter-spacing: .04em; }
   .planner-footer p .ui-icon { width: 17px; height: 17px; color: #7aa68a; }
-  .planner-people { position: absolute; left: 0; }
-  #home-planner .planner-people select { font-size: 13px; width: auto; padding: 2px 28px 2px 4px; min-height: 28px; border-color: transparent; border-radius: 6px; color: #607061; background-position: right 5px center; }
-  .planner-date { position: absolute; right: 0; font-size: 12px; color: #667565; }
   #planner-status { margin: 0; font-size: 13px; color: #41664a; text-align: center; }
   #planner-status:not(:empty) { margin-top: 10px; }
   main:has(#messages:empty) .composer { padding: 0; }
@@ -341,11 +338,10 @@
   @media (hover: hover) and (pointer: fine) { .inspiration-card:hover img { transform: scale(1.045); } }
   @media (min-width: 1700px) { .hero-copy { width: 1536px; margin: auto; padding-left: 66px; padding-right: 66px; } #home-planner { width: min(1440px, calc(100% - 132px)); margin-inline: auto; } }
   @media (max-width: 1150px) {
-    .planner-fields { gap: 14px; grid-template-columns: repeat(5, minmax(0, 1fr)); }
-    .planner-fields > label:not(:nth-last-child(2))::after { right: -8px; }
-    #home-generate { grid-column: 1 / -1; min-height: 48px; font-size: 20px; }
+    .planner-fields { gap: 18px 14px; }
+    #home-generate { min-height: 48px; font-size: 20px; }
     #home-planner { padding-inline: 22px; }
-    #home-planner select { font-size: 16px; padding-left: 10px; }
+    #home-planner select, #home-planner input[type=date] { font-size: 16px; padding-left: 10px; }
     .planner-fields label > span { font-size: 14px; padding-left: 0; }
     .hero-copy { padding-top: 110px; padding-bottom: 32px; }
     .hero-copy .intro { font-size: 18px; }
@@ -365,17 +361,14 @@
     .home-hero > img { object-position: 47% center; }
     #home-planner { margin: 0 16px 24px; padding: 20px 18px 16px; border-radius: 22px; }
     .planner-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 12px; }
-    .planner-fields > label::after { display: none; }
-    .planner-fields > label:nth-last-child(2) { grid-column: 1 / -1; }
+    .planner-fields > .planner-departure { grid-column: 1 / -1; }
     .planner-fields label > span { font-size: 14px; gap: 6px; }
     .planner-fields label .ui-icon { width: 20px; height: 20px; }
     #home-planner select { font-size: 16px; min-height: 44px; }
-    #home-generate { font-size: 21px; min-height: 50px; }
+    #home-generate { grid-column: 1 / -1; font-size: 21px; min-height: 50px; }
     .planner-footer { flex-wrap: wrap; gap: 8px 12px; margin-top: 14px; }
     .planner-footer p { font-size: 13px; gap: 8px; order: 3; width: 100%; justify-content: center; }
     .planner-footer p .ui-icon { width: 12px; height: 12px; }
-    .planner-people, .planner-date { position: static; }
-    .planner-date { margin-left: auto; font-size: 11px; }
     main:has(#messages:empty) .home-discover { padding: 26px 16px; }
     .inspiration-heading { align-items: flex-start; gap: 12px; margin-bottom: 22px; }
     .inspiration-heading h2 { font-size: clamp(21px, 5.7vw, 30px); white-space: nowrap; }
@@ -401,6 +394,7 @@
   <symbol id="icon-pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/></symbol>
   <symbol id="icon-wallet" viewBox="0 0 24 24"><ellipse cx="10" cy="5" rx="7" ry="3"/><path d="M3 5v5c0 4 14 4 14 0V5M3 10v5c0 4 10 4 10 2m3-4h6v8h-6zM19 16h.01"/></symbol>
   <symbol id="icon-heart" viewBox="0 0 24 24"><path d="M20 4c-3-3-7-1-8 2-1-3-5-5-8-2-6 6 8 16 8 16S26 10 20 4Z"/></symbol>
+  <symbol id="icon-people" viewBox="0 0 24 24"><circle cx="9" cy="7" r="3"/><path d="M2 21v-3a7 7 0 0 1 14 0v3M16 4a3 3 0 0 1 0 6m3 4a6 6 0 0 1 3 5v2"/></symbol>
   <symbol id="icon-dice" viewBox="0 0 24 24"><path d="m12 2 10 5v10l-10 5-10-5V7Zm0 10v10M2 7l10 5 10-5"/><path d="M12 6h.01M6 11h.01M8 16h.01M17 12h.01M18 17h.01" stroke-width="3"/></symbol>
   <symbol id="icon-sparkle" viewBox="0 0 24 24"><path d="M12 2c0 6-4 10-10 10 6 0 10 4 10 10 0-6 4-10 10-10-6 0-10-4-10-10Z" fill="currentColor" stroke="none"/></symbol>
 </defs></svg>
@@ -426,12 +420,14 @@
         <div class="planner-fields">
           <label><span><svg class="ui-icon" aria-hidden="true"><use href="#icon-pin"/></svg>出发地</span><select id="home-origin" name="origin" aria-label="出发地" required></select></label>
           <label><span><svg class="ui-icon" aria-hidden="true"><use href="#icon-pin"/></svg>目的地</span><select id="home-destination" name="destination" aria-label="目的地" required></select></label>
+          <label class="planner-departure"><span><svg class="ui-icon" aria-hidden="true"><use href="#icon-calendar"/></svg>出发日期</span><input type="date" name="date" aria-label="出发日期" required></label>
           <label><span><svg class="ui-icon" aria-hidden="true"><use href="#icon-calendar"/></svg>旅行天数</span><select name="days" aria-label="旅行天数"><option value="2">2天1晚</option><option value="3" selected>3天2晚</option><option value="4">4天3晚</option><option value="5">5天4晚</option><option value="6">6天5晚</option><option value="7">7天6晚</option><option value="10">10天9晚</option><option value="14">14天13晚</option></select></label>
+          <label><span><svg class="ui-icon" aria-hidden="true"><use href="#icon-people"/></svg>同行人数</span><select name="people" aria-label="同行人数"><option value="1">1人出发</option><option value="2" selected>2人同行</option><option value="3">3人同行</option><option value="4">4人同行</option><option value="5">5人同行</option><option value="6">6人同行</option><option value="8">8人同行</option></select></label>
           <label><span><svg class="ui-icon" aria-hidden="true"><use href="#icon-wallet"/></svg>人均预算</span><select name="budget" aria-label="人均预算"><option value="1000">¥1000以内</option><option value="2000">¥1000–2000</option><option value="3000" selected>¥2000–3000</option><option value="5000">¥3000–5000</option><option value="8000">¥5000–8000</option><option value="12000">¥8000–12000</option></select></label>
-          <label><span><svg class="ui-icon" aria-hidden="true"><use href="#icon-heart"/></svg>旅行偏好</span><select name="preference" aria-label="旅行偏好"><option>自然风光</option><option>美食寻味</option><option>海边度假</option><option>山野放空</option><option>古城漫游</option><option>人文艺术</option><option>亲子时光</option><option>轻松休闲</option></select></label>
+          <label><span><svg class="ui-icon" aria-hidden="true"><use href="#icon-heart"/></svg>旅行偏好</span><select name="preference" aria-label="旅行偏好"><option>放松散心</option><option>美食寻味</option><option>名胜古迹</option><option>自然风光</option><option>人文艺术</option><option>亲子时光</option><option>轻松休闲</option></select></label>
           <button id="home-generate" type="submit" disabled><svg class="ui-icon" aria-hidden="true"><use href="#icon-sparkle"/></svg>生成我的行程</button>
         </div>
-        <div class="planner-footer"><label class="planner-people"><span class="input-label">同行人数</span><select name="people" aria-label="同行人数"><option value="1">1人出发</option><option value="2" selected>2人同行</option><option value="3">3人同行</option><option value="4">4人同行</option><option value="5">5人同行</option><option value="6">6人同行</option><option value="8">8人同行</option></select></label><p><svg class="ui-icon" aria-hidden="true"><use href="#icon-sparkle"/></svg>选好偏好，剩下交给 TravelMate<svg class="ui-icon" aria-hidden="true"><use href="#icon-sparkle"/></svg></p><span class="planner-date">日期待定也能规划</span></div>
+        <div class="planner-footer"><p><svg class="ui-icon" aria-hidden="true"><use href="#icon-sparkle"/></svg>选好日期与偏好，剩下交给 TravelMate<svg class="ui-icon" aria-hidden="true"><use href="#icon-sparkle"/></svg></p></div>
         <p id="planner-status" role="status" aria-live="polite"></p>
       </form>
     </section>
@@ -544,10 +540,10 @@
   <section class="inspiration" aria-labelledby="inspiration-title">
     <div class="inspiration-heading"><h2 id="inspiration-title">精选目的地推荐</h2><div class="random-wrap"><p>还没想好去哪？让灵感决定</p><button id="random-destination" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#icon-dice"/></svg>随机目的地</button></div></div>
     <div class="inspiration-grid">
-      <button class="inspiration-card" type="button" data-destination="三亚" data-preference="海边度假" aria-pressed="false"><img src="/assets/visual/home-sea.webp" alt="椰林与碧海沙滩意境图" width="1536" height="1024" loading="lazy"><span class="inspiration-copy"><strong>去海边走走</strong><small>三亚 · 听海放空</small></span></button>
-      <button class="inspiration-card" type="button" data-destination="莫干山" data-preference="山野放空" aria-pressed="false"><img src="/assets/visual/home-mountain.webp" alt="山林与度假木屋意境图" width="1536" height="1024" loading="lazy"><span class="inspiration-copy"><strong>去山野度假</strong><small>莫干山 · 住进自然</small></span></button>
+      <button class="inspiration-card" type="button" data-destination="三亚" data-preference="放松散心" aria-pressed="false"><img src="/assets/visual/home-sea.webp" alt="椰林与碧海沙滩意境图" width="1536" height="1024" loading="lazy"><span class="inspiration-copy"><strong>去海边走走</strong><small>三亚 · 听海放空</small></span></button>
+      <button class="inspiration-card" type="button" data-destination="莫干山" data-preference="自然风光" aria-pressed="false"><img src="/assets/visual/home-mountain.webp" alt="山林与度假木屋意境图" width="1536" height="1024" loading="lazy"><span class="inspiration-copy"><strong>去山野度假</strong><small>莫干山 · 住进自然</small></span></button>
       <button class="inspiration-card" type="button" data-destination="成都" data-preference="美食寻味" aria-pressed="false"><img src="/assets/visual/home-food.webp" alt="成都热气腾腾的火锅意境图" width="1536" height="1024" loading="lazy"><span class="inspiration-copy"><strong>为美食出发</strong><small>成都 · 一路好味</small></span></button>
-      <button class="inspiration-card" type="button" data-destination="大理" data-preference="古城漫游" aria-pressed="false"><img src="/assets/visual/home-town.webp" alt="大理古城与洱海意境图" width="1536" height="1024" loading="lazy"><span class="inspiration-copy"><strong>逛一座古城</strong><small>大理 · 慢慢生活</small></span></button>
+      <button class="inspiration-card" type="button" data-destination="大理" data-preference="名胜古迹" aria-pressed="false"><img src="/assets/visual/home-town.webp" alt="大理古城与洱海意境图" width="1536" height="1024" loading="lazy"><span class="inspiration-copy"><strong>逛一座古城</strong><small>大理 · 慢慢生活</small></span></button>
     </div><p class="inspiration-note">AI 旅行意境图 · 点击选择目的地与偏好，准备好后再生成行程。</p>
   </section>
   <section class="travel-journal" aria-labelledby="journal-title"><h2 id="journal-title"><svg class="ui-icon" aria-hidden="true"><use href="#icon-book"/></svg>我的旅行手记</h2><p class="journal-intro">继续完善你的旅行，或查看已整理的图文攻略。</p><div id="journal-content" aria-live="polite"><p class="journal-empty">正在寻找你的旅行手记…</p></div><p class="journal-footnote"><svg class="ui-icon" aria-hidden="true"><use href="#icon-mountain"/></svg>行程、预算、地图与行前清单，整理在一份图文攻略里。</p></section>
@@ -1688,6 +1684,13 @@
     }
   }
   homeFields.origin.value = '上海'; homeFields.destination.value = '杭州';
+  function validateHomeDate() {
+    const now = new Date();
+    homeFields.date.min = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    homeFields.date.setCustomValidity(!homeFields.date.value ? '请选择出发日期，便于结合天气安排行程。' : homeFields.date.value < homeFields.date.min ? '出发日期不能早于今天。' : '');
+  }
+  validateHomeDate();
+  homeFields.date.addEventListener('input', validateHomeDate);
   function updateHomeCards() {
     homeCards.forEach(card => card.setAttribute('aria-pressed', String(card.dataset.destination === homeFields.destination.value && card.dataset.preference === homeFields.preference.value)));
   }
@@ -1707,15 +1710,16 @@
     chooseHomeDestination(candidates[Math.floor(Math.random() * candidates.length)]);
   });
   homePlanner.addEventListener('change', () => {
-    homeFields.destination.setCustomValidity(''); updateHomeCards(); homeStatus.textContent = '';
+    homeFields.destination.setCustomValidity(''); validateHomeDate(); updateHomeCards(); homeStatus.textContent = '';
   });
   homePlanner.addEventListener('submit', event => {
     event.preventDefault();
     if (homeSend.disabled || tripInput.disabled) return;
     homeFields.destination.setCustomValidity(homeFields.origin.value === homeFields.destination.value ? '出发地和目的地不能相同，请选择另一座城市。' : '');
+    validateHomeDate();
     if (!homePlanner.reportValidity()) return;
     const people = Number(homeFields.people.value), perPersonBudget = Number(homeFields.budget.value);
-    const text = `我们【${people}人】从【${homeFields.origin.value}】出发，到【${homeFields.destination.value}】玩【${homeFields.days.value}天】，出发日期待定，按第几天规划。人均预算【${homeFields.budget.selectedOptions[0].textContent}】，按人均${perPersonBudget}元上限计算，全员总预算【${people * perPersonBudget}元】人民币（CNY），包含往返交通、住宿、餐饮、门票和市内交通。旅行偏好【${homeFields.preference.value}】，请围绕这个偏好规划，交通方式和行程节奏请给出合适建议。请帮我们规划行程。`;
+    const text = `我们【${people}人】准备于【${homeFields.date.value}】从【${homeFields.origin.value}】出发，到【${homeFields.destination.value}】玩【${homeFields.days.value}天】。人均预算【${homeFields.budget.selectedOptions[0].textContent}】，按人均${perPersonBudget}元上限计算，全员总预算【${people * perPersonBudget}元】人民币（CNY），包含往返交通、住宿、餐饮、门票和市内交通。旅行偏好【${homeFields.preference.value}】，请结合目的地实际条件、出行日期和季节天气规划适合的活动，临近出发有天气预报时参考预报并准备雨天替代方案；远期天气尚不可确认时明确说明，不要把季节气候当作实时预报。交通方式和行程节奏请给出合适建议。请帮我们规划行程。`;
     if (fillTripDraft(text)) document.querySelector('#form').requestSubmit();
   });
   function syncHomeAvailability() { homeGenerate.disabled = homeSend.disabled; }
