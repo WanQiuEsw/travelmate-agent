@@ -1,7 +1,6 @@
 """Select local reference search or Alibaba Cloud managed document retrieval."""
 import json
 import os
-import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -20,7 +19,7 @@ def knowledge_coverage(data, requirements):
         content = row['content'].strip()
         if not content or (row.get('city') and row['city'] != city):
             continue
-        if city not in str(row.get('source', '')) + content and data.get('city_filter') != 'on':
+        if city not in str(row.get('source', '')) + str(row.get('title', '')) + content and data.get('city_filter') != 'on':
             continue
         if row.get('expires_at'):
             try:
@@ -33,11 +32,13 @@ def knowledge_coverage(data, requirements):
         accepted.append(index)
     text = '\n'.join(texts)
     topics = ['特色美食', '避坑指南', *requirements.get('interests', [])]
-    preferences = requirements.get('preferences', '')
-    if preferences and preferences != '无特殊偏好':
-        topics.extend(part.strip() for part in re.split(r'[，,、；;。\n]', preferences) if part.strip())
+    theme = requirements.get('preferences', '').split('；')[0].strip()
+    if theme in ('名胜古迹', '自然风光', '人文艺术', '亲子时光'):
+        topics.append(theme)
     aliases = {'特色美食': ('美食', '小吃', '餐饮', '餐厅'), '美食': ('美食', '小吃', '餐饮', '餐厅'),
-               '避坑指南': ('避坑', '踩坑', '排队', '宰客', '消费陷阱')}
+               '避坑指南': ('避坑', '踩坑', '排队', '宰客', '消费陷阱'),
+               '名胜古迹': ('古迹', '历史', '文物', '古城'), '自然风光': ('自然', '风景', '山水', '公园'),
+               '人文艺术': ('人文', '艺术', '博物馆', '展览'), '亲子时光': ('亲子', '儿童', '孩子')}
     # shortcut: 词面匹配会多补查同义表达，有固定评估集后再扩充语义匹配。
     missing = [topic for topic in dict.fromkeys(topics)
                if not any(word in text for word in aliases.get(topic, (topic,)))]

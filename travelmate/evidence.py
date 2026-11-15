@@ -20,10 +20,37 @@ ALWAYS = ("id", "value")
 
 
 def model_view(evidence):
-    """给模型的依据只留判断要用的字段；程序核验仍用完整记录。省一半左右输入。"""
-    return {key: {field: record.get(field) for field in MODEL_FIELDS
+    """只向模型提供有限的资料节选；字段核验与导出仍使用完整原始记录。"""
+    result, seen, counts = {}, set(), {}
+    remaining = 10000
+    # shortcut: 先按字符节选，建立切片评测后改为语义完整片段与 token 预算。
+    limits = {'search_xiaohongshu': (5, 1200), 'search_knowledge': (2, 800), 'search_web': (4, 600)}
+    batches, ordered = {}, []
+    for key, record in sorted(evidence.items(), key=lambda item: item[1].get('queried_at') or '', reverse=True):
+        batch = (record.get('tool'), json.dumps(record.get('query', {}), sort_keys=True))
+        position = batches.get(batch, 0)
+        batches[batch] = position + 1
+        ordered.append((position, key, record))
+    # 每个查询先取首条，避免价格、预约或避坑中的单一主题占满资料预算。
+    for _, key, record in sorted(ordered, key=lambda item: item[0]):
+        fields = {field: record.get(field) for field in MODEL_FIELDS
                   if field in ALWAYS or record.get(field) not in (None, "", {})}
-            for key, record in evidence.items()}
+        if record.get('kind') == 'document':
+            content = record.get('value')
+            if not isinstance(content, str) or not content.strip() or content.strip() in seen:
+                continue
+            tool = record.get('tool')
+            count, length = limits.get(tool, (2, 800))
+            if counts.get(tool, 0) >= count or not remaining:
+                continue
+            seen.add(content.strip())
+            counts[tool] = counts.get(tool, 0) + 1
+            fields['value'] = content[:min(length, remaining)]
+            fields['excerpt'] = len(fields['value']) < len(content)
+            fields.pop('query', None)
+            remaining -= len(fields['value'])
+        result[key] = fields
+    return result
 
 
 def context_key(requirements):
