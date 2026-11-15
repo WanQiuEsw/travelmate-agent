@@ -15,7 +15,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.config import get_stream_writer
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from travelmate.workflow import (PlanningState, update_trip, Itinerary, PartialRequirements, adapt_timing,
+from travelmate.workflow import (PlanningRequirements, PlanningState, update_trip, Itinerary, PartialRequirements, adapt_timing,
                                  period_plan, time_label, travel_label, cost_label, total_cost_label, TIME_NOTICE)
 from travelmate.evidence import normalize, validate_evidence, context_key, model_view, check_reference
 from travelmate.public import public_data
@@ -100,7 +100,7 @@ def clean_refs(candidate, evidence, requirements):
     changed = False
     aligned = False
     for day in candidate.get("days", []):
-        for stop in day["stops"]:
+        for stop in [*day["stops"], *day.get("rain_stops", [])]:
             refs = dict(stop.get("fact_refs") or {})
             for field, ref in list(refs.items()):
                 kind = FIELD_KINDS.get(field)
@@ -197,7 +197,10 @@ def build_planner(model, saver, knowledge, tools, prompt, review_model=None):
             logging.getLogger(__name__).info("Model stage %s took %.2fs", schema.__name__, perf_counter() - started)
 
     def fail(workflow, name):
-        text = "本轮规划遇到错误。请稍后重试或补充条件。"
+        label = {"intake_failed": "旅行条件处理", "organize_failed": "地点编排",
+                 "generate_failed": "行程修订" if workflow.get("attempts") else "行程生成",
+                 "review_failed": "方案复核"}[name]
+        text = f"{label}阶段未能完成。您填写的旅行条件已保留，请稍后重试。"
         if workflow.get("plan"):
             text = "此前保存的攻略仍可查看。" + text
         return {"workflow": stage(workflow, name, status="failed"),
@@ -227,7 +230,12 @@ def build_planner(model, saver, knowledge, tools, prompt, review_model=None):
                 if answers.get("decision") == "暂不执行":
                     return {"workflow": stage(old, "answer"), "intake_result": {"intent": "question"},
                             "messages": [AIMessage(content="已取消本次操作，原有安排已保留。") ]}
-            if answers and "decision" not in answers:
+            form = state["messages"][-1].additional_kwargs.get("planning_requirements")
+            if form:
+                data = Intake(intent="modify" if old.get("plan") else "plan",
+                              conditions=PartialRequirements.model_validate(
+                                  PlanningRequirements.model_validate(form).model_dump(mode="json")))
+            elif answers and "decision" not in answers:
                 try:
                     cleaned = {key: value.strip() if isinstance(value, str) else value for key, value in answers.items()}
                     if any(value == '' for value in cleaned.values()):
@@ -508,8 +516,10 @@ def build_planner(model, saver, knowledge, tools, prompt, review_model=None):
         if w.get("degraded"):
             text = ("> 本次生成用时较长，已跳过部分自动复核，先给出当前方案；地点、票价、车次与营业时间请按官方渠道确认。\n\n"
                     + text)
+        form_run = next((message for message in reversed(state["messages"]) if isinstance(message, HumanMessage)), None)
+        form_blocked = w["status"] == "blocked" and form_run and form_run.additional_kwargs.get("planning_requirements")
         return {"workflow": stage(w, "present"),
-                "messages": [AIMessage(content=text, additional_kwargs={"plan_version": version} if saved else {})]}
+                "messages": [AIMessage(content=text, additional_kwargs={"generation_failed": True} if form_blocked else {"plan_version": version} if saved else {})]}
 
     graph = StateGraph(PlanningState)
     def with_progress(name, fn):
@@ -522,7 +532,7 @@ def build_planner(model, saver, knowledge, tools, prompt, review_model=None):
             if name == "generate":
                 attempt = state["workflow"].get("attempts", 0) + 1
                 text = "正在编排每天的行程、交通与费用估算…" if attempt == 1 else f"正在根据检查结果调整行程（第{attempt}轮，最多3轮）…"
-            get_stream_writer()({"text": text})
+            get_stream_writer()({"text": text, "stage": name, "state": "running"})
             return fn(state)
         return run
     for name, fn in (("intake", intake), ("research", research), ("organize", organize), ("verify_places", verify_places),

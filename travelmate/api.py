@@ -12,13 +12,13 @@ from typing import Annotated, Literal
 from fastapi import Depends, FastAPI, HTTPException, Request, Query
 from fastapi import Path as PathParam
 from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse, Response
-from pydantic import BaseModel, Field, field_validator, StringConstraints
+from pydantic import BaseModel, Field, field_validator, model_validator, StringConstraints
 
 from travelmate.rail import search_train_tickets
 from travelmate.interaction import InteractionResponse
 from travelmate.agent import chat_reply, conversation, conversations, open_agent, stream_chat, pin_sessions, delete_sessions, rename_session
 from travelmate.evidence import validate_evidence
-from travelmate.workflow import Itinerary, get_workflow, save_workflow, validate_plan
+from travelmate.workflow import PlanningRequirements, Itinerary, get_workflow, save_workflow, validate_plan
 from travelmate.pdf_export import itinerary_pdf, answer_pdf, guide_pdf
 from travelmate.guide import get_version, render_guide, guide_markdown
 from travelmate.result import RESULT_SCRIPT_HASH
@@ -32,8 +32,15 @@ from travelmate import library, budget
 
 class ChatRequest(BaseModel):
     interaction_response: InteractionResponse | None = None
+    planning_requirements: PlanningRequirements | None = None
     session_id: str = Field(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_-]+$")
     message: str = Field(min_length=1, max_length=8000)
+
+    @model_validator(mode="after")
+    def one_input_mode(self):
+        if self.interaction_response and self.planning_requirements:
+            raise ValueError("请只提交一种旅行需求")
+        return self
 
     @field_validator("message")
     @classmethod
@@ -260,7 +267,8 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
         try:
             with generation_lock(request.session_id, request.message, http_request.state.user):
                 reply = chat_reply(app.state.agent, request.session_id, request.message,
-                                   **({"interaction_response": request.interaction_response.model_dump()} if request.interaction_response else {}))
+                                   **({"interaction_response": request.interaction_response.model_dump()} if request.interaction_response else {}),
+                                   **({"planning_requirements": request.planning_requirements.model_dump(mode="json")} if request.planning_requirements else {}))
                 archive_session(request.session_id)
             return ChatResponse(session_id=request.session_id, **reply)
         except HTTPException:
@@ -446,6 +454,7 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
         guide = load_guide(session_id, version)
         guide['_preparation_url'] = f'/sessions/{session_id}/plans/{version}/preparation'
         guide['_budget_url'] = f'/sessions/{session_id}/plans/{version}/budget'
+        guide['_planning_url'] = f'/?session={session_id}&edit=1'
         return HTMLResponse(render_guide(guide, f"/sessions/{session_id}/plans/{version}/pdf"),
             headers={"Cache-Control": "no-store", "Content-Security-Policy": f"default-src 'none'; connect-src 'self'; script-src 'sha256-{RESULT_SCRIPT_HASH}'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'",
                      "X-Content-Type-Options": "nosniff"})
@@ -496,7 +505,8 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
             try:
                 publish("status", {"text": "正在理解你的旅行需求…"})
                 for event, data in stream_chat(app.state.agent, request.session_id, request.message,
-                                              **({"interaction_response": request.interaction_response.model_dump()} if request.interaction_response else {})):
+                                              **({"interaction_response": request.interaction_response.model_dump()} if request.interaction_response else {}),
+                                              **({"planning_requirements": request.planning_requirements.model_dump(mode="json")} if request.planning_requirements else {})):
                     if event == 'done':
                         archive_session(request.session_id)
                     publish(event, data)
@@ -618,6 +628,7 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
             _, guide = library.load(app.state.agent, guide_id, version)
             guide['_preparation_url'] = f'/api/guides/{guide_id}/versions/{version}/preparation'
             guide['_budget_url'] = f'/api/guides/{guide_id}/versions/{version}/budget'
+            guide['_planning_url'] = f'/?guide={guide_id}'
             document = render_guide(guide, f'/api/guides/{guide_id}/versions/{version}/pdf')
             return HTMLResponse(detail_page(document, item, library.versions(app.state.agent, guide_id), version),
                                 headers={'Cache-Control': 'no-store'})

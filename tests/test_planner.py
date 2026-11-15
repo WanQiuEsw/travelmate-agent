@@ -205,18 +205,25 @@ def test_bounded_revision_and_preserve_success(tmp_path):
         assert conversation(agent, "trip")["messages"][-1]["plan_version"] == 1
 
 
-def test_unverifiable_refs_are_cleaned_instead_of_regenerating():
+@pytest.mark.parametrize('route', ['stops', 'rain_stops'])
+def test_unverifiable_refs_are_cleaned_instead_of_regenerating(route):
     from travelmate.evidence import normalize, validate_evidence
     from travelmate.planner import clean_refs
     evidence = normalize('search_places', {'keyword': '西湖', 'city': '杭州'},
                          {'results': [{'name': '西湖', 'location': '120.1,30.2'}]}, 'map', REQ)
     ref = next(iter(evidence))
     candidate = deepcopy(PLAN)
-    stop = candidate['days'][0]['stops'][0]
+    if route == 'rain_stops':
+        candidate['days'][0]['rain_stops'] = deepcopy(candidate['days'][0]['stops'])
+    stop = candidate['days'][0][route][0]
     stop['place'] = '西湖（断桥入口）'
     stop['fact_refs'] = {'place': ref, 'cost': ref, 'opening_hours': ref}
     assert clean_refs(candidate, evidence, REQ) is True
     assert stop['place'] == '西湖' and stop['fact_refs'] == {'place': ref}
+    assert validate_evidence(REQ, candidate, evidence) == []
+    stop['place'] = '灵隐飞来峰景区'
+    assert clean_refs(candidate, evidence, REQ) is True
+    assert stop['place'] == '灵隐飞来峰景区' and stop['fact_refs'] == {}
     assert validate_evidence(REQ, candidate, evidence) == []
 
 

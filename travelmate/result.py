@@ -64,7 +64,14 @@ def result_panels(guide, sections, text, inline_images=False, actions=""):
     selected_date = meta.get('start_date') if 'start_date' in meta else next((r[1] for r in overview.get('rows', []) if r[0] == '日期' and '未定' not in r[1]), None)
     for index, (section, html) in enumerate(sections):
         kind = section['kind']
-        if section['title'] in ('先说结论', '旅行概览', '交通与已订安排', '时间安排说明'):
+        if section['title'] in ('交通与已订安排', '时间安排说明'):
+            reminders = [item['text'] for item in section['items']
+                         if section['title'] == '时间安排说明' or item['text'].startswith(('已订安排：', '最后一天返程时限：'))]
+            if reminders:
+                groups['days'].append('<aside class="card" aria-label="出行时间提醒"><ul>'
+                                      + ''.join('<li>' + text(item) + '</li>' for item in reminders) + '</ul></aside>')
+            continue
+        if section['title'] in ('先说结论', '旅行概览'):
             continue
         if section['title'] == '行前准备':
             continue

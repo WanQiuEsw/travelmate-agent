@@ -52,7 +52,7 @@ def test_deepseek_configuration(tmp_path, monkeypatch):
     monkeypatch.setenv("MODEL_BASE_URL", "https://api.deepseek.com")
     with open_agent(legacy_tool_loop=True, database=tmp_path / "config.sqlite"):
         assert calls[-1]["model"] == "deepseek-flash"
-        assert calls[-1]["extra_body"] == {"thinking": {"type": "disabled"}}
+        assert calls[-1]["extra_body"] == {"thinking": {"type": "disabled"}, "max_tokens": 32768}
         assert len(calls) == 1
     monkeypatch.setenv("REVIEW_MODEL_NAME", "deepseek-v4-pro")
     with open_agent(legacy_tool_loop=True, database=tmp_path / "review.sqlite"):
@@ -62,6 +62,46 @@ def test_deepseek_configuration(tmp_path, monkeypatch):
     monkeypatch.setenv("MODEL_BASE_URL", "https://other.example/v1")
     with open_agent(legacy_tool_loop=True, database=tmp_path / "other.sqlite"):
         assert calls[-1]["extra_body"] is None
+
+
+def test_deepseek_sends_long_itinerary_limit_using_the_provider_parameter(tmp_path, monkeypatch):
+    import json
+    import httpx
+    from langchain_openai import ChatOpenAI
+    from travelmate import agent as module
+    from travelmate.workflow import Itinerary
+    from test_workflow import PLAN
+
+    clients, requests = [], []
+
+    def completion(request):
+        body = json.loads(request.content)
+        requests.append(body)
+        assert body['max_tokens'] == 32768
+        assert 'max_completion_tokens' not in body
+        return httpx.Response(200, json={
+            'id': 'test-completion', 'object': 'chat.completion', 'created': 0, 'model': 'deepseek-flash',
+            'choices': [{'index': 0, 'finish_reason': 'tool_calls', 'message': {
+                'role': 'assistant', 'content': '', 'tool_calls': [{
+                    'id': 'test-itinerary', 'type': 'function',
+                    'function': {'name': 'Itinerary', 'arguments': json.dumps(PLAN)},
+                }],
+            }}],
+        })
+
+    with httpx.Client(transport=httpx.MockTransport(completion)) as http_client:
+        def client(**kwargs):
+            model = ChatOpenAI(**kwargs, http_client=http_client)
+            clients.append(model)
+            return model
+
+        monkeypatch.setattr(module, 'ChatOpenAI', client)
+        monkeypatch.setenv('MODEL_API_KEY', 'test-only')
+        monkeypatch.setenv('MODEL_BASE_URL', 'https://api.deepseek.com')
+        with open_agent(database=tmp_path / 'wire.sqlite'):
+            result = clients[0].with_structured_output(Itinerary, method='function_calling').invoke('规划旅行')
+        assert isinstance(result, Itinerary)
+        assert len(requests) == 1
 
 
 def test_knowledge_and_search(tmp_path, monkeypatch):

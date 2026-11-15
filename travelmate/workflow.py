@@ -9,7 +9,7 @@ from langchain.tools import ToolRuntime, tool
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 from langchain_core.messages import HumanMessage, AIMessage
-from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
+from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator, field_validator
 from travelmate.public import public_data
 from travelmate.evidence import merge_evidence, validate_evidence, check_reference
 
@@ -50,6 +50,32 @@ class Booking(BaseModel):
 
 
 Requirements.model_rebuild()
+
+
+class PlanningRequirements(Requirements):
+    """Complete form snapshot; dates and amounts are validated before generation."""
+    origin: str = Field(min_length=1, max_length=100)
+    budget_scope: Literal["per_person", "total"]
+    budget_currency: Literal["CNY"] = "CNY"
+    budget_includes: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("origin", "destination", "budget_includes")
+    @classmethod
+    def nonblank(cls, value):
+        if not value.strip():
+            raise ValueError("旅行条件不能为空")
+        return value.strip()
+
+    @model_validator(mode="after")
+    def valid_trip(self):
+        if self.origin == self.destination:
+            raise ValueError("出发地和目的地不能相同")
+        today = datetime.now(timezone(timedelta(hours=8))).date()
+        if self.start_date and self.start_date < today:
+            raise ValueError("出发日期不能早于今天")
+        return self
+
+
 partial_fields = {}
 for key, field in Requirements.model_fields.items():
     if field.is_required():
@@ -276,7 +302,7 @@ def validate_plan(requirements, plan):
     for food in plan.foods:
         if food.day and food.day > req.days:
             issues.append(f'美食{food.name}安排在第{food.day}天，超出行程天数')
-    for day in plan.days:
+    for day_index, day in enumerate(plan.days):
         previous = 0
         for stop in day.stops:
             if plan.time_granularity == "precise":
@@ -286,7 +312,10 @@ def validate_plan(requirements, plan):
                 elif end <= start or start < previous + stop.travel_minutes:
                     issues.append(f"{day.date} {stop.place} 时间重叠或交通时间不足")
                 previous = end
-            if stop.city != req.destination:
+            origin_transfer = (day_index in (0, len(plan.days) - 1) and stop.city == req.origin
+                               and stop.transport_mode in ("rail", "flight", "driving", "transit", "ferry")
+                               and not set(stop.activities) - {"other", "rest"})
+            if stop.city != req.destination and not origin_transfer:
                 issues.append(f"{stop.place} 所在城市与目的地不一致，请调整目的地或地点")
     for index, day in enumerate(plan.days, 1):
         deadlines = [b.departure for b in req.bookings if b.day == index and b.departure]

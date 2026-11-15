@@ -536,7 +536,9 @@ def render_guide(guide, pdf_url=None):
         path = pdf_url.removesuffix('/pdf')
         actions = (f'<div class="actions"><a class="btn" href="{text(pdf_url)}">下载 PDF</a>'
                    f'<a class="btn ghost" href="{text(path)}/md">下载 Markdown</a>'
-                   f'<a class="btn ghost" href="{text(path)}/html">HTML</a></div>')
+                   f'<a class="btn ghost" href="{text(path)}/html">HTML</a>'
+                   + (f'<a class="btn ghost" href="{text(guide["_planning_url"])}">修改条件重新规划</a>' if guide.get('_planning_url') else '')
+                   + '</div>')
     from travelmate.result import RESULT_CSS, RESULT_JS, result_panels
     parts = [f'<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{text(guide["title"])}</title><style>{GUIDE_CSS}{RESULT_CSS}</style></head><body><main>']
     rendered_sections = []

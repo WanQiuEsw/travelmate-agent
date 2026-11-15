@@ -49,7 +49,8 @@ def open_agent(*, model=None, database=None, knowledge=None, legacy_tool_loop=Fa
             raise ValueError("请在 .env 配置 MODEL_API_KEY")
         base_url = os.getenv("MODEL_BASE_URL", "https://api.deepseek.com")
         # ChatOpenAI does not preserve DeepSeek reasoning_content for tool turns.
-        extra = {"thinking": {"type": "disabled"}} if urlparse(base_url).hostname == "api.deepseek.com" else None
+        # DeepSeek requires max_tokens; ChatOpenAI renames its own argument to max_completion_tokens.
+        extra = {"thinking": {"type": "disabled"}, "max_tokens": 32768} if urlparse(base_url).hostname == "api.deepseek.com" else None
         model = ChatOpenAI(api_key=key, model=model_name(),
                            base_url=base_url or None, extra_body=extra,
                            timeout=60, max_retries=1, temperature=0.3)
@@ -81,8 +82,8 @@ def chat(agent, session_id: str, message: str, interaction_response=None) -> str
     return chat_reply(agent, session_id, message, interaction_response)["answer"]
 
 
-def chat_reply(agent, session_id: str, message: str, interaction_response=None) -> dict:
-    result = agent.invoke({"messages": [HumanMessage(content=message, additional_kwargs={"interaction_response": interaction_response} if interaction_response else {})]},
+def chat_reply(agent, session_id: str, message: str, interaction_response=None, planning_requirements=None) -> dict:
+    result = agent.invoke({"messages": [HumanMessage(content=message, additional_kwargs={**({"interaction_response": interaction_response} if interaction_response else {}), **({"planning_requirements": planning_requirements} if planning_requirements else {})})]},
                           {"configurable": {"thread_id": session_id}, "recursion_limit": 60})
     return reply_content(result["messages"])
 
@@ -133,9 +134,9 @@ def tool_progress(item):
     return public_data({"text": text, "sources": sources}, [item])
 
 
-def stream_chat(agent, session_id: str, message: str, interaction_response=None):
+def stream_chat(agent, session_id: str, message: str, interaction_response=None, planning_requirements=None):
     config = {"configurable": {"thread_id": session_id}, "recursion_limit": 60}
-    with closing(agent.stream({"messages": [HumanMessage(content=message, additional_kwargs={"interaction_response": interaction_response} if interaction_response else {})]},
+    with closing(agent.stream({"messages": [HumanMessage(content=message, additional_kwargs={**({"interaction_response": interaction_response} if interaction_response else {}), **({"planning_requirements": planning_requirements} if planning_requirements else {})})]},
                               config, stream_mode=["messages", "custom", "updates"])) as stream:
         for mode, value in stream:
             if mode == "messages":
@@ -147,7 +148,7 @@ def stream_chat(agent, session_id: str, message: str, interaction_response=None)
             elif mode == "updates":
                 for node, update in value.items():
                     if node in ("intake", "research", "organize", "verify_places", "generate", "check", "review", "save", "present"):
-                        yield "status", {"text": {"intake": "整理旅行条件", "research": "检索旅行依据", "organize": "组织地点片区", "verify_places": "核实候选地点", "generate": "生成行程方案", "check": "检查行程约束", "review": "独立审查方案质量", "save": "保存方案版本", "present": "整理攻略完成"}[node]}
+                        yield "status", {"stage": node, "state": "failed" if (update or {}).get("workflow", {}).get("status") in ("failed", "blocked") else "completed", "text": {"intake": "整理旅行条件", "research": "检索旅行依据", "organize": "组织地点片区", "verify_places": "核实候选地点", "generate": "生成行程方案", "check": "检查行程约束", "review": "独立审查方案质量", "save": "保存方案版本", "present": "整理攻略完成"}[node]}
                     for item in (update or {}).get("messages", []):
                         if isinstance(item, AIMessage) and item.tool_calls:
                             for call in item.tool_calls:

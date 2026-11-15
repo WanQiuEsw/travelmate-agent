@@ -41,6 +41,27 @@ def test_time_city_date_checks():
     assert len(issues) == 3
 
 
+def test_origin_transport_is_allowed_only_on_arrival_and_return_days():
+    from copy import deepcopy
+    from travelmate.workflow import period_plan, validate_plan
+    req = {**REQ, 'origin': '厦门', 'start_date': None, 'days': 3, 'budget': 3000}
+    plan = period_plan(PLAN)
+    plan['days'] = [deepcopy(plan['days'][0]) for _ in range(3)]
+    for day in plan['days']:
+        day['date'] = None
+    transfer = {**plan['days'][0]['stops'][0], 'place': '厦门北站出发（车次待核实）',
+                'city': '厦门', 'transport_mode': 'rail', 'activities': ['other']}
+    plan['days'][0]['stops'].insert(0, deepcopy(transfer))
+    plan['days'][-1]['stops'].append(deepcopy(transfer))
+    plan['days'][0]['rain_stops'] = deepcopy(plan['days'][0]['stops'])
+    assert validate_plan(req, plan)[0] == []
+    for day_index, changes in ((1, {}), (0, {'city': '北京'}),
+                               (0, {'activities': ['museum']}), (0, {'transport_mode': 'walking'})):
+        invalid = deepcopy(plan)
+        invalid['days'][day_index]['stops'].append({**transfer, **changes})
+        assert any('城市与目的地不一致' in issue for issue in validate_plan(req, invalid)[0])
+
+
 def test_followup_revises_without_manual_review():
     from langchain_core.messages import HumanMessage, AIMessage
     old = call(update_trip, {}, conditions=REQ)
