@@ -44,38 +44,23 @@ def highlight_stops(days):
 
 
 CAROUSEL_CSS = """
-.carousel-photo .carousel-placeholder{position:absolute;inset:0;display:none;place-items:center;color:#fff9;font-size:18px}.carousel-photo:has(img[hidden]) .carousel-placeholder{display:grid}.carousel-photo img[hidden]{display:none}
-.carousel{position:relative;padding:16px 0 0;margin-bottom:30px;text-align:center;overflow:hidden}
-.carousel-heading{border:0;padding:0;font-size:30px;margin:0 0 8px}.carousel-intro{color:#63736c;margin:0 0 24px}
-.carousel>input{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}.carousel:has(>input:focus-visible){outline:3px solid #b94d2a;outline-offset:-3px;border-radius:20px}
-.carousel-stage{height:530px;position:relative;perspective:1400px;margin:0}
-.carousel-slide{position:absolute;top:0;left:19%;width:62%;text-align:left;opacity:0;visibility:hidden;pointer-events:none;transform:translateX(0) scale(.7);transition:transform .6s cubic-bezier(.22,.7,.25,1),opacity .5s,filter .5s,visibility .6s;transform-origin:center center}
-.carousel .highlight{display:block;position:relative;border:1px solid #e3dfd4;border-radius:24px;overflow:hidden;background:#fffefa;box-shadow:0 18px 32px #453a2626;color:#193c38;text-decoration:none}
-.carousel-photo{position:relative;height:440px;overflow:hidden;background:linear-gradient(135deg,#8ebbaa,#275f59)}.carousel-photo>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;display:block;transition:transform .7s ease}.carousel .highlight:hover img{transform:scale(1.035)}
-.carousel-caption{position:absolute;inset:auto 0 0;padding:70px 24px 72px;background:linear-gradient(transparent,#092a25dc);color:white}.carousel-caption strong{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:24px;line-height:1.4}.carousel-image-note{position:absolute;top:14px;left:16px;font-size:11px;background:#163d35b8;color:white;border-radius:999px;padding:3px 10px}
-.carousel-meta{position:absolute;inset:auto 0 0;display:flex;align-items:center;gap:10px;padding:12px 20px;min-height:54px;flex-wrap:wrap;color:white}.carousel-meta small{font-size:12px;border:1px solid #ffffff70;padding:3px 10px;border-radius:999px}.carousel-meta small:first-child{color:white;background:#326b5ccc;border-color:#ffffff50}.carousel-meta .carousel-cta{margin-left:auto;background:#ffffff20;color:white;border:1px solid #ffffff60;padding:7px 12px;border-radius:999px;font-size:12px;white-space:nowrap}
-.carousel-side-select{position:absolute;inset:0;border-radius:24px;cursor:pointer;display:none}.carousel-controls{display:none;justify-content:center;align-items:center;gap:18px;position:absolute;top:472px;left:0;right:0;color:#326355;font-size:14px}.carousel-controls button{width:44px;height:44px;border:1px solid #5c9182;border-radius:50%;background:#fffefa;color:#087f7a;font-size:24px;cursor:pointer}.carousel-controls button:hover{background:#e5f1e8}.carousel-controls button:focus-visible{outline:3px solid #b94d2a;outline-offset:3px}.carousel-controls button:disabled{opacity:.4;cursor:default}
-.carousel-dots{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:-10px 12px 10px}.carousel-dot{width:24px;height:24px;display:grid;place-items:center;cursor:pointer}.carousel-dot:after{content:'';width:24px;height:5px;border-radius:5px;background:#b1bdae}.carousel-help{font-size:12px;color:#63736c;margin:8px 0 24px}.carousel-days{border-top:1px solid #d6ddd2;padding-top:20px;text-align:left}.carousel-days h3{font-size:22px;margin:0 0 14px}.carousel-day-links{display:flex;gap:12px;overflow-x:auto;padding:2px 2px 10px}.carousel-day-links a{flex:1 0 170px;border:1px solid #d7ded1;border-radius:14px;padding:14px;background:#fffefa;color:#193c38;text-decoration:none;display:flex;gap:14px;align-items:center}.carousel-day-links small{color:#b94d2a;white-space:nowrap}.carousel-day-links span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.carousel-controls button{position:absolute;top:-245px;left:-27%}.carousel-controls button:last-child{left:auto;right:-27%}
-@media(max-width:700px){.carousel-heading{font-size:25px}.carousel-intro{font-size:13px}.carousel-stage{height:425px}.carousel-slide{left:8%;width:84%}.carousel-photo{height:340px}.carousel-caption{padding:60px 16px 68px}.carousel-caption strong{font-size:20px}.carousel-meta{padding:10px 14px;gap:6px;min-height:52px}.carousel-meta .carousel-cta{font-size:11px;padding:7px 9px}.carousel-controls{top:370px}.carousel-meta small{font-size:11px}.carousel-help{margin-bottom:18px}}
-@media(prefers-reduced-motion:reduce){.carousel-slide,.carousel-photo img{transition:none}}
-@media print{.carousel .carousel-meta{display:flex!important}}
-@media(max-width:700px){.carousel-controls button{top:-230px;left:-8%;width:36px;height:36px;font-size:20px}.carousel-controls button:last-child{right:-8%}}
-@media print{.carousel-stage{height:auto;perspective:none}.carousel .carousel-slide{position:static;display:block!important;visibility:visible!important;opacity:1!important;transform:none!important;filter:none!important;width:100%;margin:0 0 20px;break-inside:avoid}.carousel-controls,.carousel>input,.carousel-dots,.carousel-side-select,.carousel-help{display:none!important}.carousel{overflow:visible}.carousel-photo{height:220px}}
-"""
-
-CAROUSEL_CSS += """
-.carousel-photo{height:340px}.carousel-caption{padding:65px 24px 20px}.carousel-meta{position:static;color:#285b48;padding:14px 20px 4px;min-height:0}.carousel-meta small:first-child{background:#e7efe5;color:#285b48;border-color:#c9d7c6}.carousel-meta .carousel-time{font-size:12px;color:#63736c}.carousel-copy{padding:6px 20px 18px;min-height:104px}.carousel-copy p{font-size:14px;line-height:1.6;color:#63736c;text-align:left;margin:0 0 10px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.carousel-copy .carousel-cta{display:inline-block;color:#087f7a;font-size:13px;font-weight:600}.carousel-controls{top:490px}.carousel-controls button{top:-300px}.carousel .highlight{min-height:475px}.carousel-photo:has(img[hidden]) .carousel-placeholder{display:grid}
-@media(max-width:700px){.carousel-stage{height:480px}.carousel-photo{height:280px}.carousel .highlight{min-height:425px}.carousel-caption{padding:50px 16px 16px}.carousel-copy{padding:6px 14px 14px;min-height:100px}.carousel-meta{padding:12px 14px 4px}.carousel-controls{top:435px}.carousel-controls button{top:-275px}.carousel-caption strong{font-size:22px}}
-@media print{.carousel-photo{height:220px}.carousel .highlight{min-height:0}.carousel .carousel-meta{display:flex!important}}
-"""
-
-
-CAROUSEL_CSS += """
-.carousel-photo{display:grid;height:auto;min-height:140px;background:#edf0e5}.carousel-photo>img{position:static;grid-area:1/1;width:100%;height:auto;max-height:65vh;object-fit:contain}.carousel-photo:has(img[hidden]){min-height:220px}
-.carousel-photo .carousel-placeholder{grid-area:1/1;position:static;color:#63736c;min-height:220px}.carousel-caption{position:static;padding:14px 20px 0;background:none;color:#193c38}.carousel-image-note{position:static;justify-self:start;margin:8px 10px 0}.carousel .highlight{min-height:0}.carousel .highlight:hover img{transform:none}
-.carousel-controls{position:static;margin:12px auto 0;padding:0 0 18px;gap:18px}.carousel-controls button,.carousel-controls button:last-child{position:static}.carousel-dots{margin:12px}
-@media print{.carousel-photo>img{max-height:220px}.carousel-photo{height:auto}.carousel-stage{height:auto!important}}
+.carousel{container-type:inline-size;position:relative;padding:20px 0 0;margin:0 0 24px;text-align:left;overflow:hidden;color:#201c18}
+.carousel-heading,.carousel-intro,.carousel-help,.carousel-copy .carousel-cta,.carousel-time{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%)}
+.carousel>input{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}.carousel:has(>input:focus-visible){outline:2px solid #c56539;outline-offset:-2px}
+.carousel-stage{position:relative;height:680px;margin:0}.carousel-slide{--gallery-copy-opacity:0;position:absolute;top:0;left:7.5%;width:85%;opacity:0;visibility:hidden;pointer-events:none;transform:translateX(0);transition:transform .4s ease,opacity .3s,visibility .4s}
+.carousel .highlight{display:grid;grid-template-columns:minmax(0,1fr) auto;position:relative;color:inherit;text-decoration:none;background:#fff;border:0;border-radius:0;box-shadow:none}
+.carousel-photo{grid-column:1/-1;position:relative;aspect-ratio:3/4;max-height:70svh;overflow:hidden;border-radius:16px;background:#f7f4f0}.carousel-photo>img{position:absolute;inset:0;display:block;width:100%;height:calc(100% - 19px);object-fit:contain}.carousel-photo img[hidden]{display:none}
+.carousel-placeholder{position:absolute;inset:0;display:none;place-items:center;padding:16px;text-align:center;font-size:13px;color:#8b8078}.carousel-photo:has(img[hidden]) .carousel-placeholder{display:grid}
+.carousel-image-note{position:absolute;inset:auto 0 0;height:19px;line-height:19px;background:#fff;color:#91867e;font-size:10px;text-align:right}
+.carousel-caption,.carousel-meta,.carousel-copy{opacity:var(--gallery-copy-opacity,1)}.carousel-caption{grid-column:1;padding:16px 0 0;min-width:0}.carousel-caption strong{display:block;font:700 clamp(27px,5.8cqw,36px)/1.35 Georgia,'Songti SC',SimSun,serif;overflow-wrap:anywhere}
+.carousel-meta{grid-column:2;grid-row:2;align-self:center;padding:16px 0 0 12px}.carousel-meta small{display:inline-block;border-radius:99px;background:#fbf0e7;padding:3px 10px;font-size:12px;color:#b85e32;white-space:nowrap}
+.carousel-copy{grid-column:1/-1;padding:6px 0 0;min-width:0}.carousel-copy p{margin:0;font-size:15px;line-height:1.65;color:#615952;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.carousel-side-select{position:absolute;inset:0;border-radius:16px;cursor:pointer;display:none}
+.carousel-controls{display:none;grid-template-columns:44px minmax(0,1fr) 44px;align-items:center;justify-content:space-between;gap:12px;margin:16px 0 0;padding:0;color:#c56539;font-size:19px;font-variant-numeric:tabular-nums;font-weight:600;text-align:center}.carousel-controls button{display:grid;place-items:center;width:44px;height:44px;border:0;background:none;color:#201c18;font-size:34px;line-height:1;cursor:pointer}.carousel-controls button:disabled{opacity:.35;cursor:default}.carousel-controls button:focus-visible{outline:2px solid #c56539;outline-offset:2px}
+.carousel-dots{position:relative;display:flex;gap:12px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin;margin:14px 0 0;padding:4px 4% 12px}.carousel-dot{position:relative;flex:0 0 calc((100% - 36px)/4);min-width:0;padding:0 0 10px;cursor:pointer;color:#302821;text-align:center}.carousel-dot:after{content:'';position:absolute;bottom:0;left:24%;right:24%;height:3px;border-radius:3px;background:transparent}.carousel-thumb-photo{aspect-ratio:4/5;max-height:none;border-radius:10px}.carousel-thumb-photo>img{height:100%}.carousel-thumb-photo .carousel-image-note{display:none}.carousel-dot>span{display:block;margin-top:7px;font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+.carousel-days{margin:16px 7.5% 0;border-top:1px solid #eee7e0;padding-top:12px;color:#776b61}.carousel-days summary{font-size:13px}.carousel-day-links{display:flex;gap:10px;overflow-x:auto;padding:12px 0}.carousel-day-links a{flex:0 0 150px;padding:10px;border:1px solid #eee7e0;border-radius:10px;color:#4f4237;font-size:13px;text-decoration:none}.carousel-day-links small{display:block;color:#c56539}
+@media(prefers-reduced-motion:reduce){.carousel-slide{transition:none}}
+@media print{.carousel{overflow:visible}.carousel-stage{height:auto!important}.carousel .carousel-slide{--gallery-copy-opacity:1!important;position:static;visibility:visible!important;opacity:1!important;transform:none!important;width:100%;margin-bottom:20px;break-inside:avoid}.carousel-photo{height:220px;aspect-ratio:auto}.carousel-controls,.carousel>input,.carousel-dots,.carousel-side-select{display:none!important}.carousel-time{position:static;width:auto;height:auto;clip-path:none}.carousel-days{display:none}}
 """
 
 
@@ -97,11 +82,11 @@ def coverflow(days, text, inline_images=False, city=''):
         out.append(f'<input type="radio" name="highlight" id="highlight-{n}" aria-label="景点 {n}：{text(row[1])}" {"checked" if n == 1 else ""}>')
     rules = []
     for n in range(1, len(slides)+1):
-        positions = [(n, 'translateX(0) scale(1)', '1', 'none', 3)]
+        positions = [(n, 'translateX(0)', '1', 'none', 3)]
         if len(slides) > 1:
-            positions.append(((n-2) % len(slides)+1, 'translateX(-64%) scale(.82) rotateY(12deg) rotate(-4deg)', '.85', 'saturate(.8)', 1))
+            positions.append(((n-2) % len(slides)+1, 'translateX(-105%)', '1', 'none', 1))
         if len(slides) > 2:
-            positions.append((n % len(slides)+1, 'translateX(64%) scale(.82) rotateY(-12deg) rotate(4deg)', '.85', 'saturate(.8)', 1))
+            positions.append((n % len(slides)+1, 'translateX(105%)', '1', 'none', 1))
         for target, transform, opacity, filtering, z in positions:
             selector = f'.carousel:has(#highlight-{n}:checked) .slide-{target}'
             rules.append(selector + '{visibility:visible;opacity:' + opacity + ';transform:' + transform + ';filter:' + filtering + f';z-index:{z}' + '}')
@@ -109,21 +94,23 @@ def coverflow(days, text, inline_images=False, city=''):
                 rules.append(selector + ' .carousel-side-select{display:block;pointer-events:auto}')
                 rules.append(selector + ' .carousel-meta{display:none}')
         active = f'.carousel:has(#highlight-{n}:checked)'
-        rules.extend([active + f' .slide-{n}' + '{pointer-events:auto}', active + f' .slide-{n} .carousel-controls' + '{display:flex}',
-                      active + f' label[for="highlight-{n}"].carousel-dot:after' + '{background:#b94d2a}'])
+        rules.extend([active + f' .slide-{n}' + '{pointer-events:auto;--gallery-copy-opacity:1}', active + f' .slide-{n} .carousel-controls' + '{display:grid}',
+                      active + f' label[for="highlight-{n}"].carousel-dot:after' + '{background:#c56539}', active + f' label[for="highlight-{n}"] .carousel-thumb-photo' + '{outline:2px solid #c56539;outline-offset:2px}'])
     out.append('<style>' + ''.join(rules) + '</style><div class="carousel-stage">')
     for n, (i, j, row) in enumerate(slides, 1):
         previous, following = (n-2) % len(slides)+1, n % len(slides)+1
         remote = f' data-photo-url="{text(photo_url(city, row[1]))}"' if not inline_images and city else ''
         description = row[2] if len(row) > 2 and row[2].strip() else '查看当天安排，了解游览与交通提醒。'
-        out.append(f'<article class="carousel-slide slide-{n}"><a class="highlight" href="#day-{i}"><div class="carousel-photo"><span class="carousel-placeholder">暂无景点图片</span><img src="{text(scenery(row[1]))}" alt="默认风景示意图，非景点实拍"{remote}><span class="carousel-image-note">默认风景 · 示意图</span></div><div class="carousel-caption"><strong>{text(row[1])}</strong></div><div class="carousel-meta"><small>第 {i} 天</small><span class="carousel-time">{text(row[0])} · {text(visit_duration(row))}</span></div><div class="carousel-copy"><p>{text(description)}</p><span class="carousel-cta">查看当日日程 ↗</span></div></a><label class="carousel-side-select" for="highlight-{n}" aria-label="切换至{text(row[1])}"></label><div class="carousel-controls"><button type="button" data-carousel-target="highlight-{previous}" aria-label="上一个景点" {"disabled" if len(slides) == 1 else ""}>←</button><span>{n:02d} / {len(slides):02d}</span><button type="button" data-carousel-target="highlight-{following}" aria-label="下一个景点" {"disabled" if len(slides) == 1 else ""}>→</button></div></article>')
+        out.append(f'<article class="carousel-slide slide-{n}"><a class="highlight" href="#day-{i}"><div class="carousel-photo"><span class="carousel-placeholder">暂无景点图片</span><img src="{text(scenery(row[1]))}" alt="默认风景示意图，非景点实拍"{remote}><span class="carousel-image-note">默认风景 · 示意图</span></div><div class="carousel-caption"><strong>{text(row[1])}</strong></div><div class="carousel-meta"><small>第 {i} 天</small><span class="carousel-time">{text(row[0])} · {text(visit_duration(row))}</span></div><div class="carousel-copy"><p>{text(description)}</p><span class="carousel-cta">查看当日日程 ↗</span></div></a><label class="carousel-side-select" for="highlight-{n}" aria-label="切换至{text(row[1])}"></label><div class="carousel-controls"><button type="button" data-carousel-target="highlight-{previous}" aria-label="上一个景点" {"disabled" if len(slides) == 1 else ""}>‹</button><span>{n:02d} / {len(slides):02d}</span><button type="button" data-carousel-target="highlight-{following}" aria-label="下一个景点" {"disabled" if len(slides) == 1 else ""}>›</button></div></article>')
     out.append('</div><div class="carousel-dots" aria-label="选择景点">')
-    out.extend(f'<label class="carousel-dot" for="highlight-{n}" aria-label="选择景点 {n}"></label>' for n in range(1, len(slides)+1))
-    out.append('</div><p class="carousel-help">点击两侧卡片或使用方向键切换 · 点击主卡片查看当日日程</p><div class="carousel-days"><h3>每天都有一点期待</h3><div class="carousel-day-links">')
+    for n, (_, _, row) in enumerate(slides, 1):
+        remote = f' data-photo-url="{text(photo_url(city, row[1]))}"' if not inline_images and city else ''
+        out.append(f'<label class="carousel-dot" for="highlight-{n}" aria-label="选择景点 {n}：{text(row[1])}"><div class="carousel-photo carousel-thumb-photo"><span class="carousel-placeholder">暂无图片</span><img src="{text(scenery(row[1]))}" alt="默认风景示意图，非景点实拍"{remote}><span class="carousel-image-note">默认风景 · 示意图</span></div><span>{text(row[1])}</span></label>')
+    out.append('</div><p class="carousel-help">点击两侧卡片或使用方向键切换 · 点击主卡片查看当日日程</p><details class="carousel-days"><summary>每天都有一点期待</summary><div class="carousel-day-links">')
     for i, day in enumerate(days, 1):
         title = next((row[1] for day_no, _, row in slides if day_no == i), f'查看第 {i} 天安排')
         out.append(f'<a href="#day-{i}"><small>DAY {i:02d}</small><span>{text(title)}</span></a>')
-    return ''.join(out) + '</div></div></div>'
+    return ''.join(out) + '</div></details></div>'
 
 
 CAROUSEL_JS = r"""
@@ -218,6 +205,10 @@ for (const carousel of document.querySelectorAll('.carousel')) {
     const selected = carousel.querySelector('input[name="highlight"]:checked');
     const slide = selected && carousel.querySelector('.slide-' + selected.id.split('-').pop());
     if (slide && carousel.getClientRects().length) stage.style.height = slide.offsetHeight + 'px';
+    const thumb = selected && carousel.querySelector('label[for="' + selected.id + '"].carousel-dot');
+    if (thumb && (thumb.offsetLeft < thumb.parentElement.scrollLeft || thumb.offsetLeft + thumb.offsetWidth > thumb.parentElement.scrollLeft + thumb.parentElement.clientWidth)) {
+      thumb.parentElement.scrollTo({left: thumb.offsetLeft - (thumb.parentElement.clientWidth - thumb.offsetWidth) / 2, behavior: 'instant'});
+    }
   };
   const observer = new ResizeObserver(fit);
   for (const slide of carousel.querySelectorAll('.carousel-slide')) observer.observe(slide);
@@ -263,6 +254,20 @@ if (document.querySelectorAll('.daily-view img[data-photo-url]').length) {
 for (const carousel of document.querySelectorAll('.carousel')) {
   const radios = [...carousel.querySelectorAll('input[name="highlight"]')];
   if (radios.length < 2) continue;
+  let touchStart, swipedAt = 0;
+  carousel.addEventListener('touchstart', event => { touchStart = event.touches.length === 1 ? event.touches[0] : null; }, {passive:true});
+  carousel.addEventListener('touchend', event => {
+    const end = event.changedTouches[0];
+    if (!touchStart || !end) return;
+    const dx = end.clientX - touchStart.clientX, dy = end.clientY - touchStart.clientY;
+    touchStart = null;
+    if (Math.abs(dx) < 50 || Math.abs(dx) <= Math.abs(dy)) return;
+    const index = radios.findIndex(radio => radio.checked);
+    radios[(index + (dx < 0 ? 1 : radios.length - 1)) % radios.length].checked = true;
+    swipedAt = Date.now();
+    carousel.dispatchEvent(new Event('change', {bubbles:true}));
+  }, {passive:true});
+  carousel.addEventListener('click', event => { if (Date.now() - swipedAt < 400) event.preventDefault(); }, true);
   let timer, inView = false;
   const stop = () => { clearTimeout(timer); timer = undefined; };
   function schedule() {

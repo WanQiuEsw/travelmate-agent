@@ -54,7 +54,7 @@ def test_weather_is_inside_days_and_omitted_without_date_for_new_and_old_version
     assert 'weather-shell' in daily and '每日天气' in daily
     nav = html.split('<nav class="result-nav"')[1].split('</nav>')[0]
     import re
-    assert re.findall(r'>([^<>]+)</a>', nav) == ['行程概览', '预算明细', '每日行程', '住宿推荐', '当地美食', '避坑指南', '行程准备']
+    assert re.findall(r'>([^<>]+)</a>', nav) == ['行程概览', '预算明细', '每日行程', '住宿推荐', '美食推荐', '避坑指南', '行程准备']
     assert 'panel-map' not in nav and 'panel-weather' not in nav
 
 

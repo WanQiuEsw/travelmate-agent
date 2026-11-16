@@ -11,7 +11,7 @@ def test_coverflow_images_states_and_day_navigation():
     html = coverflow(days(3), escape)
     assert '/assets/visual/cities/hangzhou.webp' in html
     assert '/assets/visual/town.webp' in html and '/assets/visual/mountains.webp' in html
-    assert 'rotateY(12deg)' in html and 'translateX(64%)' in html
+    assert 'rotateY' not in html and 'translateX(105%)' in html
     assert 'for="highlight-3"' in html and '03 / 03' in html
     assert 'data-carousel-target="highlight-3" aria-label="上一个景点"' in html
     assert 'href="#day-3"' in html and '每天都有一点期待' in html
@@ -24,9 +24,9 @@ def test_zero_one_two_and_escaping():
     assert '本版暂无景点安排' in coverflow([], escape)
     single = coverflow(days(1), escape)
     assert single.count('disabled') == 2
-    assert 'translateX(-64%)' not in single
+    assert 'translateX(-105%)' not in single
     two = coverflow(days(2), escape)
-    assert 'translateX(-64%)' in two and 'translateX(64%)' not in two
+    assert 'translateX(-105%)' in two and 'translateX(105%)' not in two
     html = coverflow([{'rows': [['上午', '<img src=x>', '<script>unsafe</script>']]}], escape)
     assert '<img src=x>' not in html and '<script>' not in html
     assert '&lt;img src=x&gt;' in html
