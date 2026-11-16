@@ -214,7 +214,7 @@ def test_all_views_share_header_and_snapshot_details_live_in_overview():
     overview = html.split('id="panel-overview"')[1].split('id="panel-budget"')[0]
     assert '方案详情与依据' in overview
     assert '保存时间' in overview and '已列费用' in overview
-    assert 'trip-facts' in overview and 'discovery-grid' in overview
+    assert 'trip-facts' in overview and 'overview-stage' in overview
     for title in ('先说结论', '旅行概览', '交通与已订安排', '时间安排说明'):
         assert f'<summary>{title}</summary>' not in overview
     from travelmate.result import RESULT_CSS

@@ -27,4 +27,4 @@ def test_original_seven_panel_navigation_and_exports_are_retained():
     for suffix in ('/pdf', '/md', '/html'):
         assert f'href="/sessions/test/plans/1{suffix}"' in header
     overview = html.split('id="panel-overview"')[1].split('id="panel-budget"')[0]
-    assert 'trip-facts' in overview and 'discovery-grid' in overview
+    assert 'trip-facts' in overview and 'overview-stage' in overview

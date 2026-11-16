@@ -296,6 +296,8 @@ def make_guide(version, evidence):
         summary.append('已列费用 ' + total_cost_label(day['stops'], req, evidence, now=asof))
         notes = [' · '.join(summary)] + (['当日美食：' + '；'.join(meals)] if meals else [])
         section(day_heading(day.get('date'), i, req, evidence, asof), notes, 'day', ['时段', '顺路安排', '吃什么 / 怎么玩', '交通预留', '全员费用'], rows)
+        sections[-1]['stop_details'] = [{'kind': stop.get('kind'), 'highlight': stop.get('highlight', ''),
+                                       'activities': stop.get('activities', [])} for stop in day['stops']]
         sections[-1]['rain_rows'] = [[time_label(plan, stop), stop['place'], stop.get('notes') or '按预约和体力调整', modes[stop.get('transport_mode', 'unknown')] + '，' + travel_label(stop), cost_label(stop, req, evidence, asof)] for stop in day.get('rain_stops', [])]
         sections[-1]['rain_note'] = day.get('rain_note', '')
     foods = plan.get('foods', [])

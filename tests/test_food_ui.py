@@ -53,3 +53,42 @@ def test_new_guide_keeps_local_dishes_without_filling_daily_meals():
     assert len(foods['rows']) == len(PLAN['foods'])
     assert '住宿附近的当地早餐' not in str(guide)
     assert plan == PLAN
+
+
+def test_generic_places_and_meal_suggestions_are_filtered_but_xiamen_dishes_remain():
+    dishes = ['醋肉', '沙茶面', '闽南卤面', '清蒸海鲜']
+    fillers = ['鼓浪屿景区', '中山路步行街', '当地特色小吃', '酒店自助早餐',
+               '顺路吃午饭', '海鲜餐厅', '当地美食街', '附近大排档']
+    html = panel([dict(rows=[[name, '风味介绍'] for name in dishes + fillers])], [], escape, city='厦门')
+    assert html.count('class="food-card') == len(dishes)
+    assert all(name in html for name in dishes)
+    assert all(name not in html for name in fillers)
+
+
+def test_food_schema_rejects_generic_recommendations():
+    import pytest
+    from pydantic import ValidationError
+    from travelmate.workflow import Food
+
+    for name in ('顺路午餐', '当地特色小吃', '鼓浪屿景区', '海鲜餐厅'):
+        with pytest.raises(ValidationError, match='特色菜品'):
+            Food(name=name, description='推荐')
+    assert Food(name=' 醋肉 ', description='闽南风味').name == '醋肉'
+
+
+def test_known_attraction_is_not_a_dish_but_a_meal_with_a_dish_name_is_allowed():
+    import pytest
+    from pydantic import ValidationError
+    from travelmate.workflow import Itinerary
+    from test_workflow import PLAN
+
+    plan = deepcopy(PLAN)
+    plan['days'][0]['stops'][0].update(place='鼓浪屿', kind='visit')
+    plan['foods'] = [dict(name='鼓浪屿', description='错误推荐')]
+    with pytest.raises(ValidationError, match='景点或体验名称'):
+        Itinerary.model_validate(plan)
+    html = panel([dict(rows=[['鼓浪屿', '错误推荐'], ['沙茶面', '闽南风味']])],
+                 [dict(rows=[['上午', '鼓浪屿'], ['中午', '沙茶面']],
+                       stop_details=[dict(kind='visit'), dict(kind='meal')])], escape)
+    assert html.count('class="food-card') == 1
+    assert '鼓浪屿' not in html and '沙茶面' in html

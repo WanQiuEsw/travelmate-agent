@@ -99,6 +99,8 @@ def amount(value):
 class Stop(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     place: str = Field(min_length=1, max_length=200)
+    kind: Literal["visit", "experience", "transport", "meal", "lodging", "rest"] | None = Field(default=None, description="活动类型：景点visit、特色体验experience、普通交通transport、用餐meal、住宿lodging、休息rest；观光巴士属于experience，普通接驳属于transport。")
+    highlight: str = Field(default="", max_length=240, description="仅为visit或experience填写一句具体游玩亮点：看到什么、体验什么、有什么特点。只描述当前地点，不写费用、预约、交通缓冲或泛泛的值得打卡；非游玩安排留空。")
     city: str = Field(min_length=1, max_length=100)
     start: str | None = Field(default=None, pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
     end: str | None = Field(default=None, pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
@@ -139,12 +141,20 @@ class Alternative(BaseModel):
 
 class Food(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    name: str = Field(min_length=1, max_length=80)
-    description: str = Field(min_length=1, max_length=400, description="介绍当地菜品或小吃的口味、特点，不编造价格、餐厅或营业信息。")
+    name: str = Field(min_length=1, max_length=80, description="目的地代表性菜品或小吃名，不填景点、餐厅、美食街或顺路用餐占位；厦门可选醋肉、沙茶面、闽南卤面、当地海鲜做法，其他城市按当地风味选择，不照搬厦门清单。")
+    description: str = Field(min_length=1, max_length=400, description="说明这道菜与目的地的风味关联、主要食材和口感，不用通用好吃描述，不编造价格、餐厅或营业信息。")
     area: str = Field(default="", max_length=120, description="建议结合当日游玩片区顺路用餐；不是已核实的门店地址。")
     tips: str = Field(default="", max_length=300, description="结合用户忌口、过敏和饮食偏好给出点单提醒。")
     day: int | None = Field(default=None, ge=1, le=30, description="兼容历史用餐安排；当地美食推荐留空，不按天分配。")
     meal: Literal["早餐", "午餐", "晚餐", "加餐", "不限"] = "不限"
+
+    @field_validator('name')
+    @classmethod
+    def concrete_dish(cls, value):
+        from travelmate.recommendations import is_specific_food
+        if not is_specific_food(value):
+            raise ValueError('美食推荐必须填写目的地特色菜品或小吃名，不能填写地点、餐厅或通用用餐安排')
+        return value.strip()
 
 
 class BudgetTier(BaseModel):
@@ -200,6 +210,10 @@ class Itinerary(BaseModel):
     @model_validator(mode="after")
     def consistent_timing(self):
         from decimal import Decimal, ROUND_HALF_UP
+        attractions = {stop.place.strip() for day in self.days for stop in day.stops
+                       if stop.kind in ('visit', 'experience')}
+        if any(food.name in attractions for food in self.foods):
+            raise ValueError('foods不能将行程中的景点或体验名称当作美食，请填写具体特色菜品')
         cents = lambda n: (Decimal(str(n)) * 100).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
         if self.other_cost_items and sum(cents(item.amount) for item in self.other_cost_items) != cents(self.other_cost):
             raise ValueError("其他费用分项之和必须等于other_cost，不能重复计入活动费用")

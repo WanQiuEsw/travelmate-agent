@@ -1,6 +1,7 @@
 """Local food photo feed, including historical daily meal rows."""
 import re
 from urllib.parse import urlencode
+from travelmate.recommendations import is_specific_food
 
 
 CSS = """
@@ -13,13 +14,18 @@ CSS = """
 
 def panel(sections, days, text, inline_images=False, city=''):
     # Old snapshots repeat dishes across days and contain generated meal fillers.
+    attractions = set()
+    for day in days:
+        for row, detail in zip(day.get('rows', []), day.get('stop_details', [])):
+            if detail.get('kind') in ('visit', 'experience') and len(row) > 1:
+                attractions.add(re.sub(r'\s+', '', row[1]).casefold())
     foods, seen = [], {}
     for section in sections:
         for row in section.get('rows', []):
             name, description, _, _, tips = (list(row) + [''] * 5)[:5]
             name = name.strip()
             key = re.sub(r'\s+', '', name).casefold()
-            if not key or name in ('住宿附近的当地早餐', '游览片区的顺路午餐', '返程或住宿片区的晚餐'):
+            if key in attractions or not is_specific_food(name):
                 continue
             if key in seen:
                 previous, detail, reminders = foods[seen[key]]
