@@ -67,7 +67,7 @@ const assert = require('node:assert/strict');
 const note = {textContent:'默认风景 · 示意图'};
 const image = {complete:true,naturalWidth:0,hidden:false,addEventListener(){},
   closest:()=>({querySelector:()=>note})};
-global.document={querySelectorAll:s=>s==='.carousel-photo img'?[image]:[]};
+global.document={addEventListener(){},querySelectorAll:s=>s==='.carousel-photo img'?[image]:[]};
 global.window={addEventListener(){}};
 """
     subprocess.run(['node', '-e', stub + CAROUSEL_JS + "\nassert.equal(image.hidden,true);assert.equal(note.textContent,'暂无景点图片');"],
@@ -154,10 +154,10 @@ advance(3999);active=1;carousel.dispatchEvent(new Event('change'));
 advance(3999);assert.equal(active,1);
 advance(1);assert.equal(active,2);assert.equal(pending.size,1);
 """
-    subprocess.run(['node', '-e', stub + RESULT_JS + checks], check=True, capture_output=True, text=True)
+    subprocess.run(['node', '-'], input=stub + RESULT_JS + checks, check=True, capture_output=True, text=True, encoding='utf-8')
 
 
-def test_photo_loading_is_shared_serial_and_prefetches_only_the_next_slide():
+def test_photo_loading_prefetches_all_slides_prioritizes_selection_and_shares_requests():
     import subprocess
     from travelmate.carousel import CAROUSEL_JS
     stub = r"""
@@ -179,7 +179,7 @@ function image(url,owner=carousel){
 const photos=[1,2,3].map(n=>image(`/photo/${n}`));
 const daily=image('/photo/1',null);
 Object.assign(carousel,{
-  querySelectorAll:()=>radios,getClientRects:()=>[{}],
+  querySelectorAll:s=>s==='img[data-photo-url]'?photos:radios,getClientRects:()=>[{}],
   querySelector:s=>s.includes(':checked')?radios[active]:s.includes('input')?null:
     s.includes('img[data-photo-url]')?photos[Number(s.match(/slide-(\d)/)[1])-1]:
     s.includes('.slide-')?{querySelector:()=>photos[Number(s.match(/slide-(\d)/)[1])-1]}:{},
@@ -191,8 +191,7 @@ globalThis.IntersectionObserver=class {constructor(fn){observers.push(fn);}obser
 const flush=async()=>{for(let i=0;i<12;i++)await Promise.resolve();};
 """
     checks = r"""
-observers[0]([{isIntersecting:true}]); // Selected image starts loading.
-observers[1]([{isIntersecting:true}]); // Autoplay sees it loading and waits.
+observers[0]([{isIntersecting:true}]); // Autoplay sees the initial prefetch and waits.
 loadPlacePhoto(daily);
 await flush();
 assert.equal(downloads.length,1,'overview and daily must share one request');
@@ -200,12 +199,12 @@ assert.equal([...timers.values()].some(t=>t.ms===4000),false,'slow image must ho
 downloads[0].resolve({ok:true,blob:async()=>({url:'/photo/1'})});await flush();
 assert.equal(photos[0].src,'blob:/photo/1');assert.equal(daily.src,'blob:/photo/1');
 assert.equal(daily.note.textContent,'小红书 · 搜索配图');
-assert.equal(downloads.length,2,'preload exactly the next slide');
-assert.equal(photos[2].dataset.photoState,undefined,'do not load the whole itinerary');
+assert.equal(downloads.length,2,'continue prefetching without a slide change');
+assert.equal(photos[2].dataset.photoState,'loading','queue even hidden slides immediately');
 assert.equal([...timers.values()].some(t=>t.ms===4000),true);
 downloads[1].resolve({ok:false,status:503,json:async()=>({error:'image_download_failed'})});await flush();
 assert.equal(photos[1].dataset.photoState,'failed');assert.equal(photos[1].src,undefined);
-assert.equal(downloads.length,2,'failure must not fan out or retry');
+assert.equal(downloads.length,3,'failed images must not stop the remaining prefetches');
 active=1;carousel.dispatchEvent(new Event('change'));await flush();
 assert.equal(downloads.length,3);
 const timeout=[...timers.values()].find(t=>t.ms===45000);timeout.fn();await flush();

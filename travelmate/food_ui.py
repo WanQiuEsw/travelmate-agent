@@ -8,14 +8,14 @@ CSS = """
 .food-heading{text-align:center;margin:0 16px 30px}.food-heading h2{border:0;padding:0;margin:0 0 10px;font:700 clamp(28px,4cqw,44px)/1.35 'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;letter-spacing:2px}.food-heading p{margin:0;color:#73766a;font-size:16px;letter-spacing:1px}
 .food-track{--food-width:72cqw;position:relative;display:flex;align-items:flex-start;gap:20px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;scroll-padding-inline:calc((100% - var(--food-width))/2);padding:4px calc((100% - var(--food-width))/2) 26px;scrollbar-width:none;outline-offset:-3px}.food-track::-webkit-scrollbar{display:none}
 .food-card{flex:0 0 var(--food-width);min-width:0;scroll-snap-align:center;background:#fffefa;border:1px solid #e5e5da;border-radius:26px;overflow:hidden;box-shadow:0 12px 24px #3a432510;transition:opacity .2s}.food-card:not(.is-active){opacity:.72}
-.food-photo{position:relative;aspect-ratio:16/10;background:#e9ecdf;overflow:hidden;display:grid;place-items:center}.food-photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.food-photo img[hidden]{display:none}.food-placeholder{display:grid;justify-items:center;gap:10px;padding:12px;text-align:center;color:#73816a}.food-placeholder svg{width:44px;height:44px}.food-placeholder small{font-size:12px}.food-photo:has(img:not([hidden])) .food-placeholder{visibility:hidden}
+.food-photo{position:relative;aspect-ratio:16/10;background:#e9ecdf;overflow:hidden;display:grid;place-items:center}.food-photo img{grid-area:1/1;display:block;width:100%;height:auto;max-height:70vh;object-fit:contain}.food-photo:has(img:not([hidden])){aspect-ratio:auto}.food-photo img[hidden]{display:none}.food-placeholder{grid-area:1/1;display:grid;justify-items:center;gap:10px;padding:12px;text-align:center;color:#73816a}.food-placeholder svg{width:44px;height:44px}.food-placeholder small{font-size:12px}.food-photo:has(img:not([hidden])) .food-placeholder{visibility:hidden}
 .food-copy{padding:22px 26px 24px}.food-copy h3{font:700 30px/1.4 'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;margin:0 0 8px;overflow-wrap:anywhere}.food-copy>p{font-size:15px;line-height:1.8;margin:0;color:#73766a;overflow-wrap:anywhere}.food-badge{display:inline-block;margin-top:14px;padding:3px 13px;border-radius:99px;background:#e8eddc;font-size:12px;color:#536b3c}.food-tips{margin-top:14px;color:#63735a;font-size:13px;line-height:1.7}.food-tips summary{cursor:pointer;min-height:32px}.food-tips p{margin:0;overflow-wrap:anywhere}
 .food-controls{display:flex;align-items:center;justify-content:center;gap:22px;width:fit-content;min-width:230px;margin:2px auto 0;padding:4px 12px;background:#e7ebdd;border-radius:99px;color:#536b3c;font-size:18px;font-variant-numeric:tabular-nums}.food-controls button{display:grid;place-items:center;min-width:44px;min-height:44px;border:0;border-radius:50%;background:transparent;color:inherit;font-size:28px;cursor:pointer}.food-controls button:disabled{opacity:.35;cursor:default}
-.food-help{text-align:center;color:#7b8072;font-size:13px;margin:12px 16px 24px}.food-thumbs{position:relative;display:flex;gap:12px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin;padding:4px 4px 12px;max-width:960px;margin:0 auto}.food-thumb{flex:1 0 108px;min-width:0;max-width:156px;padding:5px;border:2px solid transparent;background:#fffefa;color:#284329;border-radius:18px;cursor:pointer;font:inherit}.food-thumb[aria-pressed=true]{border-color:#739450;background:#f4f7ed}.food-thumb .food-photo{aspect-ratio:1;border-radius:12px}.food-thumb .food-placeholder svg{width:28px;height:28px}.food-thumb .food-placeholder{padding:6px}.food-thumb .food-placeholder small{display:none}.food-thumb>span{display:block;font-size:14px;padding:8px 2px 3px;overflow-wrap:anywhere}.food-shell button:focus-visible,.food-track:focus-visible{outline:3px solid #739450;outline-offset:2px}
+.food-help{text-align:center;color:#7b8072;font-size:13px;margin:12px 16px 24px}.food-thumbs{position:relative;display:flex;gap:12px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin;padding:4px 4px 12px;max-width:960px;margin:0 auto}.food-thumb{flex:1 0 108px;min-width:0;max-width:156px;padding:5px;border:2px solid transparent;background:#fffefa;color:#284329;border-radius:18px;cursor:pointer;font:inherit}.food-thumb[aria-pressed=true]{border-color:#739450;background:#f4f7ed}.food-thumb .food-photo,.food-thumb .food-photo:has(img:not([hidden])){aspect-ratio:1;border-radius:12px}.food-thumb .food-photo img{position:absolute;inset:0;height:100%;max-height:none}.food-thumb .food-placeholder svg{width:28px;height:28px}.food-thumb .food-placeholder{padding:6px}.food-thumb .food-placeholder small{display:none}.food-thumb>span{display:block;font-size:14px;padding:8px 2px 3px;overflow-wrap:anywhere}.food-shell button:focus-visible,.food-track:focus-visible{outline:3px solid #739450;outline-offset:2px}
 .food-preference{max-width:952px;margin:20px auto 0;background:#edf0e4;padding:14px 18px;border-radius:14px;font-size:14px;line-height:1.8;overflow-wrap:anywhere}.food-image-note{text-align:center;margin:20px 16px 0;font-size:12px;color:#7b8072;line-height:1.8}.food-empty{text-align:center;background:#edf0e4;padding:36px 20px;border-radius:18px;color:#63735a}
 @container(max-width:600px){.food-heading{margin-bottom:20px}.food-heading p{font-size:13px;letter-spacing:0}.food-track{--food-width:84cqw;gap:12px;padding-bottom:20px}.food-card{border-radius:20px}.food-photo{aspect-ratio:4/3}.food-copy{padding:16px 18px 18px}.food-copy h3{font-size:25px}.food-copy>p{font-size:14px}.food-thumb{flex-basis:82px;max-width:110px;border-radius:14px}.food-thumbs{gap:8px}.food-thumb>span{font-size:12px}.food-shell{padding-top:8px}.food-controls{min-width:200px;font-size:16px}.food-image-note{font-size:11px}}
 @media(prefers-reduced-motion:reduce){.food-card{transition:none}}
-@media print{.food-track{display:block;overflow:visible;padding:0}.food-card,.food-card:not(.is-active){opacity:1;margin-bottom:20px;break-inside:avoid;box-shadow:none}.food-card .food-photo{aspect-ratio:3/1}.food-controls,.food-thumbs,.food-help{display:none}.food-tips::details-content{display:block;content-visibility:visible}}
+@media print{.food-track{display:block;overflow:visible;padding:0}.food-card,.food-card:not(.is-active){opacity:1;margin-bottom:20px;break-inside:avoid;box-shadow:none}.food-card .food-photo{aspect-ratio:auto}.food-card .food-photo img{max-height:220px}.food-controls,.food-thumbs,.food-help{display:none}.food-tips::details-content{display:block;content-visibility:visible}}
 """
 
 
@@ -80,6 +80,7 @@ for (const food of document.querySelectorAll('.food-shell')) {
     cards.forEach((card, i) => card.classList.toggle('is-active', i === index));
     thumbs.forEach((thumb, i) => thumb.setAttribute('aria-pressed', String(i === index)));
     count.textContent = String(index + 1).padStart(2, '0') + ' / ' + String(cards.length).padStart(2, '0');
+    loadPlacePhoto(cards[index].querySelector('[data-food-photo]'), true);
     const thumb = thumbs[index], strip = thumb.parentElement;
     if (thumb.offsetLeft < strip.scrollLeft || thumb.offsetLeft + thumb.offsetWidth > strip.scrollLeft + strip.clientWidth) {
       strip.scrollTo({left: thumb.offsetLeft - (strip.clientWidth - thumb.offsetWidth) / 2, behavior: motion});
@@ -114,24 +115,17 @@ for (const food of document.querySelectorAll('.food-shell')) {
   }).observe(track);
 }
 
-// Reuse the shared XHS queue/cache for both cards and matching thumbnails.
+// Start all food photos immediately, including cards outside the viewport.
 if (document.querySelectorAll('[data-food-photo]').length) {
-  const foodPhotoObserver = new IntersectionObserver(entries => {
-    for (const entry of entries) {
-      const image = entry.target.querySelector('[data-food-photo]');
-      if (!entry.isIntersecting || document.hidden || !image.parentElement.getClientRects().length) continue;
-      foodPhotoObserver.unobserve(entry.target);
-      image.onerror = () => { image.hidden = true; };
-      loadPlacePhoto(image);
-    }
-  });
-  const observeFoodPhotos = () => {
+  const preloadFoodPhotos = () => {
+    if (document.hidden) return;
     for (const image of document.querySelectorAll('[data-food-photo]')) {
-      if (!image.dataset.photoState) foodPhotoObserver.observe(image.parentElement);
+      image.onerror = () => { image.hidden = true; };
+      loadPlacePhoto(image, !!image.closest('.food-card.is-active')?.getClientRects().length);
     }
   };
-  observeFoodPhotos();
-  window.addEventListener('hashchange', observeFoodPhotos);
-  document.addEventListener('visibilitychange', observeFoodPhotos);
+  preloadFoodPhotos();
+  window.addEventListener('hashchange', preloadFoodPhotos);
+  document.addEventListener('visibilitychange', preloadFoodPhotos);
 }
 """

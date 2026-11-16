@@ -238,7 +238,7 @@ const links = ['overview','budget','days','lodging','food','pitfalls','prepare']
 let hashchange;
 global.location={hash:''};
 global.window={addEventListener:(name,fn)=>{if(name==='hashchange')hashchange=fn}};
-global.document={querySelector:s=>s==='.result-nav'?{querySelectorAll:()=>links}:null,querySelectorAll:()=>[],
+global.document={addEventListener(){},querySelector:s=>s==='.result-nav'?{querySelectorAll:()=>links}:null,querySelectorAll:()=>[],
  getElementById:id=>id==='day-2'?{closest:()=>({id:'panel-days'})}:id.startsWith('panel-')?{closest:()=>({id})}:null};
 '''
     checks = r'''
@@ -247,4 +247,4 @@ for(const [hash,index] of [['#panel-budget',1],['#panel-days',2],['#day-2',2],['
  location.hash=hash;hashchange();assert.equal(links[index].current,'page');assert.equal(links.filter(l=>l.current==='page').length,1);
 }
 '''
-    subprocess.run(['node', '-e', stub + RESULT_JS + checks], check=True, capture_output=True, text=True)
+    subprocess.run(['node', '-'], input=stub + RESULT_JS + checks, check=True, capture_output=True, text=True, encoding='utf-8')
