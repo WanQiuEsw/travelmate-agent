@@ -141,7 +141,7 @@ assert.equal(limitInput.style['--budget-digits'],5);assert.equal(balance.textCon
 limitInput.value='';events.input({target:{matches:()=>true}});assert.equal(balance.textContent,'待确认');
 reset();assert.equal(limitInput.value,'3.00');assert.equal(total.textContent,'¥0.30');assert.equal(filter.value,'');assert.equal(unknown.check.checked,false);assert.equal(notice.textContent,'1 项待核实');
 '''
-    subprocess.run(['node', '-e', stub + RESULT_JS + checks], check=True, capture_output=True, text=True)
+    subprocess.run(['node', '-'], input=stub + RESULT_JS + checks, check=True, capture_output=True, text=True, encoding='utf-8')
 
 
 def test_carousel_controls_and_compact_expense_description():

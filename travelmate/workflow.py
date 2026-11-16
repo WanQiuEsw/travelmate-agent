@@ -143,7 +143,7 @@ class Food(BaseModel):
     description: str = Field(min_length=1, max_length=400, description="介绍当地菜品或小吃的口味、特点，不编造价格、餐厅或营业信息。")
     area: str = Field(default="", max_length=120, description="建议结合当日游玩片区顺路用餐；不是已核实的门店地址。")
     tips: str = Field(default="", max_length=300, description="结合用户忌口、过敏和饮食偏好给出点单提醒。")
-    day: int | None = Field(default=None, ge=1, le=30, description="顺路安排在第几天；未确定时留空。")
+    day: int | None = Field(default=None, ge=1, le=30, description="兼容历史用餐安排；当地美食推荐留空，不按天分配。")
     meal: Literal["早餐", "午餐", "晚餐", "加餐", "不限"] = "不限"
 
 
@@ -186,7 +186,7 @@ class Itinerary(BaseModel):
     other_cost_estimated: bool = Field(default=False, description="有依据且已在cost_notes列明费用构成和算式时为true。")
     alternatives: list[Alternative] = Field(default_factory=list, max_length=30)
     reminders: list[str] = Field(default_factory=list, max_length=30)
-    foods: list[Food] = Field(default_factory=list, max_length=120, description="按天提供早餐、午餐、晚餐，每天三餐均须填写day和meal；可另加小吃。不编造门店或营业信息，首末日用餐随实际到离时刻调整。空列表仅兼容历史行程。")
+    foods: list[Food] = Field(default_factory=list, max_length=120, description="推荐目的地有代表性的当地菜品和小吃，每道只列一次，介绍风味与饮食注意事项；day留空、meal为不限，不按天、三餐或区域分组。不编造门店或营业信息。空列表仅兼容历史行程。")
     summary: str = Field(default="", max_length=600, description="先给玩法判断，说明如何围绕兴趣顺路安排；没有价格依据不能断言预算够用。")
     key_call: str = Field(default="", max_length=600, description="开篇关键判断：这笔钱够不够、主要花在哪、必须取舍什么。只能基于已列费用与查询依据，禁止无依据断言预算充足。")
     hard_rules: list[str] = Field(default_factory=list, max_length=4, description="由预算和路线推出、可直接执行的三条以内硬规则，例如只买某一价位的车次、不住某片区。")
