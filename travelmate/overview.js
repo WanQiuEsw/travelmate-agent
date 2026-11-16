@@ -31,7 +31,7 @@ for (const feed of document.querySelectorAll('.overview-feed')) {
     if (i !== current) {
       event.preventDefault();
       select(i);
-      card.querySelector('a').focus({preventScroll: true});
+      (card.querySelector('a') || card).focus({preventScroll: true});
     }
   }));
   feed.addEventListener('keydown', event => {
@@ -39,7 +39,7 @@ for (const feed of document.querySelectorAll('.overview-feed')) {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();
     select(event.key === 'Home' ? 0 : event.key === 'End' ? cards.length - 1 : current + (event.key === 'ArrowRight' ? 1 : -1));
-    cards[current].querySelector('a').focus({preventScroll: true});
+    (cards[current].querySelector('a') || cards[current]).focus({preventScroll: true});
   });
   let touchStart;
   let suppressClickUntil = 0;

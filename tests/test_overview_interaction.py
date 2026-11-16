@@ -42,6 +42,11 @@ else {
   key('ArrowRight');assert.equal(f.count.textContent,label(0));
   assert.equal(f.cards[0].querySelector('a').focused,true);
   assert.equal(f.indicators[0].attrs['aria-current'],'true');
+  // Food cards are focusable articles, without a daily-navigation link.
+  const firstCard=f.cards[0], originalQuery=firstCard.querySelector;
+  firstCard.querySelector=s=>s==='a'?null:originalQuery(s);
+  key('Home');assert.equal(firstCard.focused,true);
+  firstCard.querySelector=originalQuery;
   if(SIZE>1) {
     let prevented=false;
     f.cards[1].listeners.click({preventDefault(){prevented=true;}});
