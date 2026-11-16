@@ -206,15 +206,18 @@ def test_photo_endpoint_returns_only_image_bytes_and_validates_parameters(stored
         assert expired_response.headers['cache-control'] == 'no-store'
 
 
-def test_dish_search_also_uses_latest_first_image():
+def test_dish_search_uses_relevance_and_rejects_unrelated_or_ambiguous_photos():
     name, payload = place_photos.photo_search('汕头', '牛肉丸', 'food')
     assert '美食 菜品 实拍' in payload['keyword'] and '风光' not in payload['keyword']
-    assert payload['filters'][0]['tags'] == ['time_descending']
+    assert payload['sort'] == 'general'
+    assert not any(row['type'] == 'sort_type' for row in payload['filters'])
     def note(title, suffix):
         return {'model_type': 'note', 'note_card': {'display_title': title,
-                'cover': {'url': 'https://sns.xhscdn.com/' + suffix}}}
+                'image_list': [{'url': 'https://sns.xhscdn.com/' + suffix}]}}
     items = [note('牛肉丸与汕头风景', 'scenery'), note('牛肉丸美食实拍', 'food'), note('肠粉美食', 'other')]
-    assert place_photos.photo_candidates(items, name, 'food') == ['https://sns.xhscdn.com/scenery']
+    assert place_photos.photo_candidates(items, name, 'food') == ['https://sns.xhscdn.com/food']
+    assert place_photos.photo_candidates([note('肠粉美食', 'other')], name, 'food') == []
+    assert place_photos.photo_search('汕头', '牛肉丸+粿条（干拌）', 'food')[0] == '牛肉丸+粿条（干拌）'
 
 
 def test_food_and_attraction_photos_do_not_share_cache(photos, monkeypatch):
@@ -223,7 +226,8 @@ def test_food_and_attraction_photos_do_not_share_cache(photos, monkeypatch):
         if request.url.host == 'edith.xiaohongshu.com':
             calls.append(request)
             return httpx.Response(200, json={'success': True, 'data': {'items': [
-                {'model_type': 'note', 'note_card': {'display_title': '牛肉丸美食实拍',
+                {'model_type': 'note', 'id': 'a' * 24, 'note_card': {'display_title': '汕头牛肉丸美食实拍',
+                 'image_list': [{'url': 'https://sns.xhscdn.com/food'}],
                  'cover': {'url': 'https://sns.xhscdn.com/food'}}}]}})
         assert 'cookie' not in request.headers
         return httpx.Response(200, content=b'food', headers={'Content-Type': 'image/jpeg'})
@@ -231,7 +235,89 @@ def test_food_and_attraction_photos_do_not_share_cache(photos, monkeypatch):
     assert place_photos.get_photo('汕头', '牛肉丸') == (b'food', 'image/jpeg')
     assert place_photos.get_photo('汕头', '牛肉丸', 'food') == (b'food', 'image/jpeg')
     assert place_photos.get_photo('汕头', '牛肉丸', 'food') == (b'food', 'image/jpeg')
-    assert len(calls) == 2
+    assert len(calls) == 4
+
+
+@pytest.mark.parametrize('title,images,city', [
+    ('汕头肠粉', [{'url': 'https://sns.xhscdn.com/wrong'}], '汕头'),
+    ('潮州牛肉丸', [{'url': 'https://sns.xhscdn.com/wrong'}], '汕头'),
+    ('汕头牛肉丸攻略合集', [{'url': 'https://sns.xhscdn.com/wrong'}], '汕头'),
+    ('汕头牛肉丸', [{'url': 'https://sns.xhscdn.com/one'}, {'url': 'https://sns.xhscdn.com/two'}], '汕头'),
+    ('汕头牛肉丸', [], '汕头'),
+    ('汕头牛肉丸', [{'url': 'https://evil.test/wrong'}], '汕头'),
+])
+def test_food_candidates_require_dish_city_and_one_detail_image(title, images, city):
+    card = {'title': title, 'image_list': images, 'cover': {'url': 'https://sns.xhscdn.com/cover'}}
+    assert place_photos.photo_candidates([{'model_type': 'note', 'note_card': card}], '牛肉丸', 'food', city) == []
+
+
+@pytest.mark.parametrize('failure', ['multiple_images', 'wrong_city', 'wrong_dish', 'detail_error'])
+def test_food_skips_unverified_detail_and_never_downloads_search_cover(photos, monkeypatch, failure):
+    calls = []
+    def handler(request):
+        calls.append(request)
+        if request.url.path.endswith('/search/notes'):
+            return httpx.Response(200, json={'success': True, 'data': {'items': [
+                {'model_type': 'note', 'id': digit * 24, 'note_card': {
+                    'display_title': '汕头牛肉丸', 'cover': {'url': 'https://sns.xhscdn.com/cover'}}}
+                for digit in ('a', 'b')]}})
+        if request.url.path.endswith('/feed'):
+            first = json.loads(request.content)['source_note_id'] == 'a' * 24
+            if first and failure == 'detail_error':
+                return httpx.Response(200, json={'success': False, 'code': 1234})
+            card = {'title': '汕头牛肉丸', 'image_list': [{'url': 'https://sns.xhscdn.com/correct'}]}
+            if first:
+                if failure == 'multiple_images':
+                    card['image_list'] *= 2
+                elif failure == 'wrong_city':
+                    card['title'] = '潮州牛肉丸'
+                elif failure == 'wrong_dish':
+                    card['title'] = '汕头肠粉'
+            return httpx.Response(200, json={'success': True, 'data': {'items': [{'note_card': card}]}})
+        assert request.url.host == 'sns.xhscdn.com' and request.url.path == '/correct'
+        assert 'cookie' not in request.headers
+        return httpx.Response(200, content=b'correct', headers={'Content-Type': 'image/jpeg'})
+    monkeypatch.setattr(httpx, 'Client', lambda **kwargs: photos(transport=httpx.MockTransport(handler), **kwargs))
+    assert place_photos.get_photo('汕头', '牛肉丸', 'food') == (b'correct', 'image/jpeg')
+    assert len(calls) == 4
+
+
+@pytest.mark.parametrize('blocked', [False, True])
+def test_food_no_match_is_bounded_and_risk_control_stops_requests(photos, monkeypatch, blocked):
+    calls = []
+    def handler(request):
+        calls.append(request)
+        if request.url.path.endswith('/search/notes'):
+            return httpx.Response(200, json={'success': True, 'data': {'items': [
+                {'model_type': 'note', 'id': format(index, '024x'), 'note_card': {
+                    'display_title': '汕头牛肉丸', 'cover': {'url': 'https://sns.xhscdn.com/cover'}}}
+                for index in range(20)]}})
+        assert request.url.path.endswith('/feed')
+        return httpx.Response(200, json={'success': False, 'code': -100 if blocked else 1234})
+    monkeypatch.setattr(httpx, 'Client', lambda **kwargs: photos(transport=httpx.MockTransport(handler), **kwargs))
+    if blocked:
+        with pytest.raises(place_photos.PhotoError, match='login_or_risk_control'):
+            place_photos.get_photo('汕头', '牛肉丸', 'food')
+        assert len(calls) == 2 and xhs._blocked_cookies
+    else:
+        assert place_photos.get_photo('汕头', '牛肉丸', 'food') is None
+        assert place_photos.get_photo('汕头', '牛肉丸', 'food') is None
+        assert len(calls) == 4
+
+
+def test_food_does_not_reuse_legacy_unverified_cache(photos, monkeypatch):
+    import hashlib
+    session = xhs.cookie_key(xhs.parse_cookie('a1=test-device; web_session=private-cookie'))
+    _, payload = place_photos.photo_search('汕头', '牛肉丸', 'food')
+    old_key = hashlib.sha256(session + f'latest-first-v4:food:{payload["keyword"]}'.encode()).hexdigest()
+    place_photos.cache_photo(old_key, (b'wrong', 'image/jpeg'))
+    calls = []
+    def search(*args):
+        calls.append(args)
+        return {'items': []}
+    monkeypatch.setattr(xhs, 'post', search)
+    assert place_photos.get_photo('汕头', '牛肉丸', 'food') is None
+    assert len(calls) == 1
 
 
 def test_disk_cache_is_scoped_to_session_and_honors_disabled_setting(photos, monkeypatch):

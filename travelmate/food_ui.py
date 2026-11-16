@@ -70,7 +70,7 @@ def panel(sections, days, text, inline_images=False, city=''):
     def photo(name):
         image = ''
         if city and not inline_images:
-            url = '/api/places/photo?' + urlencode({'city': city, 'place': name, 'category': 'food', 'v': 4})
+            url = '/api/places/photo?' + urlencode({'city': city, 'place': name, 'category': 'food', 'v': 5})
             image = '<img data-food-photo="' + text(url) + '" alt="' + text(name + ' · 小红书搜索配图') + '" hidden>'
         return ('<div class="food-photo discovery-photo"><span class="food-placeholder discovery-placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 12h20c-1 7-5 9-10 9S3 19 2 12ZM7 2c-4 3 3 4 0 7m5-7c-4 3 3 4 0 7m5-7c-4 3 3 4 0 7"/></svg><small>暂无菜品图片</small></span>' + image + '</div>')
 
@@ -90,7 +90,7 @@ def panel(sections, days, text, inline_images=False, city=''):
     dietary = list(dict.fromkeys(item['text'] for section in sections for item in section.get('items', []) if item['text'].startswith('饮食要求')))
     if dietary:
         out.append('<aside class="food-preference" aria-label="饮食要求">' + '<br>'.join(text(note) for note in dietary) + '</aside>')
-    out.append('<p class="food-image-note">' + ('离线版不加载在线配图。' if inline_images else '图片来自小红书搜索，未核实为所荐菜品或门店实拍；无匹配或加载失败时显示占位。') + '具体食材与忌口请向店家确认。</p></div>')
+    out.append('<p class="food-image-note">' + ('离线版不加载在线配图。' if inline_images else '图片来自小红书，经菜名、城市与单图笔记筛选，未核实图片内容或门店归属；无可靠匹配或加载失败时显示占位。') + '具体食材与忌口请向店家确认。</p></div>')
     return ''.join(out)
 
 
