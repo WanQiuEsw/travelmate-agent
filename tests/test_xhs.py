@@ -220,7 +220,8 @@ def test_planner_xhs_first_bailian_gap_and_export(tmp_path, monkeypatch, mode):
         chat(agent, 'xhs', '规划杭州')
         state = get_workflow(agent, 'xhs')
         exported = guide_markdown(get_version(state, 1))
-    assert calls == (['xhs', 'bailian'] if mode == 'failed' else ['xhs', 'xhs', 'bailian'])
+    assert calls == (['xhs', 'bailian'] if mode == 'failed' else
+                     ['xhs', 'xhs'] if mode == 'complete' else ['xhs', 'xhs', 'bailian'])
     if mode != 'failed':
         assert '小红书' in exported and '发布时间' in exported
         assert 'https://www.xiaohongshu.com/explore/' in exported

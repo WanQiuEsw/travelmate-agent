@@ -9,7 +9,7 @@ from langchain.tools import ToolRuntime, tool
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 from langchain_core.messages import HumanMessage, AIMessage
-from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
+from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator, field_validator
 from travelmate.public import public_data
 from travelmate.evidence import merge_evidence, validate_evidence, check_reference
 
@@ -50,6 +50,32 @@ class Booking(BaseModel):
 
 
 Requirements.model_rebuild()
+
+
+class PlanningRequirements(Requirements):
+    """Complete form snapshot; dates and amounts are validated before generation."""
+    origin: str = Field(min_length=1, max_length=100)
+    budget_scope: Literal["per_person", "total"]
+    budget_currency: Literal["CNY"] = "CNY"
+    budget_includes: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("origin", "destination", "budget_includes")
+    @classmethod
+    def nonblank(cls, value):
+        if not value.strip():
+            raise ValueError("旅行条件不能为空")
+        return value.strip()
+
+    @model_validator(mode="after")
+    def valid_trip(self):
+        if self.origin == self.destination:
+            raise ValueError("出发地和目的地不能相同")
+        today = datetime.now(timezone(timedelta(hours=8))).date()
+        if self.start_date and self.start_date < today:
+            raise ValueError("出发日期不能早于今天")
+        return self
+
+
 partial_fields = {}
 for key, field in Requirements.model_fields.items():
     if field.is_required():
@@ -73,6 +99,8 @@ def amount(value):
 class Stop(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     place: str = Field(min_length=1, max_length=200)
+    kind: Literal["visit", "experience", "transport", "meal", "lodging", "rest"] | None = Field(default=None, description="活动类型：景点visit、特色体验experience、普通交通transport、用餐meal、住宿lodging、休息rest；观光巴士属于experience，普通接驳属于transport。")
+    highlight: str = Field(default="", max_length=240, description="仅为visit或experience填写一句具体游玩亮点：看到什么、体验什么、有什么特点。只描述当前地点，不写费用、预约、交通缓冲或泛泛的值得打卡；非游玩安排留空。")
     city: str = Field(min_length=1, max_length=100)
     start: str | None = Field(default=None, pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
     end: str | None = Field(default=None, pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
@@ -113,12 +141,20 @@ class Alternative(BaseModel):
 
 class Food(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    name: str = Field(min_length=1, max_length=80)
-    description: str = Field(min_length=1, max_length=400, description="介绍当地菜品或小吃的口味、特点，不编造价格、餐厅或营业信息。")
+    name: str = Field(min_length=1, max_length=80, description="目的地代表性菜品或小吃名，不填景点、餐厅、美食街或顺路用餐占位；厦门可选醋肉、沙茶面、闽南卤面、当地海鲜做法，其他城市按当地风味选择，不照搬厦门清单。")
+    description: str = Field(min_length=1, max_length=400, description="说明这道菜与目的地的风味关联、主要食材和口感，不用通用好吃描述，不编造价格、餐厅或营业信息。")
     area: str = Field(default="", max_length=120, description="建议结合当日游玩片区顺路用餐；不是已核实的门店地址。")
     tips: str = Field(default="", max_length=300, description="结合用户忌口、过敏和饮食偏好给出点单提醒。")
-    day: int | None = Field(default=None, ge=1, le=30, description="顺路安排在第几天；未确定时留空。")
+    day: int | None = Field(default=None, ge=1, le=30, description="兼容历史用餐安排；当地美食推荐留空，不按天分配。")
     meal: Literal["早餐", "午餐", "晚餐", "加餐", "不限"] = "不限"
+
+    @field_validator('name')
+    @classmethod
+    def concrete_dish(cls, value):
+        from travelmate.recommendations import is_specific_food
+        if not is_specific_food(value):
+            raise ValueError('美食推荐必须填写目的地特色菜品或小吃名，不能填写地点、餐厅或通用用餐安排')
+        return value.strip()
 
 
 class BudgetTier(BaseModel):
@@ -160,7 +196,7 @@ class Itinerary(BaseModel):
     other_cost_estimated: bool = Field(default=False, description="有依据且已在cost_notes列明费用构成和算式时为true。")
     alternatives: list[Alternative] = Field(default_factory=list, max_length=30)
     reminders: list[str] = Field(default_factory=list, max_length=30)
-    foods: list[Food] = Field(default_factory=list, max_length=120, description="按天提供早餐、午餐、晚餐，每天三餐均须填写day和meal；可另加小吃。不编造门店或营业信息，首末日用餐随实际到离时刻调整。空列表仅兼容历史行程。")
+    foods: list[Food] = Field(default_factory=list, max_length=120, description="推荐目的地有代表性的当地菜品和小吃，每道只列一次，介绍风味与饮食注意事项；day留空、meal为不限，不按天、三餐或区域分组。不编造门店或营业信息。空列表仅兼容历史行程。")
     summary: str = Field(default="", max_length=600, description="先给玩法判断，说明如何围绕兴趣顺路安排；没有价格依据不能断言预算够用。")
     key_call: str = Field(default="", max_length=600, description="开篇关键判断：这笔钱够不够、主要花在哪、必须取舍什么。只能基于已列费用与查询依据，禁止无依据断言预算充足。")
     hard_rules: list[str] = Field(default_factory=list, max_length=4, description="由预算和路线推出、可直接执行的三条以内硬规则，例如只买某一价位的车次、不住某片区。")
@@ -174,6 +210,10 @@ class Itinerary(BaseModel):
     @model_validator(mode="after")
     def consistent_timing(self):
         from decimal import Decimal, ROUND_HALF_UP
+        attractions = {stop.place.strip() for day in self.days for stop in day.stops
+                       if stop.kind in ('visit', 'experience')}
+        if any(food.name in attractions for food in self.foods):
+            raise ValueError('foods不能将行程中的景点或体验名称当作美食，请填写具体特色菜品')
         cents = lambda n: (Decimal(str(n)) * 100).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
         if self.other_cost_items and sum(cents(item.amount) for item in self.other_cost_items) != cents(self.other_cost):
             raise ValueError("其他费用分项之和必须等于other_cost，不能重复计入活动费用")
@@ -276,7 +316,7 @@ def validate_plan(requirements, plan):
     for food in plan.foods:
         if food.day and food.day > req.days:
             issues.append(f'美食{food.name}安排在第{food.day}天，超出行程天数')
-    for day in plan.days:
+    for day_index, day in enumerate(plan.days):
         previous = 0
         for stop in day.stops:
             if plan.time_granularity == "precise":
@@ -286,7 +326,10 @@ def validate_plan(requirements, plan):
                 elif end <= start or start < previous + stop.travel_minutes:
                     issues.append(f"{day.date} {stop.place} 时间重叠或交通时间不足")
                 previous = end
-            if stop.city != req.destination:
+            origin_transfer = (day_index in (0, len(plan.days) - 1) and stop.city == req.origin
+                               and stop.transport_mode in ("rail", "flight", "driving", "transit", "ferry")
+                               and not set(stop.activities) - {"other", "rest"})
+            if stop.city != req.destination and not origin_transfer:
                 issues.append(f"{stop.place} 所在城市与目的地不一致，请调整目的地或地点")
     for index, day in enumerate(plan.days, 1):
         deadlines = [b.departure for b in req.bookings if b.day == index and b.departure]

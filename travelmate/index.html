@@ -276,43 +276,65 @@
   .account { color: var(--text); }
   .account a { display: block; color: var(--accent-hover); margin-top: 12px; }
   .home-hero, .home-discover, .idea-chips { display: none; }
-  main:has(#messages:empty) { overflow-y: auto; }
-  main:has(#messages:empty) .site-header { position: absolute; inset: 0 0 auto; z-index: 4; padding: 12px 4.4%; gap: 38px; color: #fffdf7; }
-  main:has(#messages:empty) .brand { color: inherit; --brand-snow: #254e3f; }
-  main:has(#messages:empty) .site-nav { border-color: #ffffff55; padding-left: 28px; gap: 28px; }
-  main:has(#messages:empty) .site-nav button { color: inherit; font-weight: 500; font-size: 18px; }
-  main:has(#messages:empty) .site-nav button:hover { background: #ffffff12; }
-  main:has(#messages:empty) .conversation { flex: none; overflow: visible; padding: 0; }
-  main:has(#messages:empty) .conversation > .chat-width { max-width: none; }
-  main:has(#messages:empty) .home-hero { display: flex; flex-direction: column; position: relative; min-height: clamp(590px, 40vw, 700px); isolation: isolate; background: #204d3a; }
-  .home-hero > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 48%; z-index: -2; }
+  main:is(:has(#messages:empty), [data-planning="editing"]) { overflow-y: auto; scrollbar-gutter: stable; }
+  main:is(:has(#messages:empty), [data-planning="editing"]) .site-header { position: absolute; inset: 0 0 auto; z-index: 4; padding: 12px 4.4%; gap: 38px; color: #fffdf7; }
+  main:is(:has(#messages:empty), [data-planning="editing"]) .brand { color: inherit; --brand-snow: #254e3f; }
+  main:is(:has(#messages:empty), [data-planning="editing"]) .site-nav { border-color: #ffffff55; padding-left: 28px; gap: 28px; }
+  main:is(:has(#messages:empty), [data-planning="editing"]) .site-nav button { color: inherit; font-weight: 500; font-size: 18px; }
+  main:is(:has(#messages:empty), [data-planning="editing"]) .site-nav button:hover { background: #ffffff12; }
+  main:is(:has(#messages:empty), [data-planning="editing"]) .conversation { flex: none; overflow: visible; padding: 0; }
+  main:is(:has(#messages:empty), [data-planning="editing"]) .conversation > .chat-width { max-width: none; }
+  main:is(:has(#messages:empty), [data-planning="editing"]) .home-hero { display: flex; flex-direction: column; position: relative; z-index: 1; min-height: clamp(590px, 40vw, 700px); isolation: isolate; background: #204d3a; }
+  .home-hero > img { position: absolute; inset: 0; width: 100%; height: clamp(590px, 40vw, 700px); object-fit: cover; object-position: center 48%; z-index: -2; }
   .home-hero::after { content: ''; position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, #05271f52, transparent 66%), linear-gradient(#082a2940, transparent 45%, #0c3d2012); }
-  .hero-copy { padding: 116px 5.6% 58px; flex: 1; color: #fffdf7; }
+  .hero-copy { padding: 116px 5.6% 58px; flex: none; color: #fffdf7; }
   .home-hero h1 { margin: 0 0 12px; font: 500 clamp(58px, 5.7vw, 92px)/1.18 Georgia, 'Songti SC', SimSun, serif; letter-spacing: .04em; text-shadow: 0 2px 20px #14392526; }
   .hero-copy .intro { margin: 0; color: #fffdf7; font: 21px/1.8 Georgia, 'Songti SC', SimSun, serif; letter-spacing: .08em; }
   #home-planner { margin: 0 4.4% 30px; padding: 22px 30px 16px; color: #11382a; border: 1px solid #fff9eea6; border-radius: 28px; background: #fffaf2f7; box-shadow: 0 12px 40px #102e2514; }
   #home-planner:focus-within { box-shadow: 0 12px 40px #102e2526; }
-  .planner-fields { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(180px, 1.2fr); align-items: end; gap: 22px; }
+  .planner-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; gap: 20px 22px; }
   .planner-fields > label { display: grid; min-width: 0; gap: 8px; position: relative; }
-  .planner-fields > label:not(:nth-last-child(2))::after { content: ''; position: absolute; right: -12px; height: 56px; width: 1px; bottom: 0; background: #d8d2c7; }
+  .planner-fields > .planner-preference { grid-column: span 2; }
   .planner-fields label > span { display: flex; align-items: center; gap: 8px; padding-left: 8px; font-size: 17px; font-weight: 600; }
   #home-planner select { appearance: none; min-width: 0; width: 100%; min-height: 44px; border: 1px solid #d5cec2; border-radius: 12px; padding: 7px 32px 7px 14px; font: inherit; font-size: 18px; color: #192b21; cursor: pointer; background: #fffdf74d url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2311382a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") right 12px center / 16px no-repeat; }
   #home-planner select:hover { border-color: #7b9a86; }
-  #home-planner select:focus-visible { outline: 3px solid #51836e; outline-offset: 3px; }
+  #home-planner input[type=date] { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; padding: 7px 14px; border: 1px solid #d5cec2; border-radius: 12px; font: inherit; font-size: 18px; color: #192b21; background: #fffdf74d; }
+  #home-planner select:focus-visible, #home-planner input:focus-visible { outline: 3px solid #51836e; outline-offset: 3px; }
+  .home-route { grid-column: span 2; position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 36px minmax(0, 1fr); align-items: end; gap: 12px; min-width: 0; }
+  .home-route > label { display: grid; min-width: 0; gap: 8px; }
+  #home-planner .home-route input { width: 100%; min-width: 0; min-height: 44px; padding: 7px 12px; border: 1px solid #d5cec2; border-radius: 12px; background: #fffdf780; color: #192b21; font: inherit; font-size: 18px; }
+  #home-planner .home-route input[aria-expanded=true] { border-color: #51836e; background: #fffdf7; }
+  #home-swap { align-self: end; margin-bottom: 4px; min-height: 36px; padding: 0; border: 0; border-radius: 50%; background: #e4ecdd; color: #254f39; font-size: 24px; }
+  .home-city-panel { position: absolute; top: calc(100% + 12px); left: 0; z-index: 6; width: 100%; padding: 18px; border: 1px solid #dce2d5; border-radius: 18px; background: #fffdf8; color: #193d2d; box-shadow: 0 14px 40px #102e2530; }
+  .home-city-panel[hidden] { display: none; }
+  .home-city-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 14px; }
+  .home-city-heading strong { font-size: 16px; }
+  .home-city-heading small, .home-city-hint, .home-city-caption { color: #68786b; font-size: 12px; }
+  .home-city-tabs { display: flex; gap: 4px; padding-bottom: 12px; border-bottom: 1px solid #e6e8de; }
+  .home-city-tabs[hidden] { display: none; }
+  .home-city-tabs button { flex: 1; min-width: 0; padding: 5px 2px; min-height: 36px; border: 0; border-radius: 8px; background: transparent; font-size: 13px; white-space: nowrap; }
+  .home-city-tabs button[aria-pressed=true] { color: #215638; background: #e5efdd; font-weight: 600; }
+  .home-city-recent { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 12px; font-size: 12px; color: #68786b; }
+  .home-city-recent:empty { display: none; }
+  .home-city-recent button { padding: 4px 10px; min-height: 32px; border: 0; border-radius: 20px; background: #f0f0e8; font-size: 12px; }
+  .home-city-caption { margin: 12px 0 8px; }
+  .home-city-results { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; max-height: 228px; overflow-y: auto; overscroll-behavior: contain; }
+  .home-city-results button { display: grid; align-content: center; gap: 3px; min-width: 0; padding: 8px 4px; min-height: 56px; border: 1px solid #e2e6dc; border-radius: 10px; background: #fffdf8; color: #193d2d; font-size: 15px; overflow-wrap: anywhere; }
+  .home-city-results button small { font-size: 10px; color: #758172; overflow-wrap: anywhere; }
+  .home-city-results button[aria-selected=true], .home-city-results button:hover { border-color: #7e9d74; background: #e5efdd; }
+  .home-city-hint { margin: 12px 0 0; line-height: 1.6; }
   #home-generate { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 58px; padding: 10px 14px; border: 0; border-radius: 16px; background: linear-gradient(130deg, #38674a, #123b27); color: #fffdf2; white-space: nowrap; font: 600 23px/1.4 Georgia, 'Songti SC', SimSun, serif; box-shadow: 0 3px 8px #21442c12; }
   #home-generate:hover:enabled { background: #224f36; }
   #home-generate .ui-icon { color: #eee8aa; }
-  .planner-footer { position: relative; display: flex; align-items: center; justify-content: center; gap: 20px; margin-top: 18px; min-height: 28px; }
+  .planner-footer { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; margin-top: 22px; min-height: 28px; }
+  .planner-footer #home-generate { width: min(100%, 420px); }
   .planner-footer p { display: flex; align-items: center; gap: 20px; margin: 0; color: #47614c; font: 17px/1.7 Georgia, 'Songti SC', SimSun, serif; letter-spacing: .04em; }
   .planner-footer p .ui-icon { width: 17px; height: 17px; color: #7aa68a; }
-  .planner-people { position: absolute; left: 0; }
-  #home-planner .planner-people select { font-size: 13px; width: auto; padding: 2px 28px 2px 4px; min-height: 28px; border-color: transparent; border-radius: 6px; color: #607061; background-position: right 5px center; }
-  .planner-date { position: absolute; right: 0; font-size: 12px; color: #667565; }
   #planner-status { margin: 0; font-size: 13px; color: #41664a; text-align: center; }
   #planner-status:not(:empty) { margin-top: 10px; }
-  main:has(#messages:empty) .composer { padding: 0; }
-  main:has(#messages:empty) #form, main:has(#messages:empty) #status, main:has(#messages:empty) .composer footer { display: none; }
-  main:has(#messages:empty) .home-discover { display: grid; flex-shrink: 0; width: min(1660px, 100%); margin: 0 auto; padding: 32px 2.6% 40px; gap: 28px; }
+  main:is(:has(#messages:empty), [data-planning="editing"]) .composer { padding: 0; }
+  main:is(:has(#messages:empty), [data-planning="editing"]) #form, main:is(:has(#messages:empty), [data-planning="editing"]) #status, main:is(:has(#messages:empty), [data-planning="editing"]) .composer footer { display: none; }
+  main:is(:has(#messages:empty), [data-planning="editing"]) .home-discover { display: grid; flex-shrink: 0; width: min(1660px, 100%); margin: 0 auto; padding: 32px 2.6% 40px; gap: 28px; }
   .inspiration { min-width: 0; }
   .inspiration-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 26px; }
   .inspiration-heading h2 { position: relative; margin: 0; color: #113b28; font: 700 clamp(30px, 2.8vw, 44px)/1.5 Georgia, 'Songti SC', SimSun, serif; letter-spacing: .02em; }
@@ -341,11 +363,11 @@
   @media (hover: hover) and (pointer: fine) { .inspiration-card:hover img { transform: scale(1.045); } }
   @media (min-width: 1700px) { .hero-copy { width: 1536px; margin: auto; padding-left: 66px; padding-right: 66px; } #home-planner { width: min(1440px, calc(100% - 132px)); margin-inline: auto; } }
   @media (max-width: 1150px) {
-    .planner-fields { gap: 14px; grid-template-columns: repeat(5, minmax(0, 1fr)); }
-    .planner-fields > label:not(:nth-last-child(2))::after { right: -8px; }
-    #home-generate { grid-column: 1 / -1; min-height: 48px; font-size: 20px; }
+    .planner-fields { gap: 18px 14px; }
+    #home-generate { min-height: 48px; font-size: 20px; }
     #home-planner { padding-inline: 22px; }
-    #home-planner select { font-size: 16px; padding-left: 10px; }
+    #home-planner select, #home-planner input[type=date] { font-size: 16px; padding-left: 10px; }
+    #home-planner .home-route input { font-size: 16px; padding-inline: 10px; }
     .planner-fields label > span { font-size: 14px; padding-left: 0; }
     .hero-copy { padding-top: 110px; padding-bottom: 32px; }
     .hero-copy .intro { font-size: 18px; }
@@ -356,27 +378,30 @@
   @media (max-width: 700px) {
     .brand svg { width: 34px; height: 28px; }
     .brand strong { font-size: 24px; }
-    main:has(#messages:empty) .site-header { gap: 14px; padding: 12px 20px; flex-wrap: wrap; }
-    main:has(#messages:empty) .site-nav { padding: 0; border: 0; order: 3; width: 100%; gap: 24px; min-height: 36px; }
-    main:has(#messages:empty) .site-nav button { font-size: 14px; }
+    main:is(:has(#messages:empty), [data-planning="editing"]) .site-header { gap: 14px; padding: 12px 20px; flex-wrap: wrap; }
+    main:is(:has(#messages:empty), [data-planning="editing"]) .site-nav { padding: 0; border: 0; order: 3; width: 100%; gap: 24px; min-height: 36px; }
+    main:is(:has(#messages:empty), [data-planning="editing"]) .site-nav button { font-size: 14px; }
     .hero-copy { padding: 128px 24px 32px; }
     .home-hero h1 { font-size: clamp(32px, 9.2vw, 58px); line-height: 1.3; }
     .hero-copy .intro { font-size: 14px; letter-spacing: 0; }
     .home-hero > img { object-position: 47% center; }
     #home-planner { margin: 0 16px 24px; padding: 20px 18px 16px; border-radius: 22px; }
     .planner-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 12px; }
-    .planner-fields > label::after { display: none; }
-    .planner-fields > label:nth-last-child(2) { grid-column: 1 / -1; }
+    .home-route { gap: 8px; grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr); }
+    .home-city-panel { padding: 14px; }
+    .home-city-results { grid-template-columns: repeat(3, minmax(0, 1fr)); max-height: 192px; }
+    .home-city-heading { flex-wrap: wrap; margin-bottom: 10px; }
+    .home-city-heading small { font-size: 11px; }
+    .planner-fields > .planner-departure { grid-column: 1 / -1; }
+    .planner-options .planner-fields > label:has(input) { grid-column: 1 / -1; }
     .planner-fields label > span { font-size: 14px; gap: 6px; }
     .planner-fields label .ui-icon { width: 20px; height: 20px; }
     #home-planner select { font-size: 16px; min-height: 44px; }
-    #home-generate { font-size: 21px; min-height: 50px; }
+    #home-generate { grid-column: 1 / -1; font-size: 21px; min-height: 50px; }
     .planner-footer { flex-wrap: wrap; gap: 8px 12px; margin-top: 14px; }
     .planner-footer p { font-size: 13px; gap: 8px; order: 3; width: 100%; justify-content: center; }
     .planner-footer p .ui-icon { width: 12px; height: 12px; }
-    .planner-people, .planner-date { position: static; }
-    .planner-date { margin-left: auto; font-size: 11px; }
-    main:has(#messages:empty) .home-discover { padding: 26px 16px; }
+    main:is(:has(#messages:empty), [data-planning="editing"]) .home-discover { padding: 26px 16px; }
     .inspiration-heading { align-items: flex-start; gap: 12px; margin-bottom: 22px; }
     .inspiration-heading h2 { font-size: clamp(21px, 5.7vw, 30px); white-space: nowrap; }
     #random-destination { font: 600 13px/1.5 'Microsoft YaHei', sans-serif; border-radius: 10px; padding: 6px 9px; gap: 5px; min-height: 36px; }
@@ -389,6 +414,79 @@
     .travel-journal { padding: 18px; }
   }
   @media (max-width: 360px) { #home-planner select[name=budget] { font-size: 13px; padding-left: 7px; padding-right: 22px; background-position: right 6px center; } }
+
+  #home-planner input:not([type=date]) { min-width: 0; width: 100%; min-height: 44px; border: 1px solid #d5cec2; border-radius: 12px; padding: 8px 12px; font: inherit; box-sizing: border-box; }
+  .planner-options { margin-top: 12px; }
+  .planner-options summary { cursor: pointer; padding: 10px 0; }
+  main[data-planning] .composer, main[data-planning] #messages .user, main[data-planning] #messages .speaker { display: none; }
+  main[data-planning="running"] .home-hero, main[data-planning="failed"] .home-hero, main[data-planning="running"] .inspiration, main[data-planning="editing"] #messages { display: none; }
+  main[data-planning]:not([data-planning="editing"]) .conversation { padding: 0 28px 40px; background: linear-gradient(#faf8f300 160px, #faf8f3 300px), linear-gradient(#faf8f366, #faf8f3 300px), url('/assets/visual/home-panorama.webp') center 42% / 100% auto no-repeat; }
+  main[data-planning]:not([data-planning="editing"]) .chat-width { max-width: 1240px; }
+  main[data-planning] #messages .message { max-width: none; margin: 0 auto; }
+  main[data-planning] .content { white-space: normal; }
+  main[data-planning] .progress.planning-screen { position: relative; border: 0; border-radius: 0; padding: 30px 0 0; margin: 0; background: transparent; font-size: 15px; }
+  .planning-hero { text-align: center; padding: 8px 16px 20px; }
+  .content .planning-heading { margin: 0 0 10px; text-align: center; color: #173f30; font: 500 clamp(30px, 3.7vw, 54px)/1.4 Georgia, 'Songti SC', SimSun, serif; letter-spacing: .035em; }
+  .content .planning-subtitle { color: #4e6557; font: 18px/1.7 Georgia, 'Songti SC', SimSun, serif; margin: 0 0 22px; }
+  .planning-facts { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 0; }
+  .planning-facts span { padding: 8px 18px; border: 1px solid #d7d3c3; border-radius: 30px; background: #fffdf6e8; color: #294b3a; overflow-wrap: anywhere; }
+  .planning-layout { display: grid; grid-template-columns: minmax(270px, .85fr) minmax(0, 1.15fr); gap: 28px; padding: 26px; border: 1px solid #e4dfd3; border-radius: 28px; background: #fffdf8f5; box-shadow: 0 12px 40px #2c463510; }
+  .planning-tasks { min-width: 0; padding: 8px 28px 0 0; border-right: 1px solid #e4dfd3; }
+  .content .planning-chain { list-style: none; padding: 0; margin: 0; }
+  .content .planning-chain li { position: relative; padding: 0 0 29px 48px; margin: 0 0 0 15px; min-height: 60px; border-left: 2px solid #d8dfcd; color: #748071; font-size: 16px; line-height: 1.6; }
+  .content .planning-chain li:last-child { border-left-color: transparent; padding-bottom: 12px; min-height: 40px; }
+  .planning-chain li::before { content: ''; position: absolute; left: -13px; top: 0; width: 24px; height: 24px; border: 2px solid #9aaf8a; border-radius: 50%; background: #fffdf8; text-align: center; font: 600 15px/20px system-ui, sans-serif; }
+  .planning-chain li[data-state="completed"] { color: #294b3a; }
+  .planning-chain li[data-state="completed"]::before { content: '✓'; color: #fff; border-color: #53774b; background: #53774b; }
+  .planning-chain li[data-state="running"] { color: #173f30; font-weight: 600; }
+  .planning-chain li[data-state="running"]::before { background: #d58b35; border: 4px solid #fff9ef; box-shadow: 0 0 0 2px #d58b35, 0 0 0 8px #d58b3517; animation: planning-pulse 2s ease-in-out infinite; }
+  .planning-chain li[data-state="failed"] { color: #9a4d2b; }
+  .planning-chain li[data-state="failed"]::before { content: '!'; color: #9a4d2b; border-color: #b9693b; background: #fff4e9; }
+  .content .planning-detail { min-height: 58px; margin: 12px 0 0; padding: 12px 14px; border-radius: 12px; background: #edf1e6; color: #425b45; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+  .planning-preview { min-width: 0; }
+  .planning-cover { position: relative; overflow: hidden; aspect-ratio: 2 / 1; border-radius: 20px; background: #dfe7d7; }
+  .planning-cover img[hidden] { display: none; }
+  .planning-cover::after { content: ''; position: absolute; inset: 0; background: linear-gradient(transparent 35%, #163f328a); pointer-events: none; }
+  .planning-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .planning-destination { position: absolute; z-index: 1; bottom: 20px; left: 22px; right: 18px; color: #fffdf5; font: 500 clamp(22px, 2.5vw, 36px)/1.4 Georgia, 'Songti SC', SimSun, serif; overflow-wrap: anywhere; }
+  .planning-badge { position: absolute; z-index: 1; top: 14px; right: 14px; padding: 5px 12px; border: 1px solid #d9ab6f; border-radius: 24px; background: #fff9edf2; color: #8e571e; font-size: 12px; }
+  .content .planning-preview-note { margin: 14px 0 10px; color: #61725e; font-size: 12px; line-height: 1.6; }
+  .planning-days { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .planning-day { border: 1px solid #e2dfd3; border-radius: 12px; padding: 12px; min-width: 0; }
+  .planning-day strong { display: block; margin-bottom: 10px; color: #52664b; font: 500 17px/1.5 Georgia, 'Songti SC', SimSun, serif; }
+  .planning-skeleton { display: block; height: 7px; margin-top: 8px; background: #e1e5d9; border-radius: 5px; }
+  .planning-skeleton:last-child { width: 65%; }
+  .planning-topics { display: flex; flex-wrap: wrap; justify-content: space-around; gap: 8px; margin-top: 14px; padding: 11px; background: #eeeee5; border-radius: 12px; color: #687361; font-size: 12px; }
+  .planning-footer { text-align: center; padding: 22px 12px 0; }
+  .content .planning-reassurance { color: #64715e; font-size: 13px; margin: 0 0 12px; }
+  .planning-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; }
+  .planning-actions button { border-radius: 24px; background: #fffdf6; color: #294f3a; border-color: #9aac91; padding-inline: 22px; }
+  .planning-actions .planning-retry { color: #fffdf6; background: #214c36; border-color: #214c36; }
+  .content .planning-clock { text-align: center; margin: 0; color: #6b775f; font-size: 12px; padding-bottom: 12px; }
+  .planning-screen + div:not(:empty) { margin-top: 20px; padding: 20px; border: 1px solid #e4d2bd; border-radius: 18px; background: #fffaf2; }
+  .planning-requirements dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px 18px; line-height: 1.7; font-size: 14px; }
+  .planning-requirements dt { color: #687361; }
+  .planning-requirements dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+  @keyframes planning-pulse { 50% { box-shadow: 0 0 0 2px #d58b35, 0 0 0 11px #d58b3508; } }
+  @media (prefers-reduced-motion: reduce) { .planning-chain li[data-state="running"]::before { animation: none; } }
+  @media (max-width: 760px) {
+    main[data-planning]:not([data-planning="editing"]) .conversation { padding: 0 16px 28px; background-size:  auto 250px; }
+    main[data-planning] .progress.planning-screen { padding-top: 24px; }
+    .planning-hero { padding: 0 0 20px; }
+    .content .planning-heading { font-size: clamp(25px, 6vw, 36px); }
+    .content .planning-subtitle { font-size: 15px; margin-bottom: 16px; }
+    .planning-facts { gap: 6px; }
+    .planning-facts span { padding: 6px 11px; font-size: 12px; }
+    .planning-layout { grid-template-columns: minmax(0, 1fr); gap: 20px; padding: 20px 18px; border-radius: 22px; }
+    .planning-tasks { border: 0; padding: 0; }
+    .content .planning-chain li { font-size: 14px; padding-left: 34px; padding-bottom: 23px; min-height: 50px; }
+    .planning-cover { aspect-ratio: 2 / 1; border-radius: 14px; }
+    .planning-destination { font-size: 24px; bottom: 12px; left: 16px; }
+    .planning-day { padding: 9px; }
+    .planning-day strong { font-size: 14px; }
+    .planning-requirements dl { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+    .planning-requirements dd { margin-bottom: 10px; }
+  }
 </style>
 <a class="skip" href="#main-content">跳到主要内容</a>
 <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -401,6 +499,7 @@
   <symbol id="icon-pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/></symbol>
   <symbol id="icon-wallet" viewBox="0 0 24 24"><ellipse cx="10" cy="5" rx="7" ry="3"/><path d="M3 5v5c0 4 14 4 14 0V5M3 10v5c0 4 10 4 10 2m3-4h6v8h-6zM19 16h.01"/></symbol>
   <symbol id="icon-heart" viewBox="0 0 24 24"><path d="M20 4c-3-3-7-1-8 2-1-3-5-5-8-2-6 6 8 16 8 16S26 10 20 4Z"/></symbol>
+  <symbol id="icon-people" viewBox="0 0 24 24"><circle cx="9" cy="7" r="3"/><path d="M2 21v-3a7 7 0 0 1 14 0v3M16 4a3 3 0 0 1 0 6m3 4a6 6 0 0 1 3 5v2"/></symbol>
   <symbol id="icon-dice" viewBox="0 0 24 24"><path d="m12 2 10 5v10l-10 5-10-5V7Zm0 10v10M2 7l10 5 10-5"/><path d="M12 6h.01M6 11h.01M8 16h.01M17 12h.01M18 17h.01" stroke-width="3"/></symbol>
   <symbol id="icon-sparkle" viewBox="0 0 24 24"><path d="M12 2c0 6-4 10-10 10 6 0 10 4 10 10 0-6 4-10 10-10-6 0-10-4-10-10Z" fill="currentColor" stroke="none"/></symbol>
 </defs></svg>
@@ -424,14 +523,37 @@
       <div class="hero-copy"><h1 id="welcome">下一站，<br>去心动的地方。</h1><p class="intro">从一个想法，到一段刚刚好的旅程。</p></div>
       <form id="home-planner" aria-label="选择旅行条件">
         <div class="planner-fields">
-          <label><span><svg class="ui-icon" aria-hidden="true"><use href="#icon-pin"/></svg>出发地</span><select id="home-origin" name="origin" aria-label="出发地" required></select></label>
-          <label><span><svg class="ui-icon" aria-hidden="true"><use href="#icon-pin"/></svg>目的地</span><select id="home-destination" name="destination" aria-label="目的地" required></select></label>
-          <label><span><svg class="ui-icon" aria-hidden="true"><use href="#icon-calendar"/></svg>旅行天数</span><select name="days" aria-label="旅行天数"><option value="2">2天1晚</option><option value="3" selected>3天2晚</option><option value="4">4天3晚</option><option value="5">5天4晚</option><option value="6">6天5晚</option><option value="7">7天6晚</option><option value="10">10天9晚</option><option value="14">14天13晚</option></select></label>
-          <label><span><svg class="ui-icon" aria-hidden="true"><use href="#icon-wallet"/></svg>人均预算</span><select name="budget" aria-label="人均预算"><option value="1000">¥1000以内</option><option value="2000">¥1000–2000</option><option value="3000" selected>¥2000–3000</option><option value="5000">¥3000–5000</option><option value="8000">¥5000–8000</option><option value="12000">¥8000–12000</option></select></label>
-          <label><span><svg class="ui-icon" aria-hidden="true"><use href="#icon-heart"/></svg>旅行偏好</span><select name="preference" aria-label="旅行偏好"><option>自然风光</option><option>美食寻味</option><option>海边度假</option><option>山野放空</option><option>古城漫游</option><option>人文艺术</option><option>亲子时光</option><option>轻松休闲</option></select></label>
-          <button id="home-generate" type="submit" disabled><svg class="ui-icon" aria-hidden="true"><use href="#icon-sparkle"/></svg>生成我的行程</button>
+          <div class="home-route" id="home-route">
+            <label><span><svg class="ui-icon" aria-hidden="true"><use href="#icon-pin"/></svg>出发地</span><input id="home-origin" name="origin" aria-label="出发地" placeholder="输入或选择城市" role="combobox" aria-autocomplete="list" aria-controls="home-city-results" aria-expanded="false" autocomplete="off" maxlength="30" required></label>
+            <button id="home-swap" type="button" aria-label="交换出发地和目的地" title="交换出发地和目的地">⇄</button>
+            <label><span><svg class="ui-icon" aria-hidden="true"><use href="#icon-pin"/></svg>目的地</span><input id="home-destination" name="destination" aria-label="目的地" placeholder="输入或选择城市" role="combobox" aria-autocomplete="list" aria-controls="home-city-results" aria-expanded="false" autocomplete="off" maxlength="30" required></label>
+            <section id="home-city-panel" class="home-city-panel" aria-label="城市选择" hidden>
+              <div class="home-city-heading"><strong id="home-city-title">选择目的地</strong><small>中文 / 拼音 / 首字母</small></div>
+              <div id="home-city-tabs" class="home-city-tabs" role="group" aria-label="城市字母分组"></div>
+              <div id="home-city-recent" class="home-city-recent" role="group" aria-label="最近选择"></div>
+              <p id="home-city-caption" class="home-city-caption" role="status" aria-live="polite"></p>
+              <div id="home-city-results" class="home-city-results" role="listbox" aria-label="推荐城市"></div>
+              <p class="home-city-hint">可直接填写其他中文目的地 · ↑↓ 选择，Enter 确认</p>
+            </section>
+          </div>
+          <label class="planner-departure"><span><svg class="ui-icon" aria-hidden="true"><use href="#icon-calendar"/></svg>出发日期</span><input type="date" name="date" aria-label="出发日期"></label>
+          <label><span><svg class="ui-icon" aria-hidden="true"><use href="#icon-calendar"/></svg>旅行天数</span><select name="days" aria-label="旅行天数"><option value="1">1日游</option><option value="2">2天1晚</option><option value="3" selected>3天2晚</option><option value="4">4天3晚</option><option value="5">5天4晚</option><option value="6">6天5晚</option><option value="7">7天6晚</option><option value="10">10天9晚</option><option value="14">14天13晚</option></select></label>
+          <label><span><svg class="ui-icon" aria-hidden="true"><use href="#icon-people"/></svg>同行人数</span><select name="people" aria-label="同行人数"><option value="1">1人出发</option><option value="2" selected>2人同行</option><option value="3">3人同行</option><option value="4">4人同行</option><option value="5">5人同行</option><option value="6">6人同行</option><option value="8">8人同行</option></select></label>
+          <label><span id="home-budget-label"><svg class="ui-icon" aria-hidden="true"><use href="#icon-wallet"/></svg>人均预算上限</span><select name="budget" aria-label="人均预算"><option value="1000">¥1000以内</option><option value="2000">¥1000–2000</option><option value="3000" selected>¥2000–3000</option><option value="5000">¥3000–5000</option><option value="8000">¥5000–8000</option><option value="12000">¥8000–12000</option></select></label>
+          <label class="planner-preference"><span><svg class="ui-icon" aria-hidden="true"><use href="#icon-heart"/></svg>旅行偏好</span><select name="preference" aria-label="旅行偏好"><option>放松散心</option><option>美食寻味</option><option>名胜古迹</option><option>自然风光</option><option>人文艺术</option><option>亲子时光</option><option>轻松休闲</option></select></label>
         </div>
-        <div class="planner-footer"><label class="planner-people"><span class="input-label">同行人数</span><select name="people" aria-label="同行人数"><option value="1">1人出发</option><option value="2" selected>2人同行</option><option value="3">3人同行</option><option value="4">4人同行</option><option value="5">5人同行</option><option value="6">6人同行</option><option value="8">8人同行</option></select></label><p><svg class="ui-icon" aria-hidden="true"><use href="#icon-sparkle"/></svg>选好偏好，剩下交给 TravelMate<svg class="ui-icon" aria-hidden="true"><use href="#icon-sparkle"/></svg></p><span class="planner-date">日期待定也能规划</span></div>
+        <p class="trip-note">日期可以暂不填写；预算金额按所选范围上限规划，实际费用以查询和预订为准。</p>
+        <details class="planner-options"><summary>预算范围与更多需求</summary><div class="planner-fields">
+          <label><span>预算口径</span><select name="budget_scope"><option value="per_person">每人预算</option><option value="total">全员总预算</option></select></label>
+          <label><span>预算包含</span><select name="budget_includes"><option>往返交通、住宿、餐饮、门票和市内交通</option><option>住宿、餐饮、门票和市内交通（不含往返交通）</option><option>餐饮、门票和市内交通（不含往返交通和住宿）</option></select></label>
+          <label><span>旅行节奏</span><select name="pace"><option>适中</option><option>轻松</option><option>紧凑</option></select></label>
+          <label><span>交通方式</span><select name="transport"><option>不限</option><option>高铁</option><option>动车</option><option>火车</option><option>飞机</option><option>自驾</option><option>其他</option></select></label>
+          <label><span>同行与行动需求（选填）</span><input name="mobility" maxlength="1000" placeholder="例如带老人、不爬山"></label>
+          <label><span>饮食需求（选填）</span><input name="dietary" maxlength="1000" placeholder="例如不吃辣、食物过敏"></label>
+          <label><span>其他偏好（选填）</span><input name="extra_preferences" maxlength="800" placeholder="例如必去西湖、喜欢摄影"></label>
+        </div></details>
+        <button id="planning-chat" type="button" hidden>通过对话补充复杂需求</button>
+        <div class="planner-footer"><button id="home-generate" type="submit" disabled><svg class="ui-icon" aria-hidden="true"><use href="#icon-sparkle"/></svg>生成我的攻略</button><p><svg class="ui-icon" aria-hidden="true"><use href="#icon-sparkle"/></svg>选好旅行条件，直接生成完整攻略<svg class="ui-icon" aria-hidden="true"><use href="#icon-sparkle"/></svg></p></div>
         <p id="planner-status" role="status" aria-live="polite"></p>
       </form>
     </section>
@@ -544,10 +666,10 @@
   <section class="inspiration" aria-labelledby="inspiration-title">
     <div class="inspiration-heading"><h2 id="inspiration-title">精选目的地推荐</h2><div class="random-wrap"><p>还没想好去哪？让灵感决定</p><button id="random-destination" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#icon-dice"/></svg>随机目的地</button></div></div>
     <div class="inspiration-grid">
-      <button class="inspiration-card" type="button" data-destination="三亚" data-preference="海边度假" aria-pressed="false"><img src="/assets/visual/home-sea.webp" alt="椰林与碧海沙滩意境图" width="1536" height="1024" loading="lazy"><span class="inspiration-copy"><strong>去海边走走</strong><small>三亚 · 听海放空</small></span></button>
-      <button class="inspiration-card" type="button" data-destination="莫干山" data-preference="山野放空" aria-pressed="false"><img src="/assets/visual/home-mountain.webp" alt="山林与度假木屋意境图" width="1536" height="1024" loading="lazy"><span class="inspiration-copy"><strong>去山野度假</strong><small>莫干山 · 住进自然</small></span></button>
+      <button class="inspiration-card" type="button" data-destination="三亚" data-preference="放松散心" aria-pressed="false"><img src="/assets/visual/home-sea.webp" alt="椰林与碧海沙滩意境图" width="1536" height="1024" loading="lazy"><span class="inspiration-copy"><strong>去海边走走</strong><small>三亚 · 听海放空</small></span></button>
+      <button class="inspiration-card" type="button" data-destination="莫干山" data-preference="自然风光" aria-pressed="false"><img src="/assets/visual/home-mountain.webp" alt="山林与度假木屋意境图" width="1536" height="1024" loading="lazy"><span class="inspiration-copy"><strong>去山野度假</strong><small>莫干山 · 住进自然</small></span></button>
       <button class="inspiration-card" type="button" data-destination="成都" data-preference="美食寻味" aria-pressed="false"><img src="/assets/visual/home-food.webp" alt="成都热气腾腾的火锅意境图" width="1536" height="1024" loading="lazy"><span class="inspiration-copy"><strong>为美食出发</strong><small>成都 · 一路好味</small></span></button>
-      <button class="inspiration-card" type="button" data-destination="大理" data-preference="古城漫游" aria-pressed="false"><img src="/assets/visual/home-town.webp" alt="大理古城与洱海意境图" width="1536" height="1024" loading="lazy"><span class="inspiration-copy"><strong>逛一座古城</strong><small>大理 · 慢慢生活</small></span></button>
+      <button class="inspiration-card" type="button" data-destination="大理" data-preference="名胜古迹" aria-pressed="false"><img src="/assets/visual/home-town.webp" alt="大理古城与洱海意境图" width="1536" height="1024" loading="lazy"><span class="inspiration-copy"><strong>逛一座古城</strong><small>大理 · 慢慢生活</small></span></button>
     </div><p class="inspiration-note">AI 旅行意境图 · 点击选择目的地与偏好，准备好后再生成行程。</p>
   </section>
   <section class="travel-journal" aria-labelledby="journal-title"><h2 id="journal-title"><svg class="ui-icon" aria-hidden="true"><use href="#icon-book"/></svg>我的旅行手记</h2><p class="journal-intro">继续完善你的旅行，或查看已整理的图文攻略。</p><div id="journal-content" aria-live="polite"><p class="journal-empty">正在寻找你的旅行手记…</p></div><p class="journal-footnote"><svg class="ui-icon" aria-hidden="true"><use href="#icon-mountain"/></svg>行程、预算、地图与行前清单，整理在一份图文攻略里。</p></section>
@@ -879,28 +1001,34 @@
     };
   }
 
-  function createProgress(reply, started = Date.now()) {
-    const box = document.createElement('details');
-    box.className = 'progress';
-    box.open = false;
-    const summary = document.createElement('summary');
+  function createProgress(reply, started = Date.now(), requirements = {}) {
+    const planning = Boolean(document.querySelector('#main-content').dataset.planning);
+    const box = document.createElement(planning ? 'section' : 'details');
+    box.className = planning ? 'progress planning-screen' : 'progress';
+    box.open = Boolean(document.querySelector('#main-content').dataset.planning);
+    const summary = document.createElement(planning ? 'p' : 'summary');
+    if (planning) summary.className = 'planning-clock';
     const steps = document.createElement('ul');
     steps.setAttribute('aria-label', '执行记录');
-    box.append(summary, steps);
+    const chain = planning ? createPlanningChain(box, requirements || {}) : null;
+    if (planning) { steps.hidden = true; box.open = true; }
+    box.prepend(summary);
+    box.append(steps);
     reply.replaceChildren(box);
     const answer = document.createElement('div');
     reply.append(answer);
     let phase = '正在处理';
     const tick = () => {
       const seconds = Math.floor((Date.now() - started) / 1000);
-      summary.textContent = phase + ' · 已用时 ' + seconds + ' 秒'
-        + (seconds >= 45 ? ' · 用时偏长，可点开查看已完成的步骤' : '');
+      summary.textContent = (planning ? '' : phase + ' · ') + '已用时 ' + seconds + ' 秒'
+        + (seconds >= 45 ? (planning ? ' · 仍在处理中，进度会自动更新' : ' · 用时偏长，可点开查看已完成的步骤') : '');
     };
     tick();
     const timer = setInterval(tick, 1000);
     const recorded = new Set();
-    function add(text, sources = []) {
-      if (!text || /失败|未核实/.test(text)) return;
+    function add(text, sources = [], event = {}) {
+      chain?.update({...event, text});
+      if (!text) return;
       const key = text + JSON.stringify(sources);
       if (recorded.has(key)) return;
       recorded.add(key);
@@ -927,7 +1055,8 @@
     return {answer, add, finish(success) {
       clearInterval(timer);
       phase = success ? '已完成' : '已中断';
-      box.open = false;
+      box.open = planning;
+      chain?.finish(success);
       tick();
     }};
   }
@@ -1144,6 +1273,18 @@
       if (response.status === 404) { resetConversation(); return; }
       if (!response.ok) throw new Error('history unavailable');
       const data = await response.json();
+      let planningSnapshot;
+      try { planningSnapshot = JSON.parse(localStorage.getItem('travelmate-planning-' + id)); } catch {}
+      if (planningSnapshot) {
+        document.querySelector('#main-content').dataset.planning = data.generating ? 'running' : 'failed';
+        fillPlanningForm(planningSnapshot.requirements, id, planningSnapshot.minimumVersion - 1);
+        const last = data.messages.at(-1);
+        if (!data.generating && last?.role === 'assistant' && last.plan_version >= planningSnapshot.minimumVersion && !last.generation_failed) {
+          localStorage.removeItem('travelmate-planning-' + id);
+          window.location.assign('/sessions/' + encodeURIComponent(id) + '/plans/' + last.plan_version);
+          return;
+        }
+      }
       const previousScroll = viewport?.scrollTop;
       const followLatest = !recovering || viewport && viewport.scrollHeight - previousScroll - viewport.clientHeight < 48;
       generating = data.generating === true;
@@ -1155,9 +1296,15 @@
       if (!generating || !recovering || !recoveryProgress) {
         stopRecovery(!generating);
         messages.replaceChildren();
-        for (const item of data.messages) {
+        for (const item of (planningSnapshot ? [] : data.messages)) {
           const body = appendMessage(item.role === 'user' ? '你' : 'TravelMate', item.content, item.role === 'user');
           if (item.role === 'assistant' && !item.generation_failed) addExport(body, item.message_id, id, item.plan_version);
+        }
+        if (planningSnapshot && !generating) {
+          const reply = appendMessage('TravelMate', '');
+          const failedProgress = createProgress(reply, Date.now(), planningSnapshot.requirements);
+          failedProgress.finish(false);
+          showReply(failedProgress.answer, data.messages.at(-1)?.role === 'assistant' ? data.messages.at(-1).content : '上次规划未完成，请修改条件后重新规划。');
         }
         if (generating) {
           const last = data.messages[data.messages.length - 1];
@@ -1166,10 +1313,10 @@
           }
           const reply = appendMessage('TravelMate', '');
           reply.setAttribute('aria-busy', 'true');
-          recoveryProgress = createProgress(reply, data.progress?.started_at ? data.progress.started_at * 1000 : Date.now());
+          recoveryProgress = createProgress(reply, data.progress?.started_at ? data.progress.started_at * 1000 : Date.now(), planningSnapshot?.requirements);
         }
       }
-      for (const step of data.progress?.steps || []) recoveryProgress?.add(step.text, step.sources);
+      for (const step of data.progress?.steps || []) recoveryProgress?.add(step.text, step.sources, step);
       if (viewport) viewport.scrollTop = followLatest ? viewport.scrollHeight : previousScroll;
 
       status.textContent = generating ? '回复仍在生成，完成后会自动恢复。' : data.interrupted ? '上次回复未完成，可继续补充需求。' : data.messages.length ? '对话已恢复，可以继续聊' : '准备好了，随时出发';
@@ -1207,6 +1354,11 @@
   function resetConversation() {
     showInteraction(null);
     pendingResponse = null;
+    delete form.dataset.planningSession;
+    delete form.dataset.planningVersion;
+    homePlanningBase = {};
+    document.querySelector('#planning-chat').hidden = true;
+    delete document.querySelector('#main-content').dataset.planning;
     stopRecovery();
     send.disabled = false;
     send.textContent = '发送 ↑';
@@ -1228,6 +1380,13 @@
   });
   document.querySelector('#history-toggle')?.addEventListener('click', () => document.querySelector('#sidebar').showModal());
   document.querySelector('#history-close')?.addEventListener('click', () => document.querySelector('#sidebar').close());
+  document.querySelector('#planning-chat').addEventListener('click', async () => {
+    if (busy) return;
+    try { localStorage.removeItem('travelmate-planning-' + session); } catch {}
+    delete document.querySelector('#main-content').dataset.planning;
+    await loadConversation(session);
+    input.focus();
+  });
   document.querySelector('#chat-focus')?.addEventListener('click', () => input.focus());
 
   input.addEventListener('keydown', event => {
@@ -1247,6 +1406,15 @@
     event.preventDefault();
     const text = input.value.trim();
     if (!text || busy || send.disabled) return;
+    const planningRequirements = form.dataset.planningRequirements ? JSON.parse(form.dataset.planningRequirements) : null;
+    delete form.dataset.planningRequirements;
+    if (planningRequirements) {
+      if (!form.dataset.planningSession) resetConversation();
+      document.querySelector('#main-content').dataset.planning = 'running';
+      form.dataset.planningSession = session;
+      messages.replaceChildren();
+      try { localStorage.setItem('travelmate-planning-' + session, JSON.stringify({requirements: planningRequirements, minimumVersion: Number(form.dataset.planningVersion || 0) + 1})); } catch {}
+    }
     const interactionResponse = pendingResponse;
     pendingResponse = null;
     const submittedInteraction = activeInteraction;
@@ -1262,7 +1430,7 @@
     const outputNotice = '答案正在生成，可刷新页面恢复执行进度。';
     status.textContent = outputNotice;
     const reply = appendMessage('TravelMate', '正在查询和校验旅行信息…');
-    const progress = createProgress(reply);
+    const progress = createProgress(reply, Date.now(), planningRequirements);
     const writer = createTypewriter(progress.answer);
     reply.setAttribute('aria-busy', 'true');
     let generating = false;
@@ -1271,9 +1439,10 @@
     try {
       const response = await fetch('/chat/stream', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({session_id: session, message: text, ...(interactionResponse ? {interaction_response: interactionResponse} : {})})
+        body: JSON.stringify({session_id: session, message: text, ...(interactionResponse ? {interaction_response: interactionResponse} : {}), ...(planningRequirements ? {planning_requirements: planningRequirements} : {})})
       });
       if (!response.ok) {
+        if (planningRequirements) { try { localStorage.removeItem('travelmate-planning-' + session); } catch {} }
         const failure = await response.json();
         throw new Error(typeof failure.detail === 'string' ? failure.detail : '请求参数无效');
       }
@@ -1293,11 +1462,12 @@
           const data = JSON.parse(dataLine.slice(6));
           if (event === 'error') {
             generationFailed = data.generation_failed === true;
+            if (planningRequirements) { try { localStorage.removeItem('travelmate-planning-' + session); } catch {} }
             throw new Error(data.text);
           }
           if (event === 'status') {
             if (!/失败|未核实/.test(data.text)) status.textContent = data.text + ' · ' + outputNotice;
-            progress.add(data.text, data.sources);
+            progress.add(data.text, data.sources, data);
           }
           if (event === 'token') {
             if (!generating) progress.add('信息整理完成，正在逐步输出回答。');
@@ -1317,6 +1487,13 @@
             addExport(progress.answer, data.message_id, data.session_id || session, data.plan_version);
             reply.setAttribute('aria-busy', 'false');
             done = true;
+            if (planningRequirements && data.plan_version) {
+              try { localStorage.removeItem('travelmate-planning-' + session); } catch {}
+              window.location.assign('/sessions/' + encodeURIComponent(session) + '/plans/' + data.plan_version);
+            } else if (planningRequirements) {
+              try { localStorage.removeItem('travelmate-planning-' + session); } catch {}
+              document.querySelector('#main-content').dataset.planning = 'failed';
+            }
             loadWatch();
           }
         }
@@ -1328,20 +1505,26 @@
       refreshSessions().catch(() => { status.textContent = '回复已保存，历史列表暂时无法更新。'; });
     } catch (error) {
       writer.cancel();
+      if (planningRequirements) document.querySelector('#main-content').dataset.planning = 'failed';
       if (interactionResponse && !generationFailed) showInteraction(submittedInteraction, interactionResponse.answers);
       input.value = text;
       progress.add(generationFailed ? '规划失败，已保留本次执行记录。' : '请求中断，已保留本次执行记录。');
       showReply(progress.answer, generationFailed ? error.message : '本次回复未完成：' + (error.message || '请稍后重试。'));
+      if (planningRequirements && Number(form.dataset.planningVersion) > 0) {
+        const previous = document.createElement('a'); previous.textContent = '查看上一版可用攻略';
+        previous.href = '/sessions/' + encodeURIComponent(session) + '/plans/' + Number(form.dataset.planningVersion);
+        progress.answer.append(previous);
+      }
       reply.setAttribute('aria-busy', 'false');
       status.textContent = generationFailed ? '规划未完成，输入已保留。'
         : (error.message || '请求失败，请稍后重试') + '。输入已保留。';
     } finally {
-      progress.finish(done);
+      progress.finish(done && (!planningRequirements || document.querySelector('#main-content').dataset.planning !== 'failed'));
       input.placeholder = '想去哪里？聊聊目的地、天数和预算，或使用快速规划…';
       send.textContent = '发送 ↑';
       busy = false;
       send.disabled = newChat.disabled = historySelect.disabled = input.disabled = false;
-      input.focus();
+      if (!planningRequirements) input.focus();
       refreshAccount().catch(() => {});
     }
   });
@@ -1413,10 +1596,33 @@
       window.history.replaceState(null, '', '/');
       return;
     }
+    const guideId = navigation.get('guide');
+    if (guideId && /^[a-f0-9]{32}$/.test(guideId)) {
+      try {
+        const response = await fetch('/api/guides/' + guideId + '/resume', {method: 'POST'});
+        if (!response.ok) throw new Error('攻略暂时无法恢复，请稍后重试');
+        const data = await response.json();
+        navigation.set('session', data.session_id); navigation.set('edit', '1');
+      } catch (error) { status.textContent = error.message; return; }
+    }
     const requested = navigation.get('session');
+    let pendingPlan = false;
+    try { pendingPlan = Boolean(localStorage.getItem('travelmate-planning-' + session)); } catch {}
+    if (!requested && !pendingPlan) { resetConversation(); return; }
     if (requested && /^[a-zA-Z0-9_-]{1,100}$/.test(requested)) {
       session = requested;
       window.history.replaceState(null, '', '/');
+    }
+    if (requested && navigation.get('edit') === '1') {
+      try {
+        const response = await fetch('/sessions/' + encodeURIComponent(session) + '/trip');
+        if (!response.ok) throw new Error('旅行条件读取失败，请刷新重试');
+        const data = await response.json();
+        fillPlanningForm(data.requirements, session, data.version || 0);
+        document.querySelector('#main-content').dataset.planning = 'editing';
+        document.querySelector('#planner-status').textContent = '已载入当前旅行条件，修改后生成新版本，原攻略会保留。';
+      } catch (error) { document.querySelector('#planner-status').textContent = error.message; }
+      return;
     }
     await loadConversation(session);
     await loadWatch();
@@ -1673,21 +1879,271 @@
     chip.addEventListener('click', () => fillTripDraft(chip.dataset.tripTheme));
   }
 </script>
+<script id="planning-flow-script">
+  function createPlanningChain(box, requirements = {}) {
+    const make = (tag, className, text = '') => {
+      const element = document.createElement(tag); element.className = className; element.textContent = text; return element;
+    };
+    const title = make('h2', 'planning-heading', '正在为你规划这次旅行');
+    const hero = make('header', 'planning-hero');
+    hero.append(title, make('p', 'planning-subtitle', '把路上的风景，安排成你的旅程。'));
+    const facts = make('div', 'planning-facts'); facts.setAttribute('aria-label', '本次旅行');
+    for (const fact of [
+      requirements.destination ? `${requirements.origin || '出发地待定'} → ${requirements.destination}` : '',
+      requirements.start_date || '日期未定',
+      requirements.days ? `${requirements.days}天旅行` : '',
+      requirements.travelers ? `${requirements.travelers}人同行` : '',
+      requirements.budget ? `${requirements.budget_scope === 'total' ? '全员' : '人均'}预算上限 ¥${requirements.budget}` : '',
+    ].filter(Boolean)) facts.append(make('span', '', fact));
+    hero.append(facts);
+    const layout = make('div', 'planning-layout');
+    const tasks = make('div', 'planning-tasks');
+    const note = make('p', 'planning-detail'); note.setAttribute('role', 'status');
+    const chain = make('ol', 'planning-chain'); chain.setAttribute('aria-label', '攻略生成进度');
+    const groups = [
+      ['整理旅行需求', ['intake']], ['查找目的地资料', ['research']],
+      ['筛选景点与游玩片区', ['organize', 'verify_places']], ['编排每日行程', ['generate']],
+      ['检查预算与时间冲突', ['check', 'review']], ['保存并整理攻略', ['save', 'present']],
+    ];
+    const rows = groups.map(([label]) => {
+      const row = make('li', '', label); row.dataset.state = 'waiting'; chain.append(row); return row;
+    });
+    tasks.append(chain, note);
+    const preview = make('div', 'planning-preview'); preview.setAttribute('aria-label', '攻略生成预览');
+    const cover = make('div', 'planning-cover');
+    const picture = make('img', '');
+    const city = typeof cityCovers !== 'undefined' ? cityCovers.get(requirements.destination) : null;
+    picture.src = city ? '/assets/visual/cities/' + city[0] + '.webp' : '/assets/visual/home-town.webp';
+    picture.alt = '旅行意境参考图';
+    picture.addEventListener('error', () => { picture.hidden = true; });
+    const badge = make('span', 'planning-badge', '攻略生成中');
+    cover.append(picture, make('strong', 'planning-destination', requirements.destination ? `${requirements.destination} · 你的旅程` : '你的下一站，即将展开'), badge);
+    const previewNote = make('p', 'planning-preview-note', '行程尚在编排，完成后展示具体安排 · 图片仅供参考');
+    const days = make('div', 'planning-days');
+    for (let day = 1; day <= Math.min(requirements.days || 3, 3); day++) {
+      const card = make('div', 'planning-day'); card.append(make('strong', '', `第${day}天`));
+      const skeleton = make('div', ''); skeleton.setAttribute('aria-hidden', 'true');
+      for (let line = 0; line < 3; line++) skeleton.append(make('span', 'planning-skeleton'));
+      card.append(skeleton); days.append(card);
+    }
+    const topics = make('div', 'planning-topics');
+    for (const label of ['预算明细', '住宿建议', '行前准备']) topics.append(make('span', '', label));
+    preview.append(cover, previewNote, days, topics); layout.append(tasks, preview);
+    const footer = make('footer', 'planning-footer');
+    const reassurance = make('p', 'planning-reassurance', '完成后将自动打开攻略，刷新页面也可恢复进度');
+    const actions = make('div', 'planning-actions');
+    const inspect = make('button', '', '查看旅行需求'); inspect.type = 'button';
+    const dialog = make('dialog', 'quick-plan-dialog planning-requirements'); dialog.setAttribute('aria-label', '本次旅行需求');
+    const heading = make('h2', '', '本次旅行需求');
+    const details = make('dl', '');
+    for (const [label, value] of [
+      ['出发地', requirements.origin], ['目的地', requirements.destination], ['出发日期', requirements.start_date || '日期未定'],
+      ['游玩天数', requirements.days ? `${requirements.days}天` : ''], ['同行人数', requirements.travelers ? `${requirements.travelers}人` : ''],
+      ['预算上限', requirements.budget ? `${requirements.budget_scope === 'total' ? '全员' : '人均'} ${requirements.budget} 元人民币` : ''],
+      ['预算包含', requirements.budget_includes], ['旅行偏好', requirements.preferences], ['交通方式', requirements.transport],
+      ['行动需求', requirements.mobility], ['饮食需求', requirements.dietary], ['住宿需求', requirements.accommodation],
+      ['排除安排', requirements.exclusions?.join('、')], ['已订安排', requirements.bookings?.map(item => item.description).join('；')],
+      ['返程时限', requirements.return_deadline],
+    ]) if (value) details.append(make('dt', '', label), make('dd', '', value));
+    const close = make('button', '', '关闭'); close.type = 'button'; close.addEventListener('click', () => dialog.close());
+    dialog.append(heading, details, close); inspect.addEventListener('click', () => dialog.showModal());
+    const revise = make('button', 'planning-retry', '修改条件后重新规划'); revise.type = 'button'; revise.hidden = true;
+    revise.addEventListener('click', () => {
+      document.querySelector('#main-content').dataset.planning = 'editing';
+      document.querySelector('#home-planner').scrollIntoView({block: 'center'});
+      document.querySelector('#home-origin').focus({preventScroll: true});
+    });
+    actions.append(inspect, revise); footer.append(reassurance, actions);
+    box.append(hero, layout, footer, dialog);
+    let current = -1;
+    let failed = false;
+    return {
+      update(event) {
+        if (event.text) note.textContent = event.text;
+        if (failed) return;
+        const index = groups.findIndex(([, stages]) => stages.includes(event.stage));
+        if (index < 0) return;
+        if (event.state === 'running') {
+          if (event.stage === 'generate') for (let i = index; i < rows.length; i++) rows[i].dataset.state = 'waiting';
+          if (current >= 0) rows[current].removeAttribute('aria-current');
+          current = index; rows[index].dataset.state = 'running'; rows[index].setAttribute('aria-current', 'step');
+        } else if (event.state === 'failed') {
+          failed = true; current = index; rows[index].dataset.state = 'failed';
+        }
+        else if (event.state === 'completed' && event.stage === groups[index][1].at(-1)) rows[index].dataset.state = 'completed';
+      },
+      finish(success) {
+        title.textContent = success ? '攻略已生成，正在打开' : '本次规划尚未完成';
+        badge.textContent = success ? '攻略已生成' : '尚未生成新攻略';
+        previewNote.textContent = success ? '正在打开完整攻略，请稍候。' : '本次未生成新攻略；修改条件后可以重新规划。';
+        reassurance.textContent = success ? '攻略已保存，即将为你打开。' : '旅行条件已保留，已有的可用攻略不会被覆盖。';
+        if (current >= 0) {
+          rows[current].removeAttribute('aria-current');
+          if (!success) rows[current].dataset.state = 'failed';
+        }
+        revise.hidden = success;
+      },
+    };
+  }
+  function fillPlanningForm(requirements, sessionId, version = 0) {
+    if (!requirements) throw new Error('没有可恢复的旅行条件');
+    // shortcut: the form uses CNY; legacy foreign-currency trips keep the existing chat editor.
+    if (requirements.budget_currency && requirements.budget_currency.toUpperCase() !== 'CNY') {
+      window.location.assign('/?session=' + encodeURIComponent(sessionId));
+      return;
+    }
+    homePlanningBase = {...requirements};
+    const fields = document.querySelector('#home-planner').elements;
+    const values = {
+      origin: requirements.origin || '', destination: requirements.destination,
+      date: requirements.start_date || '', days: requirements.days, people: requirements.travelers,
+      budget: requirements.budget, budget_scope: requirements.budget_scope,
+      budget_includes: requirements.budget_includes, transport: requirements.transport || '不限',
+      mobility: requirements.mobility || '', dietary: requirements.dietary || '',
+    };
+    for (const [key, value] of Object.entries(values)) {
+      const field = fields[key];
+      if (field.tagName === 'SELECT' && ![...field.options].some(option => option.value === String(value))) field.add(new Option(String(value), String(value)));
+      field.value = value;
+    }
+    const preferences = (requirements.preferences || '').split('；');
+    if ([...fields.preference.options].some(option => option.value === preferences[0])) {
+      fields.preference.value = preferences[0];
+      fields.pace.value = preferences[1]?.replace('旅行节奏：', '') || '适中';
+      fields.extra_preferences.value = preferences.slice(2).join('；');
+    } else fields.extra_preferences.value = requirements.preferences || '';
+    document.querySelector('#planning-chat').hidden = false;
+    document.querySelector('#form').dataset.planningSession = sessionId;
+    document.querySelector('#form').dataset.planningVersion = String(version);
+    document.querySelector('#home-planner').dispatchEvent(new Event('change'));
+  }
+</script>
 <script id="homepage-script">
+  let homePlanningBase = {};
   const homePlanner = document.querySelector('#home-planner');
   const homeFields = homePlanner.elements;
   const homeStatus = document.querySelector('#planner-status');
   const homeGenerate = document.querySelector('#home-generate');
   const homeSend = document.querySelector('#send');
   const homeCards = [...document.querySelectorAll('[data-destination]')];
-  // shortcut: destinations use a curated domestic list; extend it when adding more destination coverage.
-  const homeCities = ['上海', '北京', '杭州', '成都', '广州', '深圳', '南京', '苏州', '厦门', '重庆', '武汉', '长沙', '西安', '天津', '青岛', '济南', '郑州', '合肥', '福州', '泉州', '宁波', '温州', '无锡', '扬州', '绍兴', '黄山', '桂林', '阳朔', '昆明', '丽江', '大理', '西双版纳', '贵阳', '三亚', '海口', '莫干山', '湖州', '舟山', '张家界', '南昌', '南宁', '兰州', '银川', '西宁', '呼和浩特', '太原', '石家庄', '沈阳', '大连', '长春', '哈尔滨', '乌鲁木齐', '拉萨'];
-  for (const field of [homeFields.origin, homeFields.destination]) {
-    for (const city of homeCities) {
-      const option = document.createElement('option'); option.value = city; option.textContent = city; field.append(option);
+  // shortcut: pinyin search covers curated domestic destinations; extend this list when adding more search coverage.
+  const homeCityData = '上海:shang-hai 北京:bei-jing 杭州:hang-zhou 成都:cheng-du 广州:guang-zhou 深圳:shen-zhen 南京:nan-jing 苏州:su-zhou 厦门:xia-men 重庆:chong-qing 武汉:wu-han 长沙:chang-sha 西安:xi-an 天津:tian-jin 青岛:qing-dao 济南:ji-nan 郑州:zheng-zhou 合肥:he-fei 福州:fu-zhou 泉州:quan-zhou 宁波:ning-bo 温州:wen-zhou 无锡:wu-xi 扬州:yang-zhou 绍兴:shao-xing 黄山:huang-shan 桂林:gui-lin 阳朔:yang-shuo 昆明:kun-ming 丽江:li-jiang 大理:da-li 西双版纳:xi-shuang-ban-na 贵阳:gui-yang 三亚:san-ya 海口:hai-kou 莫干山:mo-gan-shan 湖州:hu-zhou 舟山:zhou-shan 张家界:zhang-jia-jie 南昌:nan-chang 南宁:nan-ning 兰州:lan-zhou 银川:yin-chuan 西宁:xi-ning 呼和浩特:hu-he-hao-te 太原:tai-yuan 石家庄:shi-jia-zhuang 沈阳:shen-yang 大连:da-lian 长春:chang-chun 哈尔滨:ha-er-bin 乌鲁木齐:wu-lu-mu-qi 拉萨:la-sa'.split(' ').map(entry => {
+    const [name, syllables] = entry.split(':');
+    return {name, pinyin: syllables.replaceAll('-', ''), initials: syllables.split('-').map(part => part[0]).join('')};
+  });
+  const homeCities = homeCityData.map(city => city.name);
+  const homeRoute = document.querySelector('#home-route');
+  const homeCityPanel = document.querySelector('#home-city-panel');
+  const homeCityResults = document.querySelector('#home-city-results');
+  const homeCityTabs = document.querySelector('#home-city-tabs');
+  const homeCityRecent = document.querySelector('#home-city-recent');
+  const homeRecentCities = [];
+  let homeCityField = null, homeCityQuery = '', homeCityGroup = '热门', homeCityMatches = [], homeCityActive = -1;
+  const homeCityGroups = ['热门', 'A–F', 'G–L', 'M–R', 'S–Z'];
+  function homeCityKey(value) { return value.trim().toLowerCase().replace(/[\s'-]/g, ''); }
+  function rememberHomeCity(name) {
+    const index = homeRecentCities.indexOf(name);
+    if (index !== -1) homeRecentCities.splice(index, 1);
+    homeRecentCities.unshift(name); homeRecentCities.length = Math.min(5, homeRecentCities.length);
+  }
+  function validateHomeCity(field) {
+    const query = homeCityKey(field.value);
+    const exact = homeCityData.filter(city => city.name === query || city.name + '市' === query || city.pinyin === query || city.initials === query);
+    field.value = exact.length === 1 ? exact[0].name : field.value.trim();
+    field.setCustomValidity(/^[\p{Script=Han}·]{2,30}$/u.test(field.value) ? '' : '请填写中文城市名，或从匹配结果中选择城市。');
+  }
+  function closeHomeCities() {
+    homeCityPanel.hidden = true;
+    for (const field of [homeFields.origin, homeFields.destination]) {
+      field.setAttribute('aria-expanded', 'false'); field.removeAttribute('aria-activedescendant');
     }
   }
+  function chooseHomeCity(name) {
+    if (tripInput.disabled) return;
+    homeCityField.value = name; homeCityField.setCustomValidity('');
+    rememberHomeCity(name); updateHomeCards(); homeStatus.textContent = '';
+    homeCityField.focus({preventScroll: true}); closeHomeCities();
+  }
+  function renderHomeCities() {
+    const query = homeCityKey(homeCityQuery);
+    homeCityMatches = homeCityData.filter(city => query ? city.name.includes(query) || city.pinyin.startsWith(query) || city.initials.startsWith(query) : homeCityGroup === '热门' ? ['北京', '上海', '杭州', '成都', '重庆', '西安', '黄山', '大理', '三亚', '厦门', '南京', '长沙'].includes(city.name) : city.pinyin[0] >= homeCityGroup[0].toLowerCase() && city.pinyin[0] <= homeCityGroup[2].toLowerCase());
+    if (query) homeCityMatches.sort((a, b) => Number(b.name === query || b.pinyin === query || b.initials === query) - Number(a.name === query || a.pinyin === query || a.initials === query));
+    else if (homeCityGroup !== '热门') homeCityMatches.sort((a, b) => a.pinyin.localeCompare(b.pinyin));
+    if (!homeCityMatches.length && /^[\p{Script=Han}·]{2,30}$/u.test(query)) homeCityMatches = [{name: query, pinyin: '使用此目的地'}];
+    homeCityActive = -1; homeCityField.removeAttribute('aria-activedescendant');
+    homeCityResults.replaceChildren();
+    homeCityMatches.forEach((city, index) => {
+      const option = document.createElement('button'); option.type = 'button'; option.id = 'home-city-option-' + index;
+      option.setAttribute('role', 'option'); option.setAttribute('aria-selected', String(city.name === homeCityField.value)); option.tabIndex = -1;
+      const name = document.createElement('strong'); name.textContent = city.name;
+      const pinyin = document.createElement('small'); pinyin.textContent = city.pinyin;
+      option.append(name, pinyin);
+      option.addEventListener('pointerdown', event => event.preventDefault());
+      option.addEventListener('click', () => chooseHomeCity(city.name)); homeCityResults.append(option);
+    });
+    homeCityTabs.hidden = Boolean(query); homeCityRecent.replaceChildren();
+    if (!query && homeRecentCities.length) {
+      const label = document.createElement('span'); label.textContent = '最近选择'; homeCityRecent.append(label);
+      for (const name of homeRecentCities) {
+        const button = document.createElement('button'); button.type = 'button'; button.textContent = name;
+        button.addEventListener('click', () => chooseHomeCity(name)); homeCityRecent.append(button);
+      }
+    }
+    [...homeCityTabs.children].forEach(tab => tab.setAttribute('aria-pressed', String(tab.textContent === homeCityGroup)));
+    document.querySelector('#home-city-caption').textContent = query ? homeCityMatches.length ? `匹配结果 · ${homeCityMatches.length} 个目的地` : '没有匹配城市，请尝试中文名称或其他拼音。' : homeCityGroup === '热门' ? '热门城市 · 点击即可选择' : `${homeCityGroup} · 按城市拼音排序`;
+  }
+  function openHomeCities(field, query = '') {
+    homeCityField = field; homeCityQuery = query; homeCityGroup = '热门';
+    closeHomeCities(); homeCityPanel.hidden = false; field.setAttribute('aria-expanded', 'true');
+    document.querySelector('#home-city-title').textContent = field === homeFields.origin ? '选择出发地' : '选择目的地';
+    renderHomeCities();
+  }
+  for (const group of homeCityGroups) {
+    const button = document.createElement('button'); button.type = 'button'; button.textContent = group;
+    button.addEventListener('click', () => { homeCityGroup = group; homeCityQuery = ''; renderHomeCities(); }); homeCityTabs.append(button);
+  }
+  for (const field of [homeFields.origin, homeFields.destination]) {
+    field.addEventListener('focus', () => { openHomeCities(field); field.select(); });
+    field.addEventListener('click', () => { if (homeCityPanel.hidden) openHomeCities(field); });
+    field.addEventListener('input', () => {
+      field.setCustomValidity(''); homeFields.destination.setCustomValidity(''); homeStatus.textContent = ''; updateHomeCards();
+      if (homeCityPanel.hidden) openHomeCities(field, field.value);
+      else { homeCityQuery = field.value; renderHomeCities(); }
+    });
+    field.addEventListener('blur', () => { validateHomeCity(field); updateHomeCards(); });
+    field.addEventListener('keydown', event => {
+      if (event.isComposing) return;
+      if (event.key === 'Escape') { event.preventDefault(); closeHomeCities(); return; }
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault(); if (homeCityPanel.hidden) openHomeCities(field);
+        if (!homeCityMatches.length) return;
+        homeCityActive = homeCityActive === -1 ? event.key === 'ArrowDown' ? 0 : homeCityMatches.length - 1 : (homeCityActive + (event.key === 'ArrowDown' ? 1 : -1) + homeCityMatches.length) % homeCityMatches.length;
+        [...homeCityResults.children].forEach((option, index) => option.setAttribute('aria-selected', String(index === homeCityActive)));
+        const option = homeCityResults.children[homeCityActive]; field.setAttribute('aria-activedescendant', option.id); option.scrollIntoView({block: 'nearest'});
+      } else if (event.key === 'Enter' && !homeCityPanel.hidden) {
+        event.preventDefault();
+        if (homeCityMatches.length && (homeCityActive >= 0 || homeCityQuery)) chooseHomeCity(homeCityMatches[Math.max(0, homeCityActive)].name);
+        else { validateHomeCity(field); closeHomeCities(); }
+      }
+    });
+  }
+  homeRoute.addEventListener('focusout', event => { if (!homeRoute.contains(event.relatedTarget)) closeHomeCities(); });
+  document.addEventListener('pointerdown', event => { if (!homeRoute.contains(event.target)) closeHomeCities(); });
+  homeRoute.addEventListener('keydown', event => { if (event.key === 'Escape' && !homeCityPanel.hidden) { homeCityField.focus(); closeHomeCities(); } });
+  document.querySelector('#home-swap').addEventListener('click', () => {
+    if (tripInput.disabled) return;
+    [homeFields.origin.value, homeFields.destination.value] = [homeFields.destination.value, homeFields.origin.value];
+    homeFields.origin.setCustomValidity(''); homeFields.destination.setCustomValidity('');
+    closeHomeCities(); updateHomeCards(); homeStatus.textContent = '已交换出发地和目的地。';
+  });
   homeFields.origin.value = '上海'; homeFields.destination.value = '杭州';
+  function validateHomeDate() {
+    const now = new Date();
+    homeFields.date.min = new Intl.DateTimeFormat('en-CA', {timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit'}).format(now);
+    homeFields.date.setCustomValidity(homeFields.date.value && homeFields.date.value < homeFields.date.min ? '出发日期不能早于今天。' : '');
+  }
+  validateHomeDate();
+  homeFields.date.addEventListener('input', validateHomeDate);
   function updateHomeCards() {
     homeCards.forEach(card => card.setAttribute('aria-pressed', String(card.dataset.destination === homeFields.destination.value && card.dataset.preference === homeFields.preference.value)));
   }
@@ -1696,10 +2152,12 @@
     homeFields.destination.value = destination;
     if (preference) homeFields.preference.value = preference;
     homeFields.destination.setCustomValidity('');
+    rememberHomeCity(destination);
     updateHomeCards();
-    homeStatus.textContent = `已为你选择${destination} · ${homeFields.preference.value}，点击“生成我的行程”即可出发。`;
+    homeStatus.textContent = `已为你选择${destination} · ${homeFields.preference.value}，点击“生成我的攻略”即可出发。`;
     homePlanner.scrollIntoView({behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'center'});
     homeFields.destination.focus({preventScroll: true});
+    closeHomeCities();
   }
   homeCards.forEach(card => card.addEventListener('click', () => chooseHomeDestination(card.dataset.destination, card.dataset.preference)));
   document.querySelector('#random-destination').addEventListener('click', () => {
@@ -1707,18 +2165,39 @@
     chooseHomeDestination(candidates[Math.floor(Math.random() * candidates.length)]);
   });
   homePlanner.addEventListener('change', () => {
-    homeFields.destination.setCustomValidity(''); updateHomeCards(); homeStatus.textContent = '';
+    homeFields.destination.setCustomValidity(''); validateHomeDate(); updateHomeCards(); homeStatus.textContent = '';
+    document.querySelector('#home-budget-label').textContent = homeFields.budget_scope.value === 'total' ? '全员预算上限' : '人均预算上限';
+    homeFields.budget.setAttribute('aria-label', homeFields.budget_scope.value === 'total' ? '全员预算上限' : '人均预算上限');
   });
   homePlanner.addEventListener('submit', event => {
     event.preventDefault();
     if (homeSend.disabled || tripInput.disabled) return;
-    homeFields.destination.setCustomValidity(homeFields.origin.value === homeFields.destination.value ? '出发地和目的地不能相同，请选择另一座城市。' : '');
+    validateHomeCity(homeFields.origin); validateHomeCity(homeFields.destination);
+    if (homeFields.origin.value === homeFields.destination.value) homeFields.destination.setCustomValidity('出发地和目的地不能相同，请选择另一座城市。');
+    validateHomeDate();
     if (!homePlanner.reportValidity()) return;
-    const people = Number(homeFields.people.value), perPersonBudget = Number(homeFields.budget.value);
-    const text = `我们【${people}人】从【${homeFields.origin.value}】出发，到【${homeFields.destination.value}】玩【${homeFields.days.value}天】，出发日期待定，按第几天规划。人均预算【${homeFields.budget.selectedOptions[0].textContent}】，按人均${perPersonBudget}元上限计算，全员总预算【${people * perPersonBudget}元】人民币（CNY），包含往返交通、住宿、餐饮、门票和市内交通。旅行偏好【${homeFields.preference.value}】，请围绕这个偏好规划，交通方式和行程节奏请给出合适建议。请帮我们规划行程。`;
-    if (fillTripDraft(text)) document.querySelector('#form').requestSubmit();
+    closeHomeCities(); rememberHomeCity(homeFields.origin.value); rememberHomeCity(homeFields.destination.value);
+    const requirements = {
+      ...homePlanningBase,
+      origin: homeFields.origin.value, destination: homeFields.destination.value,
+      start_date: homeFields.date.value || null, days: Number(homeFields.days.value),
+      travelers: Number(homeFields.people.value), budget: Number(homeFields.budget.value),
+      budget_scope: homeFields.budget_scope.value, budget_currency: 'CNY',
+      budget_includes: homeFields.budget_includes.value, transport: homeFields.transport.value,
+      preferences: `${homeFields.preference.value}；旅行节奏：${homeFields.pace.value}；${homeFields.extra_preferences.value}`,
+      mobility: homeFields.mobility.value || null, dietary: homeFields.dietary.value || null,
+    };
+    const text = `${requirements.origin} → ${requirements.destination} · ${requirements.start_date || '日期未定'} · ${requirements.days}天 · ${requirements.travelers}人 · ${requirements.budget_scope === 'total' ? '全员' : '人均'}预算上限${requirements.budget}元；包含${requirements.budget_includes}；${requirements.preferences}`;
+    if (fillTripDraft(text)) {
+      const target = document.querySelector('#form');
+      target.dataset.planningRequirements = JSON.stringify(requirements);
+      target.requestSubmit();
+    }
   });
-  function syncHomeAvailability() { homeGenerate.disabled = homeSend.disabled; }
+  function syncHomeAvailability() {
+    homeGenerate.disabled = homeSend.disabled;
+    for (const field of Array.from(homePlanner.elements)) field.disabled = homeSend.disabled;
+  }
   new MutationObserver(syncHomeAvailability).observe(homeSend, {attributes: true, attributeFilter: ['disabled']});
   syncHomeAvailability(); updateHomeCards();
 </script>

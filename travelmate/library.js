@@ -41,7 +41,7 @@ async function resume(id, button) {
   status.textContent = '正在打开已保存的旅行方案…';
   try {
     const data = await request(`/api/guides/${id}/resume`, {method: 'POST'});
-    window.location.assign('/?session=' + encodeURIComponent(data.session_id));
+    window.location.assign('/?session=' + encodeURIComponent(data.session_id) + '&edit=1');
   } catch (error) {
     status.textContent = error.message;
     changing = false; button.disabled = false;

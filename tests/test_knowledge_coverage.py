@@ -23,9 +23,25 @@ def test_short_relevant_content_and_partial_coverage():
     data = {'results': [{'source': '杭州', 'content': '游览西湖，顺路吃当地小吃。', 'score': 0.01}]}
     req = {'destination': '杭州', 'interests': ['博物馆'], 'preferences': '少走路'}
     result = knowledge_coverage(data, req)
-    assert result['missing'] == ['避坑指南', '博物馆', '少走路']
+    assert result['missing'] == ['避坑指南', '博物馆']
     assert result['accepted_results'] == [0]
     assert result['queried_at']
+
+
+def test_travel_constraints_do_not_trigger_extra_retrieval():
+    data = {'results': [{'title': '杭州攻略', 'content': '游览西湖路线、美食小吃与排队避坑。'}]}
+    result = knowledge_coverage(data, {'destination': '杭州', 'preferences': '放松散心；旅行节奏：适中；',
+                                     'dietary': '只能吃微辣', 'mobility': '少走路'})
+    assert result['missing'] == []
+    assert result['accepted_results'] == [0]
+
+
+def test_specific_travel_theme_still_requests_missing_reference_material():
+    data = {'results': [{'title': '杭州攻略', 'content': '游览西湖路线、美食小吃与排队避坑。'}]}
+    req = {'destination': '杭州', 'preferences': '亲子时光；旅行节奏：轻松；'}
+    assert knowledge_coverage(data, req)['missing'] == ['亲子时光']
+    data['results'][0]['content'] += '儿童游玩建议。'
+    assert knowledge_coverage(data, req)['missing'] == []
 
 
 @pytest.mark.parametrize('content,needs_gap', [('杭州游览西湖，品尝美食。西湖避坑指南。', False), ('北京旅游攻略' * 50, True)])

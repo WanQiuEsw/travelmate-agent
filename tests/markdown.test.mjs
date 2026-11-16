@@ -8,9 +8,11 @@ import vm from 'node:vm';
 class Node {
   constructor(tag, text = '') {
     this.tagName = tag.toUpperCase(); this.text = text; this.children = [];
-    this.handlers = {}; this.value = ''; this.classList = {add() {}, remove() {}};
+    this.handlers = {}; this.dataset = {}; this.value = ''; this.classList = {add() {}, remove() {}};
   }
   append(...children) { this.children.push(...children); }
+  prepend(...children) { this.children.unshift(...children); }
+  removeAttribute(name) { delete this[name]; }
   replaceChildren(...children) { this.children = children; }
   setAttribute(name, value) { this[name] = value; }
   addEventListener(event, handler) { this.handlers[event] = handler; }
@@ -84,7 +86,7 @@ test('sources are collapsed with safe readable links', () => {
 });
 
 const html = await readFile(new URL('../travelmate/index.html', import.meta.url), 'utf8');
-const appSource = html.match(/<script id="city-picker-script">([\s\S]*?)<\/script>/)[1]
+const appSource = 'let homePlanningBase = {};\n' + html.match(/<script id="city-picker-script">([\s\S]*?)<\/script>/)[1]
   + html.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
   .replace(/import \{renderMarkdown\} from '[^']+';/, '')
   .replace(/import \{apiFetch[^;]+;/, 'const refreshAccount = async () => ({user: {id: "test"}});')
@@ -92,7 +94,7 @@ const appSource = html.match(/<script id="city-picker-script">([\s\S]*?)<\/scrip
   .replace('  initialize();', '');
 
 test('typewriter paints safe Markdown before completion, drains buffered frames, and cancels', async () => {
-  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history']
+  const elements = Object.fromEntries(['planning-chat', 'main-content', 'form', 'input', 'messages', 'status', 'send', 'new', 'history']
     .map(id => [id, new Node('div')]));
   const timers = new Map();
   let id = 0;
@@ -132,7 +134,7 @@ test('typewriter paints safe Markdown before completion, drains buffered frames,
 });
 
 test('question wizard opens on demand, keeps closed drafts, validates steps and submits only after review', () => {
-  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history', 'sidebar', 'interaction', 'interaction-open']
+  const elements = Object.fromEntries(['planning-chat', 'main-content', 'form', 'input', 'messages', 'status', 'send', 'new', 'history', 'sidebar', 'interaction', 'interaction-open']
     .map(id => [id, new Node('div')]));
   let submits = 0;
   elements.form.requestSubmit = () => submits++;
@@ -218,7 +220,7 @@ test('question wizard opens on demand, keeps closed drafts, validates steps and 
 });
 
 test('history restores latest scroll position without opening a dialog or interrupting upward reading during recovery', async () => {
-  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history', 'sidebar', 'interaction', 'interaction-open', 'conversation']
+  const elements = Object.fromEntries(['planning-chat', 'main-content', 'form', 'input', 'messages', 'status', 'send', 'new', 'history', 'sidebar', 'interaction', 'interaction-open', 'conversation']
     .map(id => [id, new Node('div')]));
   const viewport = elements.conversation;
   viewport.scrollHeight = 2000; viewport.clientHeight = 400; viewport.scrollTop = 0;
@@ -259,7 +261,7 @@ test('history restores latest scroll position without opening a dialog or interr
 });
 
 test('Enter sends, Ctrl/Command+Enter inserts a newline, and IME confirmation stays untouched', () => {
-  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history']
+  const elements = Object.fromEntries(['planning-chat', 'main-content', 'form', 'input', 'messages', 'status', 'send', 'new', 'history']
     .map(id => [id, new Node('div')]));
   let submissions = 0;
   elements.form.requestSubmit = () => { submissions++; };
@@ -301,7 +303,7 @@ for (const outcome of ['answer', 'guide', 'error', 'generation failure']) {
     const guide = outcome === 'guide';
     const generationFailed = outcome === 'generation failure';
     const success = outcome === 'answer' || guide;
-    const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history',
+    const elements = Object.fromEntries(['planning-chat', 'main-content', 'form', 'input', 'messages', 'status', 'send', 'new', 'history',
       'trip-panel', 'trip-data', 'trip-status', 'trip-confirm', 'trip-save', 'trip-pdf', 'trip-preview']
       .map(id => [id, new Node('div')]));
     elements.input.value = '规划杭州';
@@ -372,7 +374,7 @@ for (const outcome of ['answer', 'guide', 'error', 'generation failure']) {
 }
 
 test('each export link keeps its answer and session, without review controls', () => {
-  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history']
+  const elements = Object.fromEntries(['planning-chat', 'main-content', 'form', 'input', 'messages', 'status', 'send', 'new', 'history']
     .map(id => [id, new Node('div')]));
   const context = vm.createContext({
     setTimeout, clearTimeout,
@@ -399,7 +401,7 @@ test('each export link keeps its answer and session, without review controls', (
 });
 
 test('sidebar loads a conversation and new chat clears messages and selection', async () => {
-  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history', 'sidebar']
+  const elements = Object.fromEntries(['planning-chat', 'main-content', 'form', 'input', 'messages', 'status', 'send', 'new', 'history', 'sidebar']
     .map(id => [id, new Node('div')]));
   const context = vm.createContext({
     setTimeout, clearTimeout,
@@ -428,7 +430,7 @@ test('sidebar loads a conversation and new chat clears messages and selection', 
 
 
 test('homepage journal uses real history, safe titles and only completed guide versions', async () => {
-  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history', 'sidebar', 'journal-content']
+  const elements = Object.fromEntries(['planning-chat', 'main-content', 'form', 'input', 'messages', 'status', 'send', 'new', 'history', 'sidebar', 'journal-content']
     .map(id => [id, new Node('div')]));
   let fail = false;
   const context = vm.createContext({
@@ -463,7 +465,7 @@ test('homepage journal uses real history, safe titles and only completed guide v
 });
 
 test('journal ignores late responses after history is cleared', async () => {
-  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history', 'journal-content']
+  const elements = Object.fromEntries(['planning-chat', 'main-content', 'form', 'input', 'messages', 'status', 'send', 'new', 'history', 'journal-content']
     .map(id => [id, new Node('div')]));
   let resolve;
   const context = vm.createContext({
@@ -495,7 +497,7 @@ test('closing advice and later headings stay outside collapsed references', () =
 });
 
 test('pinning persists selection on failure and deletion clears the current conversation', async () => {
-  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history', 'sidebar']
+  const elements = Object.fromEntries(['planning-chat', 'main-content', 'form', 'input', 'messages', 'status', 'send', 'new', 'history', 'sidebar']
     .map(id => [id, new Node('div')]));
   let sessions = [{session_id: 'old-session', title: '重庆'}, {session_id: 'other', title: '杭州', pinned: false}];
   const calls = [];
@@ -544,7 +546,7 @@ test('pinning persists selection on failure and deletion clears the current conv
 });
 
 test('progress stays collapsed and flags slow runs in the summary', () => {
-  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history']
+  const elements = Object.fromEntries(['planning-chat', 'main-content', 'form', 'input', 'messages', 'status', 'send', 'new', 'history']
     .map(id => [id, new Node('div')]));
   const context = vm.createContext({
     setTimeout, clearTimeout,
@@ -563,8 +565,8 @@ test('progress stays collapsed and flags slow runs in the summary', () => {
   assert.match(elements.messages.textContent, /已完成 · 已用时 5\d 秒 · 用时偏长/);
 });
 
-test('progress hides intermediate errors, deduplicates updates, and has no numbered steps', () => {
-  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history']
+test('chat progress retains query failures, deduplicates updates, and stays unnumbered', () => {
+  const elements = Object.fromEntries(['planning-chat', 'main-content', 'form', 'input', 'messages', 'status', 'send', 'new', 'history']
     .map(id => [id, new Node('div')]));
   const context = vm.createContext({
     setTimeout, clearTimeout,
@@ -580,7 +582,7 @@ test('progress hides intermediate errors, deduplicates updates, and has no numbe
     progress.add('正在通过高德查询…');
     progress.add('正在通过高德查询…');
     progress.add('通过高德查询失败，相关信息尚未核实。');
-    if (!replyBody.textContent.includes('正在通过高德查询… · 已用时')) throw new Error('current stage is missing');
+    if (!replyBody.textContent.includes('通过高德查询失败，相关信息尚未核实。 · 已用时')) throw new Error('current stage is missing');
     progress.finish(true);
   `, context);
   const user = elements.messages.children[0];
@@ -591,11 +593,11 @@ test('progress hides intermediate errors, deduplicates updates, and has no numbe
   assert.equal(progress.open, false);
   assert.equal(nodes(progress).filter(node => node.tagName === 'OL').length, 0);
   assert.equal(nodes(progress).filter(node => node.tagName === 'LI' && node.textContent === '正在通过高德查询…').length, 1);
-  assert.ok(!progress.textContent.includes('失败'));
+  assert.ok(progress.textContent.includes('失败'));
 });
 
 test('multi-select is opt-in, has only bottom deletion, and preserves selection on failure', async () => {
-  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history', 'sidebar']
+  const elements = Object.fromEntries(['planning-chat', 'main-content', 'form', 'input', 'messages', 'status', 'send', 'new', 'history', 'sidebar']
     .map(id => [id, new Node('div')]));
   let sessions = [{session_id: 'one', title: '北京'}, {session_id: 'two', title: '厦门'}];
   let fail = true;
@@ -655,7 +657,7 @@ test('multi-select is opt-in, has only bottom deletion, and preserves selection 
 
 
 test('guide links bind to completed answer version and original session', async () => {
-  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history']
+  const elements = Object.fromEntries(['planning-chat', 'main-content', 'form', 'input', 'messages', 'status', 'send', 'new', 'history']
     .map(id => [id, new Node('div')]));
   const context = vm.createContext({
     setTimeout, clearTimeout,
@@ -677,7 +679,7 @@ test('guide links bind to completed answer version and original session', async 
 });
 
 test('reload polls an active session even before it appears in history', async () => {
-  const elements = Object.fromEntries(['form', 'input', 'messages', 'status', 'send', 'new', 'history', 'sidebar']
+  const elements = Object.fromEntries(['planning-chat', 'main-content', 'form', 'input', 'messages', 'status', 'send', 'new', 'history', 'sidebar']
     .map(id => [id, new Node('div')]));
   let poll;
   let generating = true;
@@ -725,4 +727,92 @@ test('reload polls an active session even before it appears in history', async (
   assert.equal(poll, undefined);
   assert.equal(elements.send.disabled, false);
   assert.equal(elements.messages.children.length, 0);
+});
+
+
+test('form chain follows real stages, resets later steps on revision, and offers recovery on failure', () => {
+  const elements = Object.fromEntries(['planning-chat', 'main-content', 'form', 'input', 'messages', 'status', 'send', 'new', 'history']
+    .map(id => [id, new Node('div')]));
+  elements['main-content'].dataset.planning = 'running';
+  const context = vm.createContext({
+    setTimeout, clearTimeout, setInterval, clearInterval,
+    document: {...document, querySelector: selector => elements[selector.slice(1)], querySelectorAll: () => []},
+    renderMarkdown, localStorage: {getItem: () => null},
+  });
+  vm.runInContext(appSource + html.match(/<script id="planning-flow-script">([\s\S]*?)<\/script>/)[1], context);
+  vm.runInContext(`
+    const body = appendMessage('TravelMate', '');
+    const progress = createProgress(body);
+    progress.add('开始检索', [], {stage: 'research', state: 'running'});
+    progress.add('检索完成', [], {stage: 'research', state: 'completed'});
+    progress.add('正在编排', [], {stage: 'generate', state: 'running'});
+    progress.add('检查预算', [], {stage: 'check', state: 'running'});
+    progress.add('调整方案', [], {stage: 'generate', state: 'running'});
+    progress.finish(false);
+  `, context);
+  const chain = nodes(elements.messages).find(node => node.className === 'planning-chain');
+  assert.equal(chain.children.length, 6);
+  assert.equal(chain.children[1].dataset.state, 'completed');
+  assert.equal(chain.children[3].dataset.state, 'failed');
+  assert.equal(chain.children[4].dataset.state, 'waiting');
+  assert.equal(chain.children[5].dataset.state, 'waiting');
+  const retry = nodes(elements.messages).find(node => node.tagName === 'BUTTON' && node.textContent === '修改条件后重新规划');
+  assert.equal(retry.hidden, false);
+  assert.ok(elements.messages.textContent.includes('本次规划尚未完成'));
+});
+
+
+test('legacy foreign-currency guides use the chat editor without reinterpreting the budget as CNY', () => {
+  let destination;
+  vm.runInNewContext(html.match(/<script id="planning-flow-script">([\s\S]*?)<\/script>/)[1]
+    + "; fillPlanningForm({budget_currency: 'USD', budget: 500}, 'legacy-trip');", {
+    window: {location: {assign(url) { destination = url; }}},
+  });
+  assert.equal(destination, '/?session=legacy-trip');
+});
+
+
+test('planning design uses submitted facts, a safe destination cover and unfinished preview cards', () => {
+  const box = new Node('section');
+  const context = vm.createContext({document, box, cityCovers: new Map([['杭州', ['hangzhou']]])});
+  vm.runInContext(html.match(/<script id="planning-flow-script">([\s\S]*?)<\/script>/)[1]
+    + `createPlanningChain(box, {origin: '上海', destination: '杭州', days: 10, travelers: 2,
+      budget: 3000, budget_scope: 'total', preferences: '<script>不吃辣</script>',
+      start_date: '2026-12-10', budget_includes: '全部费用'});`, context);
+  assert.ok(box.textContent.includes('上海 → 杭州'));
+  assert.ok(box.textContent.includes('全员预算上限 ¥3000'));
+  assert.ok(box.textContent.includes('2026-12-10'));
+  assert.equal(nodes(box).filter(node => node.className === 'planning-day').length, 3);
+  assert.ok(box.textContent.includes('行程尚在编排'));
+  assert.equal(nodes(box).find(node => node.tagName === 'IMG').src, '/assets/visual/cities/hangzhou.webp');
+  assert.equal(nodes(box).some(node => node.tagName === 'SCRIPT'), false);
+  assert.ok(box.textContent.includes('<script>不吃辣</script>'));
+  const inspect = nodes(box).find(node => node.tagName === 'BUTTON' && node.textContent === '查看旅行需求');
+  const dialog = nodes(box).find(node => node.tagName === 'DIALOG');
+  inspect.handlers.click(); assert.equal(dialog.open, true);
+  nodes(dialog).find(node => node.tagName === 'BUTTON').handlers.click(); assert.equal(dialog.open, false);
+});
+
+test('unknown destinations use an existing neutral illustration and single-day trips have one preview', () => {
+  const box = new Node('section');
+  vm.runInNewContext(html.match(/<script id="planning-flow-script">([\s\S]*?)<\/script>/)[1]
+    + "createPlanningChain(box, {destination: '黄山', days: 1});", {document, box});
+  assert.equal(nodes(box).find(node => node.tagName === 'IMG').src, '/assets/visual/home-town.webp');
+  assert.equal(nodes(box).filter(node => node.className === 'planning-day').length, 1);
+});
+
+
+test('a blocked budget check stays at the failed step while the server formats its explanation', () => {
+  const box = new Node('section');
+  vm.runInNewContext(html.match(/<script id="planning-flow-script">([\s\S]*?)<\/script>/)[1]
+    + `const progress = createPlanningChain(box, {});
+      progress.update({stage: 'review', state: 'running'});
+      progress.update({stage: 'review', state: 'failed'});
+      progress.update({stage: 'present', state: 'running'});
+      progress.update({stage: 'present', state: 'failed'});
+      progress.finish(false);`, {document, box});
+  const rows = nodes(box).find(node => node.className === 'planning-chain').children;
+  assert.equal(rows[4].dataset.state, 'failed');
+  assert.equal(rows[5].dataset.state, 'waiting');
+  assert.equal(nodes(box).find(node => node.className === 'planning-badge').textContent, '尚未生成新攻略');
 });

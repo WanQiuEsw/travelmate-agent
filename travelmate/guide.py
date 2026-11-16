@@ -192,8 +192,6 @@ def source_note(requirements, evidence, asof):
 
 def make_guide(version, evidence):
     req, plan = version['requirements'], version['plan']
-    from travelmate.dining import complete_meals
-    plan = dict(plan, foods=complete_meals(plan.get('foods', []), len(plan['days']), req.get('dietary', '')))
     if not version.get('saved_at'):
         evidence = {}
     asof = datetime.fromisoformat(version.get('saved_at') or '1970-01-01T00:00:00+00:00')
@@ -298,6 +296,8 @@ def make_guide(version, evidence):
         summary.append('已列费用 ' + total_cost_label(day['stops'], req, evidence, now=asof))
         notes = [' · '.join(summary)] + (['当日美食：' + '；'.join(meals)] if meals else [])
         section(day_heading(day.get('date'), i, req, evidence, asof), notes, 'day', ['时段', '顺路安排', '吃什么 / 怎么玩', '交通预留', '全员费用'], rows)
+        sections[-1]['stop_details'] = [{'kind': stop.get('kind'), 'highlight': stop.get('highlight', ''),
+                                       'activities': stop.get('activities', [])} for stop in day['stops']]
         sections[-1]['rain_rows'] = [[time_label(plan, stop), stop['place'], stop.get('notes') or '按预约和体力调整', modes[stop.get('transport_mode', 'unknown')] + '，' + travel_label(stop), cost_label(stop, req, evidence, asof)] for stop in day.get('rain_stops', [])]
         sections[-1]['rain_note'] = day.get('rain_note', '')
     foods = plan.get('foods', [])
@@ -536,7 +536,9 @@ def render_guide(guide, pdf_url=None):
         path = pdf_url.removesuffix('/pdf')
         actions = (f'<div class="actions"><a class="btn" href="{text(pdf_url)}">下载 PDF</a>'
                    f'<a class="btn ghost" href="{text(path)}/md">下载 Markdown</a>'
-                   f'<a class="btn ghost" href="{text(path)}/html">HTML</a></div>')
+                   f'<a class="btn ghost" href="{text(path)}/html">HTML</a>'
+                   + (f'<a class="btn ghost" href="{text(guide["_planning_url"])}">修改条件重新规划</a>' if guide.get('_planning_url') else '')
+                   + '</div>')
     from travelmate.result import RESULT_CSS, RESULT_JS, result_panels
     parts = [f'<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{text(guide["title"])}</title><style>{GUIDE_CSS}{RESULT_CSS}</style></head><body><main>']
     rendered_sections = []
