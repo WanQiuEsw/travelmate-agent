@@ -43,6 +43,18 @@ def test_food_photos_use_matching_dish_search_for_card_and_thumbnail():
     assert 'data-food-photo' not in offline and '离线版' in offline and '牛肉丸' in offline
 
 
+def test_food_carousel_has_matching_controls_without_meal_schedule_or_fake_prices():
+    html = panel([dict(rows=[[name, '风味介绍'] for name in ('片儿川', '东坡肉', '桂花糕')])],
+                 [], escape, city='杭州<script>')
+    assert '杭州&lt;script&gt; · 美食推荐' in html
+    assert '这次，我们吃这些' in html and '推荐理由' in html
+    assert html.count('class="food-card overview-card" tabindex="0"') == 3
+    assert html.count('data-overview-index=') == 3
+    assert 'aria-label="上一个美食"' in html and 'aria-label="下一个美食"' in html
+    assert 'discovery-grid' not in html
+    assert all(word not in html for word in ('早餐', '午餐', '晚餐', '¥', '参考人均'))
+
+
 def test_new_guide_keeps_local_dishes_without_filling_daily_meals():
     from travelmate.guide import make_guide
     from test_workflow import PLAN, REQ
