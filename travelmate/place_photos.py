@@ -3,11 +3,13 @@ import os
 import re
 import hashlib
 import tempfile
+import json
+import logging
 from collections import OrderedDict
 from pathlib import Path
 from threading import Lock
 from time import monotonic, time
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urljoin
 
 import httpx
 
@@ -21,6 +23,14 @@ _DISK_MAX_BYTES = 128 * 1024 * 1024
 _DISK_MAX_ITEMS = 128
 _CONTENT_TYPES = ('image/jpeg', 'image/png', 'image/webp', 'image/avif')
 _cache_lock = Lock()
+logger = logging.getLogger(__name__)
+
+
+class PhotoError(Exception):
+    def __init__(self, reason, stage='photo'):
+        super().__init__(reason)
+        self.reason = reason
+        self.stage = stage
 
 
 def cached_photo(key):
@@ -50,11 +60,11 @@ def cached_photo(key):
 
 def cache_photo(key, result):
     with _cache_lock:
-        _cache[key] = (monotonic() + (_CACHE_TTL if result else 600), result)
+        _cache[key] = (monotonic() + (30 if isinstance(result, PhotoError) else _CACHE_TTL if result else 600), result)
         _cache.move_to_end(key)
         while len(_cache) > 32:
             _cache.popitem(last=False)
-        if not result:
+        if not result or isinstance(result, PhotoError):
             return
         temporary = None
         try:
@@ -102,18 +112,23 @@ def photo_candidates(items, name, category='place'):
             continue
         images = card.get('image_list') or [card.get('cover') or {}]
         if isinstance(images, list) and images and isinstance(images[0], dict):
-            url = image_url(images[0])
-            if url:
-                return [url]
+            urls = image_urls(images[0])
+            if urls:
+                return urls[:3]
     return []
 
 
 def image_url(image):
-    info = image.get('info_list') or []
+    return next(iter(image_urls(image)), None)
+
+
+def image_urls(image):
+    info = image.get('info_list') or image.get('infoList') or []
     urls = [row.get('url') for row in info if isinstance(row, dict) and row.get('image_scene') == 'WB_DFT']
-    urls += [image.get('url_default'), image.get('url')]
+    urls += [image.get('url_default'), image.get('urlDefault'), image.get('url')]
     urls += [row.get('url') for row in reversed(info) if isinstance(row, dict)]
-    urls += [image.get('url_pre')]
+    urls += [image.get('url_pre'), image.get('urlPre')]
+    valid = []
     for url in urls:
         if not isinstance(url, str):
             continue
@@ -122,60 +137,135 @@ def image_url(image):
             host = parsed.hostname or ''
             if (parsed.scheme in ('http', 'https') and parsed.port in (None, 443) and not parsed.username and not parsed.password
                     and (host.endswith('.xhscdn.com') or host.endswith('.xiaohongshu.com'))):
-                return parsed._replace(scheme='https').geturl()
+                valid.append(parsed._replace(scheme='https').geturl())
         except ValueError:
             continue
+    return list(dict.fromkeys(valid))
+
+
+def note_photo_urls(client, cookies, items, deadline):
+    """TripStar flow: newest note -> feed first image -> SSR -> search cover."""
+    for item in items[:20]:
+        if not isinstance(item, dict) or item.get('model_type') != 'note':
+            continue
+        card = item.get('note_card') or {}
+        if not isinstance(card, dict) or card.get('type') == 'video':
+            continue
+        note_id = item.get('id') or ''
+        urls = []
+        if re.fullmatch(r'[a-fA-F0-9]{24}', note_id):
+            try:
+                detail = xhs.post(client, cookies, '/api/sns/web/v1/feed', {
+                    'source_note_id': note_id, 'image_formats': ['jpg', 'webp', 'avif'],
+                    'extra': {'need_body_topic': '1'}, 'xsec_source': 'pc_search',
+                    'xsec_token': item.get('xsec_token', '')}, deadline)
+                cards = detail.get('items') or []
+                detail_card = (cards[0].get('note_card') or {}) if cards else {}
+                urls = photo_candidates([{'model_type': 'note', 'note_card': detail_card}], '')
+            except xhs.XHSError as exc:
+                if str(exc) == 'login_or_risk_control':
+                    raise
+            except (httpx.HTTPError, ValueError, TypeError, KeyError, AttributeError, IndexError):
+                pass
+            if not urls and deadline > monotonic():
+                try:
+                    response = client.get('https://www.xiaohongshu.com/explore/' + note_id,
+                        params={'xsec_token': item.get('xsec_token', ''), 'xsec_source': 'pc_search'},
+                        headers={'User-Agent': xhs._USER_AGENT, 'Referer': 'https://www.xiaohongshu.com/'},
+                        timeout=min(5, deadline - monotonic()))
+                    if response.status_code in (401, 403, 406, 429, 461, 471):
+                        raise xhs.XHSError('login_or_risk_control', path='/api/sns/web/v1/feed', status=response.status_code)
+                    response.raise_for_status()
+                    match = re.search(r'window\.__INITIAL_STATE__\s*=\s*({.*?})\s*;?\s*</script>', response.text, re.S)
+                    if match:
+                        state = json.loads(re.sub(r'(?<=[,:])\s*undefined(?=\s*[,}])', 'null', match[1]))
+                        note = state.get('note', {}).get('noteDetailMap', {}).get(note_id, {}).get('note', {})
+                        images = note.get('imageList') or []
+                        if images and isinstance(images[0], dict):
+                            urls = image_urls(images[0])[:3]
+                except (httpx.HTTPError, ValueError, TypeError, KeyError, AttributeError):
+                    pass
+        cover = photo_candidates([item], '')
+        urls = list(dict.fromkeys(urls + cover))
+        if urls:
+            return urls
+    return []
+
+
+def download_photo(media, url):
+    for _ in range(3):
+        with media.stream('GET', url, headers={
+                'Referer': 'https://www.xiaohongshu.com/', 'User-Agent': xhs._USER_AGENT}, timeout=8) as response:
+            if response.is_redirect:
+                url = image_url({'url': urljoin(url, response.headers.get('location', ''))})
+                if not url:
+                    return None
+                continue
+            response.raise_for_status()
+            content_type = response.headers.get('content-type', '').split(';')[0].strip().lower()
+            if content_type not in _CONTENT_TYPES:
+                return None
+            content = bytearray()
+            for chunk in response.iter_bytes():
+                content.extend(chunk)
+                if len(content) > _MAX_BYTES:
+                    return None
+            if content:
+                return bytes(content), content_type
     return None
 
 
 def get_photo(city, place, category='place'):
     if not xhs.enabled():
-        return None
+        raise PhotoError('not_configured')
     try:
         cookies = xhs.parse_cookie(os.environ['XHS_COOKIE'])
         session = xhs.cookie_key(cookies)
         name, payload = photo_search(city.strip(), place.strip(), category)
-        key = hashlib.sha256(session + f'latest-first-v3:{category}:{payload["keyword"]}'.encode()).hexdigest()
+        key = hashlib.sha256(session + f'latest-first-v4:{category}:{payload["keyword"]}'.encode()).hexdigest()
     except (ValueError, KeyError, TypeError):
-        return None
+        raise PhotoError('invalid_cookie') from None
     cached = cached_photo(key)
     if cached:
+        if isinstance(cached[1], PhotoError):
+            raise cached[1]
         return cached[1]
     with xhs._request_lock:
         try:
             cached = cached_photo(key)
             if cached:
+                if isinstance(cached[1], PhotoError):
+                    raise cached[1]
                 return cached[1]
             if session in xhs._blocked_cookies:
-                return None
+                raise PhotoError('login_or_risk_control', 'search')
             result = None
+            deadline = monotonic() + 20
             with httpx.Client(cookies=cookies, trust_env=False, follow_redirects=False) as client:
                 data = xhs.post(client, cookies, '/api/sns/web/v1/search/notes',
-                                payload, monotonic() + 12)
+                                payload, deadline)
+                urls = note_photo_urls(client, cookies, data.get('items') or [], deadline)
             # Download CDN media with a separate client so session cookies never reach it.
             with httpx.Client(trust_env=False, follow_redirects=False) as media:
-                for url in photo_candidates(data.get('items') or [], name, category):
+                for url in urls:
                     try:
-                        with media.stream('GET', url, headers={'Referer': 'https://www.xiaohongshu.com/', 'User-Agent': xhs._USER_AGENT}, timeout=5) as response:
-                            response.raise_for_status()
-                            content_type = response.headers.get('content-type', '').split(';')[0]
-                            if content_type not in _CONTENT_TYPES:
-                                continue
-                            content = bytearray()
-                            for chunk in response.iter_bytes():
-                                content.extend(chunk)
-                                if len(content) > _MAX_BYTES:
-                                    break
-                            if 0 < len(content) <= _MAX_BYTES:
-                                result = (bytes(content), content_type)
-                                break
+                        result = download_photo(media, url)
+                        if result:
+                            break
                     except httpx.HTTPError:
                         continue
+            if urls and not result:
+                error = PhotoError('image_download_failed', 'download')
+                cache_photo(key, error)
+                logger.warning('XHS photo unavailable: reason=%s stage=download', error.reason)
+                raise error
             cache_photo(key, result)
             return result
         except xhs.XHSError as exc:
             if str(exc) == 'login_or_risk_control':
                 xhs._blocked_cookies.add(session)
+            logger.warning('XHS photo unavailable: reason=%s diagnostic=%s', str(exc), exc.diagnostic)
+            raise PhotoError(str(exc), exc.diagnostic.get('stage', 'search')) from None
         except (httpx.HTTPError, ValueError, TypeError, KeyError, AttributeError):
-            pass
-    return None
+            logger.warning('XHS photo unavailable: reason=fetch_failed')
+            raise PhotoError('fetch_failed') from None

@@ -45,7 +45,7 @@ def panel(sections, days, text, inline_images=False, city=''):
     def photo(name):
         image = ''
         if city and not inline_images and not any(word in name for word in ('附近的', '片区的')):
-            url = '/api/places/photo?' + urlencode({'city': city, 'place': name, 'category': 'food', 'v': 3})
+            url = '/api/places/photo?' + urlencode({'city': city, 'place': name, 'category': 'food', 'v': 4})
             image = '<img data-food-photo="' + text(url) + '" alt="' + text(name + ' · 小红书搜索配图') + '" hidden>'
         return ('<div class="food-photo generic"><span class="food-placeholder">' + icon('bowl')
                 + '<small>暂无菜品图片</small></span>' + image + '</div>')
@@ -125,24 +125,16 @@ CSS += """
 """
 
 FOOD_JS = r"""
-// Serialize visible dish searches; the placeholder remains on any failure.
+// Share the same serial fetch queue and diagnostic messages with attraction photos.
 if (document.querySelectorAll('[data-food-photo]').length) {
-let foodPhotoQueue = Promise.resolve();
 const foodPhotoObserver = new IntersectionObserver(entries => {
   for (const entry of entries) {
     if (!entry.isIntersecting) continue;
     const image = entry.target.querySelector('[data-food-photo]');
+    if (document.hidden || !image.parentElement.getClientRects().length) continue;
     foodPhotoObserver.unobserve(entry.target);
-    foodPhotoQueue = foodPhotoQueue.then(() => new Promise(resolve => {
-      if (!image.parentElement.getClientRects().length) {
-        foodPhotoObserver.observe(image.parentElement);
-        resolve();
-        return;
-      }
-      image.onload = () => { image.hidden = false; resolve(); };
-      image.onerror = () => { image.hidden = true; resolve(); };
-      image.src = image.dataset.foodPhoto;
-    }));
+    image.onerror = () => { image.hidden = true; };
+    loadPlacePhoto(image);
   }
 });
 for (const image of document.querySelectorAll('[data-food-photo]')) {

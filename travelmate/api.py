@@ -11,7 +11,7 @@ from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Query
 from fastapi import Path as PathParam
-from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse, Response
+from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse, Response, JSONResponse
 from pydantic import BaseModel, Field, field_validator, model_validator, StringConstraints
 
 from travelmate.rail import search_train_tickets
@@ -215,13 +215,17 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
     def place_photo(request: Request, city: Annotated[str, Query(min_length=1, max_length=80)],
                     place: Annotated[str, Query(min_length=1, max_length=120)],
                     category: Literal['place', 'food'] = 'place'):
-        from travelmate.place_photos import get_photo
+        from travelmate.place_photos import get_photo, PhotoError
         if auth_enabled:
             app.state.accounts.throttle('photos:' + request.state.user['id'], 20, 60)
-        photo = (get_photo(city.strip(), place.strip(), category='food') if category == 'food'
-                 else get_photo(city.strip(), place.strip()))
+        try:
+            photo = (get_photo(city.strip(), place.strip(), category='food') if category == 'food'
+                     else get_photo(city.strip(), place.strip()))
+        except PhotoError as exc:
+            return JSONResponse({'error': exc.reason, 'stage': exc.stage}, status_code=503,
+                                headers={'Cache-Control': 'no-store'})
         if not photo:
-            return Response(status_code=404, headers={'Cache-Control': 'private, max-age=600'})
+            return JSONResponse({'error': 'no_photo'}, status_code=404, headers={'Cache-Control': 'no-store'})
         return Response(photo[0], media_type=photo[1], headers={
             'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff'})
 
@@ -456,7 +460,7 @@ def create_app(agent_factory=open_agent, *, auth_enabled=True):
         guide['_budget_url'] = f'/sessions/{session_id}/plans/{version}/budget'
         guide['_planning_url'] = f'/?session={session_id}&edit=1'
         return HTMLResponse(render_guide(guide, f"/sessions/{session_id}/plans/{version}/pdf"),
-            headers={"Cache-Control": "no-store", "Content-Security-Policy": f"default-src 'none'; connect-src 'self'; script-src 'sha256-{RESULT_SCRIPT_HASH}'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+            headers={"Cache-Control": "no-store", "Content-Security-Policy": f"default-src 'none'; connect-src 'self'; script-src 'sha256-{RESULT_SCRIPT_HASH}'; style-src 'unsafe-inline'; img-src 'self' blob:; base-uri 'none'; frame-ancestors 'none'",
                      "X-Content-Type-Options": "nosniff"})
 
     @app.get("/sessions/{session_id}/plans/{version}/pdf")

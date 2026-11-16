@@ -68,6 +68,7 @@ const note = {textContent:'默认风景 · 示意图'};
 const image = {complete:true,naturalWidth:0,hidden:false,addEventListener(){},
   closest:()=>({querySelector:()=>note})};
 global.document={querySelectorAll:s=>s==='.carousel-photo img'?[image]:[]};
+global.window={addEventListener(){}};
 """
     subprocess.run(['node', '-e', stub + CAROUSEL_JS + "\nassert.equal(image.hidden,true);assert.equal(note.textContent,'暂无景点图片');"],
                    check=True, capture_output=True, text=True)
@@ -164,7 +165,10 @@ import assert from 'node:assert/strict';
 const downloads=[], observers=[], timers=new Map(); let timerId=0, active=0;
 globalThis.setTimeout=(fn,ms)=>{timers.set(++timerId,{fn,ms});return timerId;};
 globalThis.clearTimeout=id=>timers.delete(id);
-globalThis.Image=class { set src(value){this._src=value;if(value)downloads.push(this);} get src(){return this._src;} };
+globalThis.fetch=(url,{signal})=>new Promise((resolve,reject)=>{
+  downloads.push({url,resolve});signal.addEventListener('abort',()=>reject(new Error('aborted')));
+});
+globalThis.URL.createObjectURL=blob=>'blob:'+blob.url;
 const carousel=new EventTarget();
 const radios=[1,2,3].map(n=>({id:`highlight-${n}`,get checked(){return active===n-1;},set checked(v){if(v)active=n-1;}}));
 function image(url,owner=carousel){
@@ -193,19 +197,25 @@ loadPlacePhoto(daily);
 await flush();
 assert.equal(downloads.length,1,'overview and daily must share one request');
 assert.equal([...timers.values()].some(t=>t.ms===4000),false,'slow image must hold autoplay');
-downloads[0].onload();await flush();
-assert.equal(photos[0].src,'/photo/1');assert.equal(daily.src,'/photo/1');
+downloads[0].resolve({ok:true,blob:async()=>({url:'/photo/1'})});await flush();
+assert.equal(photos[0].src,'blob:/photo/1');assert.equal(daily.src,'blob:/photo/1');
 assert.equal(daily.note.textContent,'小红书 · 搜索配图');
 assert.equal(downloads.length,2,'preload exactly the next slide');
 assert.equal(photos[2].dataset.photoState,undefined,'do not load the whole itinerary');
 assert.equal([...timers.values()].some(t=>t.ms===4000),true);
-downloads[1].onerror();await flush();
+downloads[1].resolve({ok:false,status:503,json:async()=>({error:'image_download_failed'})});await flush();
 assert.equal(photos[1].dataset.photoState,'failed');assert.equal(photos[1].src,undefined);
 assert.equal(downloads.length,2,'failure must not fan out or retry');
 active=1;carousel.dispatchEvent(new Event('change'));await flush();
 assert.equal(downloads.length,3);
-const timeout=[...timers.values()].find(t=>t.ms===30000);timeout.fn();await flush();
+const timeout=[...timers.values()].find(t=>t.ms===45000);timeout.fn();await flush();
 assert.equal(photos[2].dataset.photoState,'failed','timeout must release the queue');
+const expired=image('/photo/4',null);loadPlacePhoto(expired);await flush();
+downloads[3].resolve({ok:false,status:503,json:async()=>({error:'login_or_risk_control'})});await flush();
+assert.ok(expired.note.textContent.includes('小红书登录失效或受限'));
+const later=image('/photo/5',null);loadPlacePhoto(later);await flush();
+assert.equal(downloads.length,4,'stop issuing requests after login is rejected');
+assert.ok(later.note.textContent.includes('小红书登录失效或受限'));
 """
     result = subprocess.run(['node', '--input-type=module', '-'], input=stub + CAROUSEL_JS + checks,
                             capture_output=True, text=True, encoding='utf-8', timeout=10)

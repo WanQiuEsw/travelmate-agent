@@ -134,8 +134,10 @@ def test_failed_first_cdn_image_is_negative_cached_without_extra_searches(photos
         return httpx.Response(200, content=b'image-bytes', headers={'Content-Type': 'image/jpeg'})
 
     monkeypatch.setattr(httpx, 'Client', lambda **kwargs: photos(transport=httpx.MockTransport(handler), **kwargs))
-    assert place_photos.get_photo('汕头', '小公园开埠区（中山纪念亭—骑楼群）') is None
-    assert place_photos.get_photo('汕头', '小公园') is None
+    with pytest.raises(place_photos.PhotoError, match='image_download_failed'):
+        place_photos.get_photo('汕头', '小公园开埠区（中山纪念亭—骑楼群）')
+    with pytest.raises(place_photos.PhotoError, match='image_download_failed'):
+        place_photos.get_photo('汕头', '小公园')
     assert len(calls) == 2
 
 
@@ -153,8 +155,10 @@ def test_photo_risk_blocks_normal_search_too(photos, monkeypatch):
         return httpx.Response(406)
 
     monkeypatch.setattr(httpx, 'Client', lambda **kwargs: photos(transport=httpx.MockTransport(handler), **kwargs))
-    assert place_photos.get_photo('杭州', '西湖') is None
-    assert place_photos.get_photo('杭州', '灵隐寺') is None
+    with pytest.raises(place_photos.PhotoError, match='login_or_risk_control'):
+        place_photos.get_photo('杭州', '西湖')
+    with pytest.raises(place_photos.PhotoError, match='login_or_risk_control'):
+        place_photos.get_photo('杭州', '灵隐寺')
     assert xhs.search_xiaohongshu.invoke({'city': '杭州', 'query': '旅游'})['error'] == 'session_blocked'
     assert len(calls) == 1
 
@@ -169,7 +173,8 @@ def test_photo_rejects_active_or_oversized_content(photos, monkeypatch, content_
         return httpx.Response(200, content=b'x' * size, headers={'Content-Type': content_type})
 
     monkeypatch.setattr(httpx, 'Client', lambda **kwargs: photos(transport=httpx.MockTransport(handler), **kwargs))
-    assert place_photos.get_photo('杭州', '西湖') is None
+    with pytest.raises(place_photos.PhotoError, match='image_download_failed'):
+        place_photos.get_photo('杭州', '西湖')
 
 
 def test_photo_endpoint_returns_only_image_bytes_and_validates_parameters(stored_agent, monkeypatch):
@@ -190,7 +195,15 @@ def test_photo_endpoint_returns_only_image_bytes_and_validates_parameters(stored
         assert client.get('/api/places/photo', params={'city': '汕头', 'place': '牛肉丸', 'category': 'food'}).content == b'food'
         assert client.get('/api/places/photo', params={'city': '杭州', 'place': 'x' * 121}).status_code == 422
         monkeypatch.setattr(place_photos, 'get_photo', lambda *args: None)
-        assert client.get('/api/places/photo', params={'city': '杭州', 'place': '西湖'}).status_code == 404
+        missing = client.get('/api/places/photo', params={'city': '杭州', 'place': '西湖'})
+        assert missing.status_code == 404 and missing.json()['error'] == 'no_photo'
+        def expired(*args):
+            raise place_photos.PhotoError('login_or_risk_control', 'search')
+        monkeypatch.setattr(place_photos, 'get_photo', expired)
+        expired_response = client.get('/api/places/photo', params={'city': '杭州', 'place': '西湖'})
+        assert expired_response.status_code == 503
+        assert expired_response.json() == {'error': 'login_or_risk_control', 'stage': 'search'}
+        assert expired_response.headers['cache-control'] == 'no-store'
 
 
 def test_dish_search_also_uses_latest_first_image():
@@ -235,4 +248,68 @@ def test_disk_cache_is_scoped_to_session_and_honors_disabled_setting(photos, mon
     assert place_photos.get_photo('杭州', '西湖') == (b'photo', 'image/jpeg')
     assert len(calls) == 2 and len(list(place_photos._CACHE_DIR.glob('*.img'))) == 2
     monkeypatch.setenv('XHS_ENABLED', 'false')
-    assert place_photos.get_photo('杭州', '西湖') is None
+    with pytest.raises(place_photos.PhotoError, match='not_configured'):
+        place_photos.get_photo('杭州', '西湖')
+
+
+@pytest.mark.parametrize('ssr', [False, True])
+def test_newest_note_detail_first_image_and_ssr_fallback(photos, monkeypatch, ssr):
+    calls = []
+    note_id = 'a' * 24
+    def handler(request):
+        calls.append(request)
+        if request.url.path.endswith('/search/notes'):
+            assert json.loads(request.content)['filters'][0]['tags'] == ['time_descending']
+            return httpx.Response(200, json={'success': True, 'data': {'items': [
+                {'model_type': 'note', 'id': note_id, 'xsec_token': 'private-note-token',
+                 'note_card': {'cover': {'url': 'https://sns.xhscdn.com/cover'}}}]}})
+        if request.url.path.endswith('/feed'):
+            payload = json.loads(request.content)
+            assert payload['source_note_id'] == note_id and payload['xsec_token'] == 'private-note-token'
+            if ssr:
+                return httpx.Response(200, json={'success': False, 'code': 1234})
+            return httpx.Response(200, json={'success': True, 'data': {'items': [{'note_card': {
+                'image_list': [{'url_default': 'https://sns.xhscdn.com/detail-first'},
+                               {'url_default': 'https://sns.xhscdn.com/detail-second'}]}}]}})
+        if request.url.host == 'www.xiaohongshu.com':
+            assert request.url.params['xsec_token'] == 'private-note-token'
+            state = {'note': {'noteDetailMap': {note_id: {'note': {'imageList': [
+                {'urlDefault': 'https://sns.xhscdn.com/detail-first'}]}}}}}
+            return httpx.Response(200, text='<script>window.__INITIAL_STATE__=' + json.dumps(state) + '</script>')
+        assert request.url.path == '/detail-first'
+        assert 'cookie' not in request.headers
+        return httpx.Response(200, content=b'real-first-image', headers={'Content-Type': 'image/webp'})
+    monkeypatch.setattr(httpx, 'Client', lambda **kwargs: photos(transport=httpx.MockTransport(handler), **kwargs))
+    assert place_photos.get_photo('杭州', '西湖') == (b'real-first-image', 'image/webp')
+    assert len(calls) == (4 if ssr else 3)
+
+
+def test_detail_login_failure_stops_without_ssr_or_media_fallback(photos, monkeypatch):
+    calls = []
+    def handler(request):
+        calls.append(request)
+        if request.url.path.endswith('/search/notes'):
+            return httpx.Response(200, json={'success': True, 'data': {'items': [
+                {'model_type': 'note', 'id': 'a' * 24, 'note_card': {'cover': {'url': 'https://sns.xhscdn.com/cover'}}}]}})
+        return httpx.Response(200, json={'success': False, 'code': -100})
+    monkeypatch.setattr(httpx, 'Client', lambda **kwargs: photos(transport=httpx.MockTransport(handler), **kwargs))
+    with pytest.raises(place_photos.PhotoError, match='login_or_risk_control'):
+        place_photos.get_photo('杭州', '西湖')
+    assert len(calls) == 2 and xhs._blocked_cookies
+
+
+@pytest.mark.parametrize('target,success', [('https://sns-other.xhscdn.com/image', True),
+                                         ('https://evil.test/image', False)])
+def test_cdn_redirects_are_followed_only_within_image_allowlist(target, success):
+    calls = []
+    def handler(request):
+        calls.append(request)
+        assert 'cookie' not in request.headers
+        assert request.headers['referer'] == 'https://www.xiaohongshu.com/'
+        if len(calls) == 1:
+            return httpx.Response(302, headers={'Location': target})
+        return httpx.Response(200, content=b'photo', headers={'Content-Type': 'image/webp'})
+    with httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=False) as media:
+        result = place_photos.download_photo(media, 'https://sns.xhscdn.com/image')
+    assert bool(result) is success
+    assert len(calls) == (2 if success else 1)

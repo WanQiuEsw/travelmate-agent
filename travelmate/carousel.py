@@ -6,7 +6,7 @@ from urllib.parse import urlencode
 
 
 def photo_url(city, place):
-    return '/api/places/photo?' + urlencode({'city': city, 'place': place, 'v': 3})
+    return '/api/places/photo?' + urlencode({'city': city, 'place': place, 'v': 4})
 
 
 def visit_duration(row):
@@ -122,38 +122,50 @@ CAROUSEL_JS = r"""
 // Share one request per place across overview and daily cards; fetch media serially.
 const placePhotos = new Map();
 let placePhotoQueue = Promise.resolve();
+let placePhotoBlocked = '';
 function loadPlacePhoto(image) {
   if (!image || image.dataset.photoState) return;
-  const url = image.dataset.photoUrl;
+  const url = image.dataset.photoUrl || image.dataset.foodPhoto;
   image.dataset.photoState = 'loading';
   if (!placePhotos.has(url)) {
-    const task = placePhotoQueue.then(() => new Promise(resolve => {
-      const photo = new Image();
-      const finish = result => {
-        clearTimeout(timeout);
-        photo.onload = photo.onerror = null;
-        resolve(result);
-      };
-      const timeout = setTimeout(() => { finish(null); photo.src = ''; }, 30000);
-      photo.onload = () => finish(photo.src);
-      photo.onerror = () => finish(null);
-      photo.src = url;
-    }));
+    const task = placePhotoQueue.then(async () => {
+      if (placePhotoBlocked) return {error: placePhotoBlocked};
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 45000);
+      try {
+        const response = await fetch(url, {signal: controller.signal, credentials: 'same-origin'});
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          const error = data.error || (response.status === 401 ? 'login_required' : 'fetch_failed');
+          if (['not_configured', 'invalid_cookie', 'login_or_risk_control', 'login_required'].includes(error)) placePhotoBlocked = error;
+          return {error};
+        }
+        return {src: URL.createObjectURL(await response.blob())};
+      } catch {
+        return {error: 'fetch_failed'};
+      } finally { clearTimeout(timeout); }
+    });
     placePhotos.set(url, task);
     placePhotoQueue = task;
   }
-  placePhotos.get(url).then(src => {
+  placePhotos.get(url).then(({src, error}) => {
     image.dataset.photoState = src ? 'ready' : 'failed';
     if (src) {
       image.src = src;
       image.hidden = false;
       image.alt = '小红书搜索配图，未核实图片内容';
-      const note = image.parentElement.querySelector('.carousel-image-note, .daily-image-note');
-      if (note) note.textContent = '小红书 · 搜索配图';
     }
+    const note = image.parentElement.querySelector('.carousel-image-note, .daily-image-note, .food-placeholder small');
+    const messages = {not_configured:'小红书图片未启用', invalid_cookie:'小红书登录配置无效',
+      login_or_risk_control:'小红书登录失效或受限', login_required:'请先登录 TravelMate',
+      no_photo:'未找到小红书配图', image_download_failed:'小红书图片下载失败', fetch_failed:'小红书图片暂时不可用'};
+    if (note) note.textContent = src ? '小红书 · 搜索配图' : (messages[error] || '小红书图片暂时不可用') + (image.dataset.foodPhoto ? '' : ' · 示意图');
     image.closest('.carousel')?.dispatchEvent(new Event('photo-ready'));
   });
 }
+window.addEventListener('pagehide', event => {
+  if (!event.persisted) for (const task of placePhotos.values()) task.then(({src}) => { if (src) URL.revokeObjectURL(src); });
+});
 
 for (const image of document.querySelectorAll('.carousel-photo img')) {
   const showEmpty = () => {
