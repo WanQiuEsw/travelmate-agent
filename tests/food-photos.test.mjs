@@ -49,7 +49,29 @@ test('prefetch obeys Retry-After and retries a rate-limited request once', async
   assert.equal(image.hidden, false);
 });
 
-test('all food images preload without visibility or a slide change, sharing one request per dish', async () => {
+test('timeouts release the queue and a rejected login stops the remaining batch', async () => {
+  const requests = [], timers = new Map();
+  let id = 0;
+  const images = [1, 2, 3].map(n => ({dataset: {photoUrl: '/photo/' + n}, parentElement: {querySelector: () => null}}));
+  const context = vm.createContext({images, document: {hidden: false, addEventListener() {}}, AbortController,
+    setTimeout(fn, delay) {timers.set(++id, {fn, delay}); return id;}, clearTimeout(id) {timers.delete(id);},
+    fetch: (url, {signal}) => new Promise((resolve, reject) => {
+      requests.push({url, resolve});
+      signal.addEventListener('abort', () => reject(new Error('timeout')));
+    }),
+  });
+  vm.runInContext(loader + '\nimages.forEach(image => loadPlacePhoto(image));', context);
+  [...timers.values()].find(timer => timer.delay === 45000).fn();
+  await tick();
+  assert.equal(images[0].dataset.photoState, 'failed');
+  assert.equal(requests.length, 2);
+  requests[1].resolve({ok: false, status: 503, json: async () => ({error: 'login_or_risk_control'})});
+  await tick();
+  assert.equal(images[2].dataset.photoState, 'failed');
+  assert.equal(requests.length, 2, 'do not keep contacting XHS after login rejection');
+});
+
+test('all food images preload without scrolling or changing tabs, sharing one request per dish', async () => {
   let finish;
   const requests = [], events = {};
   const images = ['same-dish', 'same-dish', 'failure'].map(name => {
@@ -85,44 +107,4 @@ test('all food images preload without visibility or a slide change, sharing one 
   events.hashchange();
   await tick();
   assert.equal(requests.length, 2, 'revisiting the panel must reuse loaded photos');
-});
-
-test('buttons, thumbnails, keyboard and touch scrolling synchronize selection and wrap', () => {
-  const events = {}, active = new Set(), count = {};
-  const strip = {scrollLeft: 0, clientWidth: 180, scrollTo({left}) { this.scrollLeft = left; }};
-  const cards = [0, 1, 2].map(i => ({offsetLeft: 140 + i * 740, offsetWidth: 720, querySelector: () => null,
-    classList: {toggle: (_, enabled) => enabled ? active.add(i) : active.delete(i)}}));
-  const thumbs = cards.map((_, i) => ({offsetLeft: i * 120, offsetWidth: 108, parentElement: strip,
-    setAttribute(name, value) {this[name] = value;}, addEventListener(_, fn) {this.click = fn;}}));
-  const steps = [-1, 1].map(step => ({dataset: {foodStep: String(step)}, addEventListener(_, fn) {this.click = fn;}}));
-  const track = {scrollLeft: 0, clientWidth: 1000, querySelectorAll: () => cards,
-    addEventListener(name, fn) {events[name] = fn;}, scrollTo({left}) {this.scrollLeft = left;}};
-  const food = {querySelector: selector => selector === '.food-track' ? track : count,
-    querySelectorAll: selector => selector === '[data-food-index]' ? thumbs : steps};
-  let resize;
-  vm.runInNewContext(script, {document: {querySelectorAll: selector => selector === '.food-shell' ? [food] : []}, matchMedia: () => ({matches: true}),
-    ResizeObserver: class {constructor(callback) {resize = callback;} observe() {}}, loadPlacePhoto() {}});
-  steps[0].click();
-  assert.equal(count.textContent, '03 / 03');
-  assert.equal(track.scrollLeft, 1480);
-  assert.equal(thumbs[2]['aria-pressed'], 'true');
-  assert.ok(strip.scrollLeft > 0);
-  steps[1].click();
-  assert.equal(count.textContent, '01 / 03');
-  thumbs[1].click();
-  assert.equal(track.scrollLeft, 740);
-  let prevented = false;
-  events.keydown({key: 'End', target: track, preventDefault() {prevented = true;}});
-  assert.equal(count.textContent, '03 / 03');
-  assert.equal(prevented, true);
-  track.clientWidth = 800;
-  events.scroll();
-  resize();
-  assert.equal(track.scrollLeft, 1580);
-  assert.equal(count.textContent, '03 / 03');
-  events.keydown({key: 'ArrowLeft', target: {}, preventDefault() {throw Error('nested control intercepted');}});
-  track.scrollLeft = 0;
-  events.scroll();
-  assert.equal(count.textContent, '01 / 03');
-  assert.deepEqual([...active], [0]);
 });

@@ -5,7 +5,7 @@ from urllib.parse import unquote_plus
 from travelmate.food_ui import panel
 
 
-def test_carousel_combines_days_deduplicates_dishes_and_escapes_content():
+def test_food_feed_combines_days_deduplicates_dishes_and_escapes_content():
     sections = [dict(rows=[
         ['闽南卤面', '<script>bad</script>', '第1天 · 午餐', '中山路', '确认忌口'],
         [' 闽南卤面 ', '重复推荐', '第2天 · 晚餐', '沙坡尾', '注意花生配料'],
@@ -15,9 +15,8 @@ def test_carousel_combines_days_deduplicates_dishes_and_escapes_content():
     original = deepcopy(sections)
     html = panel(sections, [dict(rows=[['上午', '中山路']])], escape, city='厦门')
     assert html.count('class="food-card') == 2
-    assert html.count('class="food-thumb"') == 2
-    assert '01 / 02' in html and 'aria-controls="food-card-1"' in html
-    assert 'aria-pressed="true"' in html and '花生过敏' in html and '确认忌口' in html
+    assert 'food-thumb' not in html and 'data-food-step' not in html
+    assert '花生过敏' in html and '确认忌口' in html
     assert '确认忌口；注意花生配料' in html
     assert '&lt;script&gt;bad&lt;/script&gt;' in html and '<script>bad' not in html
     assert all(word not in html for word in ('中山路', '沙坡尾', '鼓浪屿', '早餐', '午餐', '晚餐', '第1天', '第2天'))
@@ -34,12 +33,12 @@ def test_empty_and_historical_filler_only_guides_do_not_invent_food():
 def test_food_photos_use_matching_dish_search_for_card_and_thumbnail():
     sections = [dict(rows=[['牛肉丸', '当地小吃', '第1天 · 午餐', '老街', '确认食材']])]
     html = panel(sections, [], escape, city='汕头')
-    assert html.count('data-food-photo=') == 2
-    assert html.count('category=food') == 2
+    assert html.count('data-food-photo=') == 1
+    assert html.count('category=food') == 1
     assert html.count('place=牛肉丸') == 0  # URLs are encoded before HTML escaping.
-    assert unquote_plus(html).count('place=牛肉丸') == 2
+    assert unquote_plus(html).count('place=牛肉丸') == 1
     assert '暂无菜品图片' in html and '/assets/visual/' not in html
-    assert html.count(' disabled') == 2
+    assert 'data-food-step' not in html
     offline = panel(sections, [], escape, inline_images=True, city='汕头')
     assert 'data-food-photo' not in offline and '离线版' in offline and '牛肉丸' in offline
 

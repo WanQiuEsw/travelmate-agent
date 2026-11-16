@@ -58,17 +58,14 @@ def test_weather_is_inside_days_and_omitted_without_date_for_new_and_old_version
     assert 'panel-map' not in nav and 'panel-weather' not in nav
 
 
-def test_carousel_has_wrapping_controls_and_daily_navigation():
+def test_overview_cards_keep_daily_navigation():
     plan = deepcopy(PLAN)
     second_day = deepcopy(plan['days'][0])
     second_day['stops'][0]['place'] = '灵隐寺'
     plan['days'].append(second_day)
     html = render_sample(plan=plan)
-    assert 'name="highlight" id="highlight-1"' in html
-    assert 'name="highlight" id="highlight-2"' in html
-    assert 'slide-1' in html and 'slide-2' in html
-    assert 'data-carousel-target="highlight-2" aria-label="上一个景点"' in html
-    assert 'data-carousel-target="highlight-1" aria-label="下一个景点"' in html
+    assert 'id="overview-place-1"' in html and 'id="overview-place-2"' in html
+    assert 'data-carousel-target' not in html
     assert 'aria-label="选择行程日"' in html
     assert 'href="#day-2"' in html
     budget = html.split('aria-label="预算明细">')[1].split('id="panel-days"')[0]
@@ -156,7 +153,7 @@ def test_carousel_controls_and_compact_expense_description():
     assert 'other_cost' not in html and '&lt;script&gt;' in html
     assert 'data-total>¥600.00' in html
     assert 'clip-path:inset(50%)' in RESULT_CSS
-    assert '.carousel-controls button:focus-visible' in RESULT_CSS
+    assert '.overview-card-link:focus-visible' in RESULT_CSS
 
 
 def test_legacy_expense_breakdown_requires_matching_total():
@@ -217,7 +214,7 @@ def test_all_views_share_header_and_snapshot_details_live_in_overview():
     overview = html.split('id="panel-overview"')[1].split('id="panel-budget"')[0]
     assert '方案详情与依据' in overview
     assert '保存时间' in overview and '已列费用' in overview
-    assert 'trip-facts' in overview and 'carousel-stage' in overview
+    assert 'trip-facts' in overview and 'discovery-grid' in overview
     for title in ('先说结论', '旅行概览', '交通与已订安排', '时间安排说明'):
         assert f'<summary>{title}</summary>' not in overview
     from travelmate.result import RESULT_CSS
