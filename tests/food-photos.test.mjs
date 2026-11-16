@@ -52,7 +52,8 @@ test('prefetch obeys Retry-After and retries a rate-limited request once', async
 test('timeouts release the queue and a rejected login stops the remaining batch', async () => {
   const requests = [], timers = new Map();
   let id = 0;
-  const images = [1, 2, 3].map(n => ({dataset: {photoUrl: '/photo/' + n}, parentElement: {querySelector: () => null}}));
+  const images = [1, 2, 3].map(n => ({dataset: {photoUrl: '/photo/' + n}, closest: () => null,
+    parentElement: {querySelector: () => null}}));
   const context = vm.createContext({images, document: {hidden: false, addEventListener() {}}, AbortController,
     setTimeout(fn, delay) {timers.set(++id, {fn, delay}); return id;}, clearTimeout(id) {timers.delete(id);},
     fetch: (url, {signal}) => new Promise((resolve, reject) => {

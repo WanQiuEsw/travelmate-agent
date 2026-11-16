@@ -36,9 +36,11 @@ test('masonry follows image/content heights, preserves order, and lays out hidde
 test('overview images all preload without scrolling and share results with daily cards', async () => {
   const source = readFileSync(new URL('../travelmate/carousel.py', import.meta.url), 'utf8').split('CAROUSEL_JS = r"""')[1].split('"""')[0];
   const requests = [];
+  const notes = [1, 2, 3].map(() => ({}));
   const images = [1, 2, 3].map(n => ({dataset: {photoUrl: '/photo/' + n}, complete: false,
-    addEventListener() {}, parentElement: {querySelector: () => ({})}}));
-  const daily = {dataset: {photoUrl: '/photo/1'}, parentElement: {querySelector: () => null}};
+    addEventListener() {}, closest: () => ({querySelector: () => notes[n - 1]}),
+    parentElement: {querySelector: () => null}}));
+  const daily = {dataset: {photoUrl: '/photo/1'}, closest: () => null, parentElement: {querySelector: () => null}};
   const context = vm.createContext({document: {hidden: false, addEventListener() {},
     querySelectorAll: selector => selector === '.overview-feed img[data-photo-url]' ? images : []},
     window: {addEventListener() {}}, AbortController, setTimeout, clearTimeout,
@@ -50,4 +52,5 @@ test('overview images all preload without scrolling and share results with daily
   assert.deepEqual(requests, ['/photo/1', '/photo/2', '/photo/3']);
   assert.equal(daily.src, images[0].src);
   assert.ok(images.every(image => image.dataset.photoState === 'ready'));
+  assert.ok(notes.every(note => note.textContent === '小红书 · 搜索配图'));
 });
