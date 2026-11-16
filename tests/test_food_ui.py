@@ -35,6 +35,7 @@ def test_food_photos_use_matching_dish_search_for_card_and_thumbnail():
     html = panel(sections, [], escape, city='汕头')
     assert html.count('data-food-photo=') == 1
     assert html.count('category=food') == 1
+    assert 'v=5' in html and '无可靠匹配' in html
     assert html.count('place=牛肉丸') == 0  # URLs are encoded before HTML escaping.
     assert unquote_plus(html).count('place=牛肉丸') == 1
     assert '暂无菜品图片' in html and '/assets/visual/' not in html

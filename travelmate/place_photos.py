@@ -90,11 +90,13 @@ def cache_photo(key, result):
 
 
 def photo_search(city, place, category='place'):
+    if category == 'food':
+        name = place.strip()
+        payload = xhs.search_payload(f'{city} {name} 美食 菜品 实拍')
+        payload['filters'] = [row for row in payload['filters'] if row['type'] != 'sort_type']
+        return name, payload
     name = re.sub(r'（[^）]*）|\([^)]*\)', '', place)
     name = re.split(r'→|—|->|\+', name)[0].strip()
-    if category == 'food':
-        payload = xhs.search_payload(f'{city} {name} 美食 菜品 实拍')
-        return name, payload
     name = re.sub(r'风景名胜区$|风景区$|景区$|开埠区$', '', name).strip()
     if city and name.startswith(city):
         name = name[len(city):].lstrip('市 ')
@@ -102,7 +104,16 @@ def photo_search(city, place, category='place'):
     return name, payload
 
 
-def photo_candidates(items, name, category='place'):
+def food_note_matches(card, name, city=''):
+    title = re.sub(r'\s+', '', str(card.get('title') or card.get('display_title') or '')).casefold()
+    dish = re.sub(r'\s+', '', name).casefold()
+    content = title + re.sub(r'\s+', '', str(card.get('desc') or '')).casefold()
+    # shortcut: Metadata cannot identify mislabeled photos; use visual verification when available.
+    return (len(dish) >= 2 and dish in title and (not city or city.casefold() in content)
+            and not re.search(r'攻略|合集|盘点|清单|路线|一日游|九宫格|拼图|菜单|风景|写真|探店|打卡', title))
+
+
+def photo_candidates(items, name, category='place', city=''):
     """Keep search order: use only the first image of the first usable photo note."""
     for item in items[:20]:
         if not isinstance(item, dict):
@@ -111,10 +122,45 @@ def photo_candidates(items, name, category='place'):
         if not isinstance(card, dict) or item.get('model_type') != 'note' or card.get('type') == 'video':
             continue
         images = card.get('image_list') or [card.get('cover') or {}]
+        if category == 'food' and (not food_note_matches(card, name, city)
+                or not isinstance(card.get('image_list'), list) or len(card['image_list']) != 1):
+            continue
         if isinstance(images, list) and images and isinstance(images[0], dict):
             urls = image_urls(images[0])
             if urls:
                 return urls[:3]
+    return []
+
+
+def food_photo_urls(client, cookies, items, deadline, name, city):
+    attempts = 0
+    for item in items[:20]:
+        if attempts >= 3 or monotonic() >= deadline:
+            break
+        if not isinstance(item, dict) or item.get('model_type') != 'note':
+            continue
+        card = item.get('note_card') or {}
+        note_id = item.get('id') or ''
+        if (not isinstance(card, dict) or card.get('type') == 'video'
+                or not food_note_matches(card, name) or not re.fullmatch(r'[a-fA-F0-9]{24}', note_id)):
+            continue
+        attempts += 1
+        try:
+            detail = xhs.post(client, cookies, '/api/sns/web/v1/feed', {
+                'source_note_id': note_id, 'image_formats': ['jpg', 'webp', 'avif'],
+                'extra': {'need_body_topic': '1'}, 'xsec_source': 'pc_search',
+                'xsec_token': item.get('xsec_token', '')}, deadline)
+            cards = detail.get('items') or []
+            # Search covers are not evidence that the dish appears in the image.
+            detail_card = (cards[0].get('note_card') or {}) if cards else {}
+            urls = photo_candidates([{'model_type': 'note', 'note_card': detail_card}], name, 'food', city)
+            if urls:
+                return urls
+        except xhs.XHSError as exc:
+            if str(exc) == 'login_or_risk_control':
+                raise
+        except (httpx.HTTPError, ValueError, TypeError, KeyError, AttributeError, IndexError):
+            continue
     return []
 
 
@@ -222,7 +268,8 @@ def get_photo(city, place, category='place'):
         cookies = xhs.parse_cookie(os.environ['XHS_COOKIE'])
         session = xhs.cookie_key(cookies)
         name, payload = photo_search(city.strip(), place.strip(), category)
-        key = hashlib.sha256(session + f'latest-first-v4:{category}:{payload["keyword"]}'.encode()).hexdigest()
+        version = 'food-match-v5' if category == 'food' else 'latest-first-v4'
+        key = hashlib.sha256(session + f'{version}:{category}:{payload["keyword"]}'.encode()).hexdigest()
     except (ValueError, KeyError, TypeError):
         raise PhotoError('invalid_cookie') from None
     cached = cached_photo(key)
@@ -244,7 +291,9 @@ def get_photo(city, place, category='place'):
             with httpx.Client(cookies=cookies, trust_env=False, follow_redirects=False) as client:
                 data = xhs.post(client, cookies, '/api/sns/web/v1/search/notes',
                                 payload, deadline)
-                urls = note_photo_urls(client, cookies, data.get('items') or [], deadline)
+                items = data.get('items') or []
+                urls = (food_photo_urls(client, cookies, items, deadline, name, city.strip()) if category == 'food'
+                        else note_photo_urls(client, cookies, items, deadline))
             # Download CDN media with a separate client so session cookies never reach it.
             with httpx.Client(trust_env=False, follow_redirects=False) as media:
                 for url in urls:
