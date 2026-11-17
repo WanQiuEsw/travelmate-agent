@@ -133,15 +133,15 @@ git diff --check
 
 ## 运行演示图
 
-![首页](docs\images\result1.png)
+![首页](docs/images/result1.png)
 
 
 
-![规划展示图](docs\images\result2.png)
+![规划展示图](docs/images/result2.png)
 
 
 
-![行程概览](docs\images\result3.png)
+![行程概览](docs/images/result3.png)
 
 
 
