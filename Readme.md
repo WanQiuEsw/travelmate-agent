@@ -129,6 +129,30 @@ git diff --check
 
 部分 Python 用例也通过 Node.js 验证页面交互。测试使用模拟模型与工具结果，不替代真实接口联调。轮播回归包含临近自动切换时手动翻页、完整 4 秒重新计时，以及离开视口或后台时暂停。
 
+
+
+## 运行演示图
+
+![首页](docs\images\result1.png)
+
+
+
+![规划展示图](docs\images\result2.png)
+
+
+
+![行程概览](docs\images\result3.png)
+
+
+
+![每日行程安排](docs/images/result4.png)
+
+
+
+![行前准备](docs/images/result5.png)
+
+
+
 ## 更多文档
 
 | 文档 | 内容 |
