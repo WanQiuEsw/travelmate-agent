@@ -1,8 +1,21 @@
-# TravelMate
+<p align="center">
+  <img src="travelmate/images/icon.webp" alt="TravelMate logo" width="144" height="144">
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/version-0.1.0-2e7d32?style=flat-square" alt="Version 0.1.0">
+  <img src="https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&amp;logo=python&amp;logoColor=white" alt="Python 3.11+">
+  <img src="https://img.shields.io/badge/FastAPI-0.115%2B-009688?style=flat-square&amp;logo=fastapi&amp;logoColor=white" alt="FastAPI 0.115+">
+  <img src="https://img.shields.io/badge/LangGraph-Agent-1C3C3C?style=flat-square" alt="LangGraph Agent">
+  <img src="https://img.shields.io/badge/JavaScript-Vanilla-F7DF1E?style=flat-square&amp;logo=javascript&amp;logoColor=black" alt="Vanilla JavaScript">
+  <img src="https://img.shields.io/badge/SQLite-Database-003B57?style=flat-square&amp;logo=sqlite&amp;logoColor=white" alt="SQLite Database">
+</p>
 
 <p align="center">
   <strong>中文</strong> | <a href="README.en.md">English</a>
 </p>
+
+<h1 align="center">TravelMate — AI 旅行规划助手</h1>
 
 TravelMate 是基于 LangChain / LangGraph 的旅行规划智能体，使用 FastAPI、原生 HTML/CSS/JS 和 SQLite。通过首页表单选择旅行条件，查看真实生成阶段，完成后直接打开攻略；支持回填条件生成新版本，也保留对话补充复杂需求。结合攻略、联网搜索和地点查询，生成可查看、继续修改和导出的旅行方案。
 

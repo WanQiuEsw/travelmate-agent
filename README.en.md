@@ -1,8 +1,21 @@
-# TravelMate
+<p align="center">
+  <img src="travelmate/images/icon.webp" alt="TravelMate logo" width="144" height="144">
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/version-0.1.0-2e7d32?style=flat-square" alt="Version 0.1.0">
+  <img src="https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&amp;logo=python&amp;logoColor=white" alt="Python 3.11+">
+  <img src="https://img.shields.io/badge/FastAPI-0.115%2B-009688?style=flat-square&amp;logo=fastapi&amp;logoColor=white" alt="FastAPI 0.115+">
+  <img src="https://img.shields.io/badge/LangGraph-Agent-1C3C3C?style=flat-square" alt="LangGraph Agent">
+  <img src="https://img.shields.io/badge/JavaScript-Vanilla-F7DF1E?style=flat-square&amp;logo=javascript&amp;logoColor=black" alt="Vanilla JavaScript">
+  <img src="https://img.shields.io/badge/SQLite-Database-003B57?style=flat-square&amp;logo=sqlite&amp;logoColor=white" alt="SQLite Database">
+</p>
 
 <p align="center">
   <a href="Readme.md">中文</a> | <strong>English</strong>
 </p>
+
+<h1 align="center">TravelMate — AI Travel Planner</h1>
 
 TravelMate is a travel-planning agent built with LangChain / LangGraph, FastAPI, plain HTML/CSS/JS and SQLite. It collects trip requirements through a homepage form, shows the actual generation stages, and opens the guide when complete. Users can refill the form to create a new version or use chat for complex requirements. It researches guides and places, checks structured itineraries, and saves versioned travel guides.
 
